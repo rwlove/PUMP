@@ -7,13 +7,12 @@ import (
 )
 
 // GetFromEnv reads all configuration from environment variables only.
-// No config file is required. This is the primary configuration path for
-// the split-service deployment.
+// No config file is required.
 func GetFromEnv() models.Conf {
 	v := viper.New()
 
 	v.SetDefault("HOST", "0.0.0.0")
-	v.SetDefault("PORT", "8851")
+	v.SetDefault("PORT", "8080")
 	v.SetDefault("THEME", "cosmo")
 	v.SetDefault("COLOR", "dark")
 	v.SetDefault("HEATCOLOR", "#2780e3")

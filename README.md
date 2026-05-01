@@ -21,14 +21,18 @@
 
 ## Architecture
 
-PUMP can be deployed in two ways:
-
-### All-in-one (recommended)
-
 ```
-Browser ──▶ pump  :8080  ──▶ PostgreSQL
-            (UI + API)
+Browser / Android app ──▶ pump  :8080  ──▶ PostgreSQL
+                          (UI + API)
 ```
+
+The `pump` monolith serves both the web UI and the JSON API on a **single port (default `8080`)**.
+There is no separate API or frontend port — all traffic goes through `:8080`.
+
+| Path prefix | Purpose |
+|---|---|
+| `/` | Web UI (HTML, CSS, JS) |
+| `/api/` | JSON REST API (used by the Android app and direct integrations) |
 
 Use image `ghcr.io/rwlove/pump`. Set `POSTGRES_DSN` and optionally `API_KEY`.
 
