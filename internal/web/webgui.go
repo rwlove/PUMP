@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/rwlove/PUMP/internal/models"
 	"github.com/rwlove/PUMP/internal/store"
 )
 
@@ -30,6 +31,41 @@ func GuiWithStore(s store.Store, ac *store.APIClient, port, nodePath string) {
 
 	apiClient = ac
 	startRouter(s, ac, "0.0.0.0:"+port)
+}
+
+// RegisterRoutes mounts all web UI routes on r using the provided store and config.
+// onConfigSave is called whenever the user saves settings; pass nil in split mode.
+// Used by cmd/pump (monolith). Does not call r.Run().
+func RegisterRoutes(r *gin.Engine, s store.Store, cfg models.Conf, onConfigSave func(models.Conf)) {
+	appConfig = cfg
+	dataStore = s
+	apiClient = nil
+	configSaveHook = onConfigSave
+
+	templ := template.New("").Funcs(template.FuncMap{
+		"json": func(v interface{}) template.JS {
+			j, _ := json.Marshal(v)
+			return template.JS(j)
+		},
+		"safeJS": func(s interface{}) template.JS {
+			return template.JS(fmt.Sprint(s))
+		},
+	})
+	templ = template.Must(templ.ParseFS(templFS, "templates/*"))
+	r.SetHTMLTemplate(templ)
+	r.StaticFS("/fs/", http.FS(pubFS))
+
+	r.GET("/", indexHandler)
+	r.GET("/config/", configHandler)
+	r.GET("/exercise/", exerciseHandler)
+	r.GET("/stats/", statsHandler)
+	r.GET("/weight/", weightHandler)
+
+	r.POST("/config/", saveConfigHandler)
+	r.POST("/exercise/", saveExerciseHandler)
+	r.POST("/exdel/", deleteExerciseHandler)
+	r.POST("/set/", setHandler)
+	r.POST("/weight/", addWeightHandler)
 }
 
 // startRouter wires up the Gin router with the given store and starts serving.

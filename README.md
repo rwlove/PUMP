@@ -20,21 +20,47 @@
 
 ## Architecture
 
-PUMP runs as two independent services:
+PUMP can be deployed in two ways:
+
+### All-in-one (recommended)
 
 ```
-┌──────────────────────────┐           ┌────────────────────────────┐
-│  pump-frontend           │───HTTP──▶│  pump-api                  │
-│  Web UI  (default :8080) │           │  JSON API  (default :8851) │
-└──────────────────────────┘           └───────────┬────────────────┘
-                                                   │
-                                              PostgreSQL
+Browser ──▶ pump  :8080  ──▶ PostgreSQL
+            (UI + API)
 ```
 
-| Service | Image | Description |
+Use image `ghcr.io/rwlove/pump`. Set `POSTGRES_DSN` and optionally `API_KEY`.
+
+### Split services (advanced)
+
+```
+Browser ──▶ pump-frontend :8080 ──HTTP──▶ pump-api :8851 ──▶ PostgreSQL
+```
+
+Use images `ghcr.io/rwlove/pump-frontend` + `ghcr.io/rwlove/pump-api`.
+
+## Android App
+
+The PUMP Android app provides the same workout logging experience as the web UI, connecting to any PUMP API server you specify.
+
+**Requires Android 16 (API 36) or later.**
+
+| Workout | Stats | Weight |
 |---|---|---|
-| API backend | `ghcr.io/rwlove/pump-api` | Owns the PostgreSQL database, exposes a JSON REST API |
-| Web frontend | `ghcr.io/rwlove/pump-frontend` | Serves the browser UI, talks to the API over HTTP |
+| *(screenshot coming soon)* | *(screenshot coming soon)* | *(screenshot coming soon)* |
+
+### Installation
+
+Download the latest APK from the [Releases page](https://github.com/rwlove/PUMP/releases) and install it on your device. You may need to allow installation from unknown sources.
+
+### Configuration
+
+On first launch, open **Settings** and enter:
+
+| Field | Description |
+|---|---|
+| API URL | Base URL of your PUMP API server (e.g. `http://192.168.1.10:8080`) |
+| API Key | Optional — must match `API_KEY` on the server |
 
 ## Configuration
 

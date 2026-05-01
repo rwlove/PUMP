@@ -28,6 +28,10 @@ var (
 	// apiClient is non-nil only in split-frontend mode; used for config
 	// operations that fall outside the Store interface.
 	apiClient *store.APIClient
+
+	// configSaveHook is called in monolith mode when the user saves config
+	// through the web UI. Set by RegisterRoutes; nil in split-frontend mode.
+	configSaveHook func(models.Conf)
 )
 
 // templFS - html templates

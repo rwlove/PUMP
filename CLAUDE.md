@@ -2,7 +2,19 @@
 
 ## Before applying any new version tag
 
-Complete all three steps in order before running `git tag`:
+Complete all steps in order before running `git tag`:
+
+### 0. Android screenshots (if Android changes were made)
+
+If any Android source files under `android/` changed since the last tag, take fresh screenshots using an Android emulator or connected device:
+
+```
+adb shell screencap -p /sdcard/pump_workout.png && adb pull /sdcard/pump_workout.png assets/screenshot-android-workout.png
+adb shell screencap -p /sdcard/pump_stats.png   && adb pull /sdcard/pump_stats.png   assets/screenshot-android-stats.png
+adb shell screencap -p /sdcard/pump_weight.png  && adb pull /sdcard/pump_weight.png  assets/screenshot-android-weight.png
+```
+
+Update the Android screenshot table in README.md to reference the new images. If no Android changes were made, skip this step.
 
 ### 1. Regenerate screenshots
 

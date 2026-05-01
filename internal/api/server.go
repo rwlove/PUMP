@@ -88,6 +88,45 @@ func Start() {
 	}
 }
 
+// RegisterRoutes mounts all API routes on r using the provided store and config.
+// Used by cmd/pump (monolith). Does not call r.Run().
+func RegisterRoutes(r *gin.Engine, s store.Store, cfg models.Conf) {
+	appConfig = cfg
+	dataStore = s
+
+	// Exercises
+	r.GET("/api/exercises", getExercises)
+	r.POST("/api/exercises", postExercise)
+	r.PUT("/api/exercises/:id", putExercise)
+	r.PATCH("/api/exercises/:id/color", patchExerciseColor)
+	r.DELETE("/api/exercises/:id", deleteExercise)
+
+	// Sets
+	r.GET("/api/sets", getSets)
+	r.PUT("/api/sets/date/:date", putSetsByDate)
+
+	// Body weight
+	r.GET("/api/weight", getWeight)
+	r.POST("/api/weight", postWeight)
+	r.DELETE("/api/weight/:id", deleteWeight)
+
+	// Config
+	r.GET("/api/config", getConfig)
+	r.PUT("/api/config", putConfig)
+}
+
+// SetConfig updates the in-memory appConfig. Called by the monolith web layer
+// when config is saved through the UI.
+func SetConfig(cfg models.Conf) {
+	appConfig = cfg
+}
+
+// APIKeyMiddleware returns Gin middleware that requires the given key in the
+// X-Api-Key header. Exported for use by cmd/pump (monolith).
+func APIKeyMiddleware(key string) gin.HandlerFunc {
+	return apiKeyMiddleware(key)
+}
+
 // ─── middleware ───────────────────────────────────────────────────────────────
 
 func apiKeyMiddleware(key string) gin.HandlerFunc {

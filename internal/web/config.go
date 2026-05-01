@@ -45,8 +45,11 @@ func saveConfigHandler(c *gin.Context) {
 			c.Status(http.StatusInternalServerError)
 			return
 		}
+	} else if configSaveHook != nil {
+		// Monolith: notify the API layer of the new config
+		configSaveHook(appConfig)
 	} else {
-		// Monolith: write config file directly
+		// Standalone: write config file directly
 		conf.Write(appConfig)
 		log.Println("INFO: writing new config to", appConfig.ConfPath)
 	}
