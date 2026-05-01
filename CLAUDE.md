@@ -4,52 +4,11 @@
 
 Complete all steps in order before running `git tag`:
 
-### 0. Android APK QR code (every release)
+### 0. Android APK QR code (automated — do not update manually)
 
-Every time a new version tag is applied, regenerate `assets/qr-android-install.png` so it encodes the **exact download URL for that release's APK**:
-
-```
-# Replace TAG with the new version, e.g. v0.0.14
-TAG=v0.0.14
-
-cd /tmp/qrgen   # the Go helper created during v0.0.11 — see commit message for source
-go run . /path/to/PUMP/assets/qr-android-install.png \
-  "https://github.com/rwlove/PUMP/releases/download/${TAG}/pump-${TAG}.apk"
-```
-
-If `/tmp/qrgen` no longer exists, recreate it:
-
-```go
-// /tmp/qrgen/main.go
-package main
-
-import (
-    "fmt"
-    "os"
-    "github.com/skip2/go-qrcode"
-)
-
-func main() {
-    if len(os.Args) != 3 {
-        fmt.Fprintln(os.Stderr, "usage: qrgen <output.png> <url>")
-        os.Exit(1)
-    }
-    err := qrcode.WriteFile(os.Args[2], qrcode.Medium, 256, os.Args[1])
-    if err != nil {
-        fmt.Fprintf(os.Stderr, "error: %v\n", err)
-        os.Exit(1)
-    }
-}
-```
-
-```
-# /tmp/qrgen/go.mod
-module qrgen
-go 1.21
-require github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
-```
-
-After regenerating, verify the QR code decodes to the correct URL, then commit the updated `assets/qr-android-install.png` and push **before** pushing the tag. The README `<img>` tag already references this file — no README edit needed unless the file path changes.
+`assets/qr-android-install.png` is now regenerated automatically by the
+`android-publish.yml` CI workflow **after** the APK is successfully uploaded
+to the GitHub release. Do not update it manually before tagging.
 
 ### 0b. Android screenshots (if Android changes were made)
 

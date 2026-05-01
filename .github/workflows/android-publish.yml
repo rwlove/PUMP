@@ -84,3 +84,27 @@ jobs:
           files: |
             ${{ env.SIGNED_APK != '' && env.SIGNED_APK || 'android/app/build/outputs/apk/release/*.apk' }}
           fail_on_unmatched_files: false
+
+      - name: Update QR code on main
+        run: |
+          TAG="${{ github.ref_name }}"
+          APK_URL="https://github.com/rwlove/PUMP/releases/download/${TAG}/pump-${TAG}.apk"
+
+          # Generate QR code pointing to the now-live APK download
+          sudo apt-get install -y --quiet qrencode
+          qrencode -o assets/qr-android-install.png \
+            -s 8 -m 3 --level=M \
+            "$APK_URL"
+
+          # Commit back to main (workflow checked out a tag; switch to main first)
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout main
+          git pull --ff-only origin main
+
+          git add assets/qr-android-install.png
+          git commit -m "chore: update QR code for ${TAG} APK [skip ci]
+
+Co-Authored-By: Claude Opus 4 <noreply@anthropic.com>"
+          git push origin main
