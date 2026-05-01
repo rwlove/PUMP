@@ -54,7 +54,7 @@ jobs:
           UNSIGNED=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
           DIR=$(dirname "$UNSIGNED")
           ALIGNED="$DIR/app-release-aligned.apk"
-          SIGNED="$DIR/app-release.apk"
+          SIGNED="$DIR/pump-${{ github.ref_name }}.apk"
 
           # Align then sign
           "$BUILD_TOOLS/zipalign" -v -p 4 "$UNSIGNED" "$ALIGNED"

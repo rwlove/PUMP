@@ -14,7 +14,7 @@ TAG=v0.0.14
 
 cd /tmp/qrgen   # the Go helper created during v0.0.11 — see commit message for source
 go run . /path/to/PUMP/assets/qr-android-install.png \
-  "https://github.com/rwlove/PUMP/releases/download/${TAG}/app-release.apk"
+  "https://github.com/rwlove/PUMP/releases/download/${TAG}/pump-${TAG}.apk"
 ```
 
 If `/tmp/qrgen` no longer exists, recreate it:
