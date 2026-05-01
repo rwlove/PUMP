@@ -71,7 +71,7 @@ Both services are configured exclusively via environment variables. No config fi
 | `HOST` | Listen address | `0.0.0.0` |
 | `POSTGRES_DSN` | PostgreSQL connection string **(required)** | — |
 | `API_KEY` | Require this value on every `X-Api-Key` request header; empty = no auth | `""` |
-| `THEME` | Any [Bootswatch](https://bootswatch.com) theme (lowercase) or extras: `emerald`, `grass`, `grayscale`, `ocean`, `sand`, `wood` | `grass` |
+| `THEME` | Any [Bootswatch](https://bootswatch.com) theme (lowercase) or extras: `emerald`, `grass`, `grayscale`, `ocean`, `sand`, `wood` | `cosmo` |
 | `COLOR` | Background: `light` or `dark` | `dark` |
 | `HEATCOLOR` | Heatmap cell color | `#03a70c` |
 | `PAGESTEP` | Rows per page | `10` |
