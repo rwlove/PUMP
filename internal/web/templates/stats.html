@@ -1,6 +1,5 @@
 {{ define "stats.html" }}
 <head>
-    <script src="/fs/public/js/heatmap.js"></script>
     <script src="/fs/public/js/stats.js"></script>
     <script src="/fs/public/js/weight-chart.js"></script>
     <link rel="stylesheet" type="text/css" href="/fs/public/css/index.css" />
@@ -19,12 +18,7 @@
           </li>
           <li class="nav-item" role="presentation">
             <button class="page-tab-btn" id="tab-activity-btn" data-bs-toggle="tab" data-bs-target="#tab-activity" type="button" role="tab">
-              <i class="bi bi-calendar3 me-2"></i>Activity
-            </button>
-          </li>
-          <li class="nav-item" role="presentation">
-            <button class="page-tab-btn" id="tab-exercises-btn" data-bs-toggle="tab" data-bs-target="#tab-exercises" type="button" role="tab">
-              <i class="bi bi-activity me-2"></i>Exercises
+              <i class="bi bi-graph-up-arrow me-2"></i>Weight Moved
             </button>
           </li>
           <li class="nav-item" role="presentation">
@@ -101,88 +95,26 @@
         </div>
       </div>
 
-      <!-- ── Activity ───────────────────────────────────────────────────────── -->
+      <!-- ── Weight Moved ──────────────────────────────────────────────────── -->
       <div class="tab-pane fade" id="tab-activity" role="tabpanel">
         <div class="container-xl py-4">
           <div class="row g-4">
-
-            <div class="col-12 col-lg-9">
+            <div class="col-12">
               <div class="panel">
-                <div class="panel-header"><span class="panel-title">Exercise Colors</span></div>
-                <div class="panel-body p-2">
-                  <div class="horiz-scroll">
-                    <div style="height:110px;width:900px;">
-                      <canvas id="color-chart" style="height:100%;width:100%;"></canvas>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="col-12 col-lg-3">
-              <div class="panel">
-                <div class="panel-header"><span class="panel-title">Legend</span></div>
-                <div class="panel-body">
-                  <div class="legend-grid">
-                    {{ range .ExData.Exs }}
-                    <div class="legend-item">
-                      <div class="legend-color" style="background-color:{{ .Color }};"></div>
-                      <span class="legend-name">{{ .Name }}</span>
-                    </div>
+                <div class="panel-header flex-wrap gap-2">
+                  <span class="panel-title">Weight Moved Per Day</span>
+                  <select class="form-select form-select-sm" id="volume-ex-select" style="max-width:220px;" onchange="refreshVolumeChart()">
+                    {{ range $gr := .GroupMap }}
+                    <option value="{{ $gr }}">{{ $gr }}</option>
                     {{ end }}
-                  </div>
+                  </select>
                 </div>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Exercises ──────────────────────────────────────────────────────── -->
-      <div class="tab-pane fade" id="tab-exercises" role="tabpanel">
-        <div class="container-xl py-4">
-          <div class="row g-4">
-
-            <div class="col-12 col-lg-4">
-              <div class="panel">
-                <div class="panel-header"><span class="panel-title">Exercise History</span></div>
                 <div class="panel-body">
-                  <form onchange='sOffset=0; setStatsPage({{ .ExData.Sets }}, window._chartColor, 0, window._pageStep);'>
-                    <select class="form-select form-select-sm mb-3" id="ex-value">
-                      {{ range $gr := .GroupMap }}
-                      <option value="{{ $gr }}">{{ $gr }}</option>
-                      {{ end }}
-                    </select>
-                  </form>
-                  <table class="table table-borderless table-sm">
-                    <thead>
-                      <tr>
-                        <th class="col-1"></th>
-                        <th>Date</th>
-                        <th>Weight</th>
-                        <th>Reps</th>
-                      </tr>
-                    </thead>
-                    <tbody id="stats-table"></tbody>
-                  </table>
-                  <div class="d-flex gap-2 justify-content-center">
-                    <button onclick='setStatsPage({{ .ExData.Sets }}, window._chartColor, 1, window._pageStep)' class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left-square"></i></button>
-                    <button onclick='setStatsPage({{ .ExData.Sets }}, window._chartColor, -1, window._pageStep)' class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-right-square"></i></button>
-                  </div>
+                  <canvas id="volume-chart" style="max-height:320px;"></canvas>
+                  <p class="text-center text-body-secondary mt-3 mb-0" id="volume-no-data" style="display:none;">No data for this exercise in the selected period.</p>
                 </div>
               </div>
             </div>
-
-            <div class="col-12 col-lg-8">
-              <div class="panel">
-                <div class="panel-header"><span class="panel-title">Weight Used</span></div>
-                <div class="panel-body">
-                  <canvas id="stats-ex-weight" style="max-height:220px;"></canvas>
-                </div>
-              </div>
-            </div>
-
           </div>
         </div>
       </div>
@@ -206,22 +138,16 @@
     </div>
 
 <script>
-    window.currentSets   = {{ .ExData.Sets }};
-    window._colorHeatMap = {{ .ColorHeatMap }};
-    window._allWeight    = {{ .ExData.Weight }};
-    window._chartColor   = getComputedStyle(document.documentElement).getPropertyValue('--bs-primary').trim() || '#2780e3';
-    window._pageStep     = {{ .Config.PageStep }};
+    window.currentSets  = {{ .ExData.Sets }};
+    window._allWeight   = {{ .ExData.Weight }};
+    window._chartColor  = getComputedStyle(document.documentElement).getPropertyValue('--bs-primary').trim() || '#2780e3';
 
     // Init all displays with default period
     setGlobalPeriod('weekly');
 
     // Lazy-init hidden tabs on first show, respecting current period
     document.getElementById('tab-activity-btn').addEventListener('shown.bs.tab', function() {
-        makeColorChart(getHeatForPeriod(window._colorHeatMap, currentPeriod));
-    });
-    document.getElementById('tab-exercises-btn').addEventListener('shown.bs.tab', function() {
-        sOffset = 0;
-        setStatsPage(window.currentSets, window._chartColor, 0, window._pageStep);
+        refreshVolumeChart();
     });
     document.getElementById('tab-weight-btn').addEventListener('shown.bs.tab', function() {
         generateWeightChart(filterWeightByPeriod(window._allWeight, currentPeriod), window._chartColor, 0, 'stats-body-weight');

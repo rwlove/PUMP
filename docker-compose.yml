@@ -15,6 +15,7 @@ services:
       COLOR: "dark"
       HEATCOLOR: "#2780e3"
       PAGESTEP: "10"
+      DISPLAY_DAYS: "30"
       # API_KEY: "changeme"         # uncomment to require X-Api-Key on every request
       # AUTH: "true"                # uncomment to enable session auth
       # AUTH_USER: "admin"

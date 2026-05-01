@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pump-frontend",
+      "runtimeExecutable": "go",
+      "runtimeArgs": ["run", "./cmd/frontend/main.go"],
+      "port": 8080,
+      "autoPort": true,
+      "env": {
+        "API_URL": "http://localhost:8851"
+      }
+    }
+  ]
+}
