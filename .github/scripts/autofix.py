@@ -23,11 +23,27 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-LOG_FILE       = "/tmp/ci_errors.txt"
+LOG_FILE       = os.environ.get("CI_LOG_FILE", "/tmp/ci_logs.txt")
 COMMIT_FILE    = "/tmp/fix_commit_msg.txt"
-MAX_LOG_CHARS  = 16_000  # full log — Claude needs to see every error
-MAX_FILES      = 20      # direct error files + sibling context
+MAX_LOG_CHARS  = 16_000  # full log — Claude needs to see every error/warning
+MAX_FILES      = 20      # direct error/warning files + sibling context
 MAX_FILE_LINES = 500     # lines per file
+
+# Patterns that indicate an actionable warning in the build log.
+# Avoids sending Claude a clean build with nothing to do.
+WARNING_PATTERNS = [
+    re.compile(r"\bwarning\b", re.IGNORECASE),
+    re.compile(r"\bw:\s"),                        # Kotlin/Java warning prefix
+    re.compile(r"\bdeprecation\b", re.IGNORECASE),
+    re.compile(r"Note:.*uses? (unchecked|unsafe)", re.IGNORECASE),
+    re.compile(r"Unable to strip"),               # native lib strip warnings
+    re.compile(r"\[WARNING\]"),
+]
+
+
+def has_actionable_warnings(log: str) -> bool:
+    """Return True if the log contains at least one warning pattern."""
+    return any(p.search(log) for p in WARNING_PATTERNS)
 
 
 def gh_output(key: str, value: str) -> None:
@@ -138,35 +154,38 @@ def read_file_truncated(rel_path: str) -> str | None:
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT = """\
 You are an expert software engineer embedded in a CI/CD pipeline.
-A GitHub Actions build has failed. Your job is to fix it — completely,
-in a single pass — so that re-running the build succeeds.
+Your job is to analyse a GitHub Actions build log and fix all problems
+— both errors that caused the build to fail AND warnings in builds that
+succeeded — completely, in a single pass.
 
 ## Strategy
 
-1. **Read every error in the log.** Do not stop at the first one.
+1. **Read every line.** Fix errors that broke the build AND warnings
+   that indicate future problems (deprecated APIs, unsafe operations,
+   strip failures, unchecked casts, etc.). Do not stop at the first one.
 2. **Look for patterns.** If one file uses a deprecated API, scan all
    provided source files for the same pattern and fix every occurrence.
-3. **Predict follow-on failures.** After fixing the reported errors,
+3. **Predict follow-on failures.** After fixing reported problems,
    reason about whether your fixes could expose new compile errors
-   (e.g. wrong import after an API change, missing override, type
-   mismatch). Fix those pre-emptively too.
+   (wrong import after an API change, missing override, type mismatch).
+   Fix those pre-emptively too.
 4. **Stay surgical.** Only change what is broken or provably about to
    break. Do not refactor, reformat, or improve unrelated code.
 
 ## Third-party GitHub Actions
 
-When a third-party action (e.g. `uses: vendor/some-action@v1`) is the
-source of an error — hardcoded tool paths, missing SDK versions, wrong
+When a third-party action (`uses: vendor/action@vN`) is the source of
+an error or warning — hardcoded tool paths, missing SDK versions, wrong
 defaults — **do not try to work around it with inputs or env vars**.
-Instead, replace the action entirely with a direct shell implementation
-(`run:`) that accomplishes the same task. Shell steps are explicit,
+Replace the action entirely with a direct shell implementation (`run:`)
+that accomplishes the same task. Shell steps are explicit,
 version-independent, and easier to debug.
 
-## Workflow file errors
+## Workflow file
 
-If the failing workflow YAML is provided, treat it as a first-class
-fixable file. Infrastructure errors (missing SDK tools, wrong action
-versions, bad env vars) are fixed in the workflow, not in source code.
+The failing workflow YAML is always provided. Treat it as a first-class
+fixable file. Infrastructure problems (missing SDK tools, wrong action
+versions, bad env vars, unnecessary steps) are fixed there.
 
 ## Output
 
@@ -176,25 +195,29 @@ the JSON.
 Schema:
 {
   "can_fix": true | false,
-  "explanation": "concise summary of all issues found and fixes applied",
+  "explanation": "concise summary of all problems found and fixes applied",
   "commit_message": "fix: imperative description covering all changes (≤72 chars)",
   "files": [
     { "path": "repo-relative/path/to/file.ext", "content": "complete file text" }
   ]
 }
 
-Set can_fix=false only when you genuinely cannot determine a correct fix.
+Set can_fix=false only when you genuinely cannot determine a correct fix
+AND there are no warnings worth cleaning up.
 """
 
 
 def build_user_message(
     log: str,
+    conclusion: str,
     workflow_file: str | None,
     workflow_content: str | None,
     file_map: dict[str, str],
     sibling_map: dict[str, str],
 ) -> str:
-    parts = [f"## CI failure log\n\n```\n{log}\n```\n"]
+    label = "CI build log (build FAILED)" if conclusion == "failure" \
+            else "CI build log (build SUCCEEDED — fix warnings)"
+    parts = [f"## {label}\n\n```\n{log}\n```\n"]
 
     # Always show the failing workflow YAML — many errors (missing SDK tools,
     # wrong action versions, bad env vars) require editing the workflow itself.
@@ -283,6 +306,8 @@ def apply_fixes(files: list[dict]) -> list[str]:
 # Main
 # ---------------------------------------------------------------------------
 def main() -> None:
+    conclusion = os.environ.get("BUILD_CONCLUSION", "failure")
+
     # 1. Load logs
     if not os.path.exists(LOG_FILE):
         print(f"Log file not found: {LOG_FILE}")
@@ -297,8 +322,21 @@ def main() -> None:
         gh_output("fixed", "false")
         return
 
-    # Use the full log up to MAX_LOG_CHARS; prefer the tail (most relevant errors)
-    log = raw_log if len(raw_log) <= MAX_LOG_CHARS else raw_log[-MAX_LOG_CHARS:]
+    # For successful builds, only proceed if there are actionable warnings.
+    # Avoids sending Claude a clean build with nothing to do.
+    if conclusion == "success" and not has_actionable_warnings(raw_log):
+        print("Build succeeded with no actionable warnings — nothing to fix.")
+        gh_output("fixed", "false")
+        return
+
+    print(f"Build conclusion: {conclusion}. Scanning for errors and warnings.")
+
+    # Prefer the tail for failures (errors appear last); use full log for
+    # warning-only successful builds so nothing is missed.
+    if conclusion == "failure":
+        log = raw_log if len(raw_log) <= MAX_LOG_CHARS else raw_log[-MAX_LOG_CHARS:]
+    else:
+        log = raw_log[:MAX_LOG_CHARS]  # warnings tend to appear early
 
     # 2. Always include the failing workflow YAML — errors from CI steps like
     #    missing SDK tools or bad action inputs require editing the workflow,
@@ -331,7 +369,7 @@ def main() -> None:
     print(f"Sibling files for context: {list(sibling_map.keys())}")
 
     # 5. Ask Claude
-    user_msg = build_user_message(log, wf_rel, wf_content, file_map, sibling_map)
+    user_msg = build_user_message(log, conclusion, wf_rel, wf_content, file_map, sibling_map)
     print(
         f"Calling Claude (log {len(log)} chars, workflow={'yes' if wf_content else 'no'}, "
         f"{len(file_map)} error files, {len(sibling_map)} sibling files)…"

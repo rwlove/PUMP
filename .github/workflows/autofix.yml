@@ -1,6 +1,6 @@
-name: Auto-fix CI failures
+name: Auto-fix CI failures and warnings
 
-# Triggers whenever one of the listed workflows finishes with a failure.
+# Triggers whenever one of the listed workflows finishes.
 on:
   workflow_run:
     workflows:
@@ -12,18 +12,18 @@ on:
 jobs:
   autofix:
     name: Diagnose and fix
-    # Only run when the upstream workflow actually failed on our own repo.
-    # The author check is intentionally omitted here — consecutive-attempt
-    # limiting is handled in a step below using git log, which allows one
-    # retry when a first fix was insufficient while still preventing loops.
+    # Run on failures AND successes — successful builds may still contain
+    # warnings worth cleaning up. The consecutive-attempt check below
+    # prevents infinite loops regardless of conclusion.
     if: |
-      github.event.workflow_run.conclusion == 'failure' &&
+      (github.event.workflow_run.conclusion == 'failure' ||
+       github.event.workflow_run.conclusion == 'success') &&
       github.event.workflow_run.repository.full_name == github.repository
 
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write   # needed to push the fix commit
+      contents: write
 
     env:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -31,6 +31,7 @@ jobs:
       FAILED_RUN_ID: ${{ github.event.workflow_run.id }}
       HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
       HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      BUILD_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
 
     steps:
       # ── 1. Early-exit checks ──────────────────────────────────────────────
@@ -55,27 +56,36 @@ jobs:
             exit 0
           fi
 
-      # ── 2. Check out the exact commit that failed ─────────────────────────
-      - name: Checkout failing commit
+      # ── 2. Check out the exact commit ─────────────────────────────────────
+      - name: Checkout commit
         uses: actions/checkout@v4
         with:
           ref: ${{ env.HEAD_SHA }}
-          fetch-depth: 0   # needed so we can push to the branch
+          fetch-depth: 0
 
-      # ── 3. Fetch the failure logs and resolve the failing workflow file ──────
-      - name: Fetch failed run logs
+      # ── 3. Fetch logs and resolve the failing workflow file ───────────────
+      - name: Fetch run logs
         run: |
+          echo "Build conclusion: $BUILD_CONCLUSION"
           echo "Fetching logs for run $FAILED_RUN_ID (branch: $HEAD_BRANCH)"
-          gh run view "$FAILED_RUN_ID" --log-failed > /tmp/ci_errors.txt 2>&1 || true
-          wc -l /tmp/ci_errors.txt
-          # Show a preview so the Actions log is useful for debugging
-          head -80 /tmp/ci_errors.txt
+
+          if [ "$BUILD_CONCLUSION" = "failure" ]; then
+            # For failures get the full log so warnings from passing steps
+            # are visible alongside the fatal errors.
+            gh run view "$FAILED_RUN_ID" --log > /tmp/ci_logs.txt 2>&1 || true
+          else
+            # For successful builds get the full log to scan for warnings.
+            gh run view "$FAILED_RUN_ID" --log > /tmp/ci_logs.txt 2>&1 || true
+          fi
+
+          wc -l /tmp/ci_logs.txt
+          head -80 /tmp/ci_logs.txt
 
       - name: Resolve failing workflow file path
         run: |
           wf_id="${{ github.event.workflow_run.workflow_id }}"
           wf_path=$(gh api "repos/${{ github.repository }}/actions/workflows/${wf_id}" --jq '.path')
-          echo "Failing workflow file: ${wf_path}"
+          echo "Workflow file: ${wf_path}"
           echo "FAILED_WORKFLOW_PATH=${wf_path}" >> "$GITHUB_ENV"
 
       # ── 4. Set up Python + Anthropic SDK ──────────────────────────────────
@@ -87,12 +97,14 @@ jobs:
       - name: Install anthropic SDK
         run: pip install --quiet anthropic
 
-      # ── 5. Ask Claude to fix the errors ───────────────────────────────────
+      # ── 5. Ask Claude to fix errors and/or warnings ───────────────────────
       - name: Run autofix
         id: autofix
         run: python .github/scripts/autofix.py
+        env:
+          CI_LOG_FILE: /tmp/ci_logs.txt
 
-      # ── 6. Commit and push the fix, then re-trigger the build ───────────────
+      # ── 6. Commit and push the fix, then re-trigger the build ─────────────
       - name: Commit, push fix, and re-trigger build
         if: steps.autofix.outputs.fixed == 'true'
         run: |
@@ -103,29 +115,27 @@ jobs:
           git commit -F /tmp/fix_commit_msg.txt
           FIX_SHA=$(git rev-parse HEAD)
 
-          # Detect whether the failing run was triggered by a version tag
-          # (github.event.workflow_run.head_branch is the tag name for tag pushes,
-          # e.g. "v0.0.19", or the branch name for branch pushes).
           if [[ "$HEAD_BRANCH" =~ ^v[0-9]+\.[0-9] ]]; then
             TAG="$HEAD_BRANCH"
-            echo "Tag-triggered build detected (tag: $TAG). Pushing fix to main and re-tagging."
+            echo "Tag-triggered build (tag: $TAG). Pushing fix to main and re-tagging."
 
-            # Push the fix commit to main so the history is clean
             git push origin "HEAD:refs/heads/main"
-
-            # Move the tag to the fix commit — this re-triggers the build workflows
-            git push origin ":refs/tags/${TAG}"   # delete remote tag
-            git tag -f "$TAG" "$FIX_SHA"          # recreate locally on fix commit
-            git push origin "$TAG"                # push new tag → re-triggers workflows
+            git push origin ":refs/tags/${TAG}"
+            git tag -f "$TAG" "$FIX_SHA"
+            git push origin "$TAG"
 
             echo "Re-tagged ${TAG} → ${FIX_SHA}. Build workflows will re-run."
           else
-            # Branch-triggered: pushing the fix commit re-triggers the workflow directly
             git push origin "HEAD:refs/heads/${HEAD_BRANCH}"
             echo "Fix pushed to branch ${HEAD_BRANCH}. Workflow will re-run on new commit."
           fi
 
-      # ── 7. Report outcome ────────────────────────────────────────────────
-      - name: Report — no fix found
+      # ── 7. Report outcome ─────────────────────────────────────────────────
+      - name: Report — nothing to fix
         if: steps.autofix.outputs.fixed != 'true'
-        run: echo "Auto-fix could not determine a fix for this failure. Manual intervention required."
+        run: |
+          if [ "$BUILD_CONCLUSION" = "success" ]; then
+            echo "Build succeeded with no actionable warnings found."
+          else
+            echo "Auto-fix could not determine a fix. Manual intervention required."
+          fi
