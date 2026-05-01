@@ -35,26 +35,43 @@ jobs:
         env:
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g"
 
-      - name: Find latest build-tools version
-        if: ${{ env.SIGNING_KEY != '' }}
-        id: buildtools
-        run: |
-          latest=$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -1)
-          echo "version=$latest" >> "$GITHUB_OUTPUT"
-
       - name: Sign APK
         if: ${{ env.SIGNING_KEY != '' }}
-        uses: r0adkll/sign-android-release@v1
-        with:
-          releaseDirectory: android/app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
-          alias: ${{ secrets.KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
-          buildToolsVersion: ${{ steps.buildtools.outputs.version }}
+        run: |
+          # Locate the latest installed build-tools (avoids hardcoded version)
+          BUILD_TOOLS=$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d \
+            | sort -V | tail -1)
+          echo "Using build-tools: $BUILD_TOOLS"
+
+          # Decode keystore
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.jks
+
+          # Locate the unsigned APK produced by Gradle
+          UNSIGNED=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
+          ALIGNED="${UNSIGNED%.apk}-aligned.apk"
+          SIGNED="${UNSIGNED%.apk}-signed.apk"
+
+          # Align then sign
+          "$BUILD_TOOLS/zipalign" -v -p 4 "$UNSIGNED" "$ALIGNED"
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks /tmp/release.jks \
+            --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
+            --ks-pass "pass:${{ secrets.KEYSTORE_PASSWORD }}" \
+            --key-pass "pass:${{ secrets.KEY_PASSWORD }}" \
+            --out "$SIGNED" \
+            "$ALIGNED"
+
+          # Verify
+          "$BUILD_TOOLS/apksigner" verify "$SIGNED"
+          echo "Signed APK: $SIGNED"
+
+          # Expose path for the upload step
+          echo "SIGNED_APK=$SIGNED" >> "$GITHUB_ENV"
 
       - name: Upload APK to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/release/*.apk
+          # Upload the signed APK if signing ran, otherwise the unsigned one
+          files: |
+            ${{ env.SIGNED_APK != '' && env.SIGNED_APK || 'android/app/build/outputs/apk/release/*.apk' }}
           fail_on_unmatched_files: false
