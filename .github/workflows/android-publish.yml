@@ -35,6 +35,13 @@ jobs:
         env:
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g"
 
+      - name: Find latest build-tools version
+        if: ${{ env.SIGNING_KEY != '' }}
+        id: buildtools
+        run: |
+          latest=$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -1)
+          echo "version=$latest" >> "$GITHUB_OUTPUT"
+
       - name: Sign APK
         if: ${{ env.SIGNING_KEY != '' }}
         uses: r0adkll/sign-android-release@v1
@@ -44,6 +51,7 @@ jobs:
           alias: ${{ secrets.KEY_ALIAS }}
           keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
+          buildToolsVersion: ${{ steps.buildtools.outputs.version }}
 
       - name: Upload APK to GitHub Release
         uses: softprops/action-gh-release@v2
