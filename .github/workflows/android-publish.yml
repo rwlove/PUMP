@@ -52,8 +52,9 @@ jobs:
 
           # Locate the unsigned APK produced by Gradle
           UNSIGNED=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
-          ALIGNED="${UNSIGNED%.apk}-aligned.apk"
-          SIGNED="${UNSIGNED%.apk}-signed.apk"
+          DIR=$(dirname "$UNSIGNED")
+          ALIGNED="$DIR/app-release-aligned.apk"
+          SIGNED="$DIR/app-release.apk"
 
           # Align then sign
           "$BUILD_TOOLS/zipalign" -v -p 4 "$UNSIGNED" "$ALIGNED"
@@ -65,8 +66,9 @@ jobs:
             --out "$SIGNED" \
             "$ALIGNED"
 
-          # Verify
+          # Verify and clean up intermediates
           "$BUILD_TOOLS/apksigner" verify "$SIGNED"
+          rm -f "$UNSIGNED" "$ALIGNED"
           echo "Signed APK: $SIGNED"
 
           # Expose path for the upload step
