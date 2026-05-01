@@ -16,6 +16,7 @@
 | ![Stats Body Weight](assets/screenshot-stats-weight.png) | ![Config](assets/screenshot-config.png) | |
 
 - [Architecture](#architecture)
+- [Android App](#android-app)
 - [Configuration](#configuration)
 
 ## Architecture
@@ -66,7 +67,7 @@ All configuration is via environment variables. No config file is required.
 
 | Variable | Description | Default |
 |---|---|---|
-| `PORT` | Listen port | `8851` |
+| `PORT` | Listen port | `8080` |
 | `HOST` | Listen address | `0.0.0.0` |
 | `POSTGRES_DSN` | PostgreSQL connection string **(required)** | — |
 | `API_KEY` | Require this value on every `X-Api-Key` request header; empty = no auth | `""` |

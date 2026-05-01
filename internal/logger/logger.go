@@ -13,21 +13,25 @@
 package logger
 
 import (
+	"context"
 	"log"
 	"log/slog"
 	"os"
 	"strings"
 )
 
+// activeLevel holds the level chosen at Init time so IsDebug() is a cheap read.
+var activeLevel = slog.LevelInfo
+
 // Init configures the global slog default and redirects the legacy log package
 // to write through slog at INFO level. Call this once, as early as possible.
 func Init(level string) {
-	lvl := parseLevel(level)
+	activeLevel = parseLevel(level)
 
 	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: lvl,
+		Level: activeLevel,
 		// Add source location in debug mode.
-		AddSource: lvl == slog.LevelDebug,
+		AddSource: activeLevel == slog.LevelDebug,
 	})
 
 	logger := slog.New(handler)
@@ -38,26 +42,17 @@ func Init(level string) {
 	// Silence Gin's own writer; our middleware handles request logging.
 	log.SetFlags(0)
 	log.SetPrefix("")
+
+	slog.LogAttrs(context.Background(), slog.LevelInfo, "logger initialised",
+		slog.String("level", activeLevel.String()),
+	)
 }
 
-// Level returns the currently active slog.Level so middleware can branch cheaply.
-func Level() slog.Level {
-	// Walk the handler chain to find the leveller.
-	h := slog.Default().Handler()
-	if lh, ok := h.(interface{ Enabled(slog.Level) bool }); ok {
-		for _, l := range []slog.Level{
-			slog.LevelDebug, slog.LevelInfo, slog.LevelWarn, slog.LevelError,
-		} {
-			if lh.Enabled(l) {
-				return l
-			}
-		}
-	}
-	return slog.LevelInfo
-}
+// Level returns the currently active slog.Level.
+func Level() slog.Level { return activeLevel }
 
 // IsDebug returns true when DEBUG logging is active.
-func IsDebug() bool { return Level() <= slog.LevelDebug }
+func IsDebug() bool { return activeLevel <= slog.LevelDebug }
 
 func parseLevel(s string) slog.Level {
 	switch strings.ToLower(strings.TrimSpace(s)) {
