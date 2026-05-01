@@ -11,7 +11,7 @@ services:
       TZ: America/New_York
       PORT: "8851"
       HOST: "0.0.0.0"
-      THEME: "grass"
+      THEME: "cosmo"
       COLOR: "dark"
       HEATCOLOR: "#03a70c"
       PAGESTEP: "10"

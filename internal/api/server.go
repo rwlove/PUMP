@@ -29,7 +29,7 @@ var (
 //	PORT        listen port              (default: 8851)
 //	API_KEY     required X-Api-Key value (default: "", no auth)
 //	HOST        listen host              (default: 0.0.0.0)
-//	THEME       UI theme                 (default: grass)
+//	THEME       UI theme                 (default: cosmo)
 //	COLOR       light or dark            (default: light)
 //	HEATCOLOR   heatmap colour           (default: #03a70c)
 //	PAGESTEP    rows per page            (default: 10)
