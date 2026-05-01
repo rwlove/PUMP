@@ -23,9 +23,6 @@ jobs:
           - image: pump-api
             dockerfile: Dockerfile.api
             description: "PUMP JSON API backend"
-          - image: pump-frontend
-            dockerfile: Dockerfile.frontend
-            description: "PUMP web frontend (connects to API backend)"
           - image: pump
             dockerfile: Dockerfile.pump
             description: "PUMP all-in-one server (web UI + JSON API in one container)"

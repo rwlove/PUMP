@@ -31,14 +31,6 @@ Browser ──▶ pump  :8080  ──▶ PostgreSQL
 
 Use image `ghcr.io/rwlove/pump`. Set `POSTGRES_DSN` and optionally `API_KEY`.
 
-### Split services (advanced)
-
-```
-Browser ──▶ pump-frontend :8080 ──HTTP──▶ pump-api :8851 ──▶ PostgreSQL
-```
-
-Use images `ghcr.io/rwlove/pump-frontend` + `ghcr.io/rwlove/pump-api`.
-
 ## Android App
 
 The PUMP Android app provides the same workout logging experience as the web UI, connecting to any PUMP API server you specify.
@@ -64,9 +56,9 @@ On first launch, open **Settings** and enter:
 
 ## Configuration
 
-Both services are configured exclusively via environment variables. No config file is required.
+All configuration is via environment variables. No config file is required.
 
-### API server (`pump-api`)
+### `pump` / `pump-api`
 
 | Variable | Description | Default |
 |---|---|---|
@@ -89,13 +81,3 @@ POSTGRES_DSN=postgres://user:password@host:5432/pump
 ```
 
 The schema is versioned and managed automatically on startup — no manual `CREATE TABLE` needed.
-
-### Frontend server (`pump-frontend`)
-
-| Variable | Description | Default |
-|---|---|---|
-| `PORT` | Listen port | `8080` |
-| `API_URL` | Base URL of the API server | `http://localhost:8851` |
-| `API_KEY` | `X-Api-Key` value sent to the API (must match API server `API_KEY`) | `""` |
-| `LOG_LEVEL` | Log verbosity: `debug`, `info`, `warn`, `error` | `info` |
-| `TZ` | Timezone | `""` |

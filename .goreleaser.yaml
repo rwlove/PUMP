@@ -1,0 +1,58 @@
+project_name: PUMP
+builds:
+  - id: api
+    main: ./cmd/api/
+    binary: pump-api
+    env: [CGO_ENABLED=0]
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm
+      - arm64
+    goarm:
+      - "6"
+      - "7"
+    ignore:
+      - goos: darwin
+        goarch: arm
+      - goos: windows
+        goarch: arm
+
+  - id: frontend
+    main: ./cmd/frontend/
+    binary: pump-frontend
+    env: [CGO_ENABLED=0]
+    ldflags:
+      - -X github.com/rwlove/PUMP/internal/web.Version={{.Tag}}
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm
+      - arm64
+    goarm:
+      - "6"
+      - "7"
+    ignore:
+      - goos: darwin
+        goarch: arm
+      - goos: windows
+        goarch: arm
+
+archives:
+  - files:
+    - LICENSE
+    - README.md
+    - CHANGELOG.md
+    wrap_in_directory: true
+    format_overrides:
+    - goos: windows
+      format: zip
+
+checksum:
+  name_template: "checksums.txt"
