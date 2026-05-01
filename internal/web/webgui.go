@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/rwlove/PUMP/internal/logger"
+	"github.com/rwlove/PUMP/internal/models"
 	"github.com/rwlove/PUMP/internal/store"
 )
 
@@ -22,7 +25,8 @@ func GuiWithStore(s store.Store, ac *store.APIClient, port, nodePath string) {
 	// Fetch display config (theme, color, etc.) from the API.
 	cfg, err := ac.GetConfig()
 	if err != nil {
-		log.Fatalf("ERROR: cannot fetch config from API: %v", err)
+		slog.Error("cannot fetch config from API", slog.Any("error", err))
+		os.Exit(1)
 	}
 	appConfig = cfg
 	appConfig.NodePath = nodePath
@@ -32,17 +36,52 @@ func GuiWithStore(s store.Store, ac *store.APIClient, port, nodePath string) {
 	startRouter(s, ac, "0.0.0.0:"+port)
 }
 
+// RegisterRoutes mounts all web UI routes on r using the provided store and config.
+// onConfigSave is called whenever the user saves settings; pass nil in split mode.
+// Used by cmd/pump (monolith). Does not call r.Run().
+func RegisterRoutes(r *gin.Engine, s store.Store, cfg models.Conf, onConfigSave func(models.Conf)) {
+	appConfig = cfg
+	dataStore = s
+	apiClient = nil
+	configSaveHook = onConfigSave
+
+	templ := template.New("").Funcs(template.FuncMap{
+		"json": func(v interface{}) template.JS {
+			j, _ := json.Marshal(v)
+			return template.JS(j)
+		},
+		"safeJS": func(s interface{}) template.JS {
+			return template.JS(fmt.Sprint(s))
+		},
+	})
+	templ = template.Must(templ.ParseFS(templFS, "templates/*"))
+	r.SetHTMLTemplate(templ)
+	r.StaticFS("/fs/", http.FS(pubFS))
+
+	r.GET("/", indexHandler)
+	r.GET("/config/", configHandler)
+	r.GET("/exercise/", exerciseHandler)
+	r.GET("/stats/", statsHandler)
+	r.GET("/weight/", weightHandler)
+
+	r.POST("/config/", saveConfigHandler)
+	r.POST("/exercise/", saveExerciseHandler)
+	r.POST("/exdel/", deleteExerciseHandler)
+	r.POST("/set/", setHandler)
+	r.POST("/weight/", addWeightHandler)
+}
+
 // startRouter wires up the Gin router with the given store and starts serving.
 func startRouter(s store.Store, ac *store.APIClient, address string) {
 	dataStore = s
 	apiClient = ac
 
-	log.Println("=================================== ")
-	log.Printf("Web GUI at http://%s", address)
-	log.Println("=================================== ")
+	slog.Info("pump-frontend ready", slog.String("addr", "http://"+address))
 
 	gin.SetMode(gin.ReleaseMode)
-	router := gin.Default()
+	router := gin.New()
+	router.Use(gin.Recovery())
+	router.Use(logger.GinMiddleware())
 
 	templ := template.New("").Funcs(template.FuncMap{
 		"json": func(v interface{}) template.JS {
@@ -69,6 +108,7 @@ func startRouter(s store.Store, ac *store.APIClient, address string) {
 	router.POST("/set/", setHandler)
 	router.POST("/weight/", addWeightHandler)
 	if err := router.Run(address); err != nil {
-		log.Fatalf("ERROR: router failed: %v", err)
+		slog.Error("router failed", slog.Any("error", err))
+		os.Exit(1)
 	}
 }

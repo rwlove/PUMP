@@ -2,7 +2,19 @@
 
 ## Before applying any new version tag
 
-Complete all three steps in order before running `git tag`:
+Complete all steps in order before running `git tag`:
+
+### 0. Android screenshots (if Android changes were made)
+
+If any Android source files under `android/` changed since the last tag, take fresh screenshots using an Android emulator or connected device:
+
+```
+adb shell screencap -p /sdcard/pump_workout.png && adb pull /sdcard/pump_workout.png assets/screenshot-android-workout.png
+adb shell screencap -p /sdcard/pump_stats.png   && adb pull /sdcard/pump_stats.png   assets/screenshot-android-stats.png
+adb shell screencap -p /sdcard/pump_weight.png  && adb pull /sdcard/pump_weight.png  assets/screenshot-android-weight.png
+```
+
+Update the Android screenshot table in README.md to reference the new images. If no Android changes were made, skip this step.
 
 ### 1. Regenerate screenshots
 
@@ -63,3 +75,32 @@ Any PR that adds, removes, or renames a table or column must also increment the 
 - [ ] No migration entry has been modified after it was merged
 - [ ] `schema_version` table will contain a row for every migration after a fresh run
 - [ ] `models.Conf` and `models.Set` / `models.Exercise` / `models.BodyWeight` match the current schema
+
+### Multi-version upgrade safety
+
+The migration runner (`internal/db/postgres.go` — `MigratePostgres`) iterates the full `pgMigrations` slice in ascending version order and applies every version not yet recorded in `schema_version`. This means a database at **any past version** (e.g. v1) is automatically and safely brought to the latest version (e.g. v5) by running the server once — no manual intervention required.
+
+**Before every PR that introduces schema changes you must verify:**
+
+1. **Gap-free sequence.** Version numbers in `pgMigrations` must be consecutive integers starting at 1. Never skip a number. A gap causes the runner to silently skip all versions above the gap.
+
+2. **Fresh-database path.** Start with a completely empty PostgreSQL database and run the server. Confirm all migrations apply cleanly, in order, with no errors. Check `schema_version` contains one row per migration.
+
+3. **Multi-hop upgrade path.** Test every likely "cold start" scenario a real user might hit:
+   - **v1 → latest**: user who deployed at launch and never updated.
+   - **v(latest-1) → latest**: user on the previous release.
+   - Any intermediate version you know is widely deployed.
+
+   Procedure for each:
+   ```
+   # Restore a dump from that version, then:
+   docker run --rm -e POSTGRES_DSN=... ghcr.io/rwlove/pump:<new-tag>
+   # Inspect logs: every pending migration should appear as "applying vN"
+   # Verify the app works normally; verify no data was lost
+   ```
+
+4. **Rollback awareness.** PUMP does not support automatic rollbacks. If a migration fails mid-run, the database is left at the last successfully committed version and the server exits non-zero. The fix is to correct the migration SQL and redeploy — never delete or modify the failed entry; append a corrective migration instead.
+
+5. **Idempotency.** Every DDL statement in a migration must be safe to re-run (use `IF EXISTS` / `IF NOT EXISTS`). This protects against partially-applied states caused by transient network failures.
+
+6. **No data loss.** Any migration that drops a column or table must either be preceded by a migration that migrates the data elsewhere, or there must be explicit sign-off in the PR that the data is intentionally discarded (e.g. removing a feature entirely).
