@@ -32,6 +32,17 @@ android {
         jvmTarget = "17"
     }
 
+    packaging {
+        jniLibs {
+            // These AndroidX prebuilt libs ship without a symbol table; tell AGP
+            // not to attempt stripping them so the build doesn't emit a warning.
+            keepDebugSymbols += setOf(
+                "*/libandroidx.graphics.path.so",
+                "*/libdatastore_shared_counter.so",
+            )
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
