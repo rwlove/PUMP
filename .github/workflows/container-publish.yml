@@ -5,7 +5,6 @@ on:
     tags: ["v*"]
 
 env:
-  REGISTRY: ghcr.io
   IMAGE: ghcr.io/${{ github.repository_owner }}/pump
 
 jobs:
@@ -23,53 +22,57 @@ jobs:
         with:
           fetch-depth: 0   # required for git tag comparison
 
-      # ── Decide whether a rebuild is needed ───────────────────────────────
-      - name: Check if container-relevant files changed
+      # ── Decide whether a rebuild or a retag is needed ────────────────────
+      - name: Find source tag or confirm rebuild needed
         id: check
         run: |
           CURRENT_TAG="${{ github.ref_name }}"
 
-          # Find the most recent tag before this one
-          PREV_TAG=$(git tag --sort=-version:refname \
-            | grep -v "^${CURRENT_TAG}$" \
-            | head -1)
+          # Walk backward through all previous tags to find the most recent
+          # one whose container-relevant source is identical to the current
+          # tag. That is the image we can retag rather than rebuild.
+          #
+          # Checking all tags (not just the previous one) handles cases where
+          # source was reverted or a tag was skipped.
+          echo "Scanning previous tags for identical container source…"
+          SOURCE_TAG=""
+          for TAG in $(git tag --sort=-version:refname | grep -v "^${CURRENT_TAG}$"); do
+            CHANGED=$(git diff --name-only "${TAG}..${CURRENT_TAG}" -- \
+              cmd/ internal/ go.mod go.sum Dockerfile.pump 2>/dev/null)
+            if [ -z "$CHANGED" ]; then
+              SOURCE_TAG="$TAG"
+              echo "Match: ${SOURCE_TAG} has identical container source."
+              break
+            fi
+          done
 
-          if [ -z "$PREV_TAG" ]; then
-            echo "No previous tag — full build required."
+          if [ -z "$SOURCE_TAG" ]; then
+            echo "No prior tag with identical source — full build required."
             echo "needs_rebuild=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "Comparing ${PREV_TAG} → ${CURRENT_TAG}"
-
-          CHANGED=$(git diff --name-only "${PREV_TAG}..${CURRENT_TAG}" -- \
-            cmd/ internal/ go.mod go.sum Dockerfile.pump)
-
-          if [ -n "$CHANGED" ]; then
-            echo "Container-relevant changes detected:"
-            echo "$CHANGED"
-            echo "needs_rebuild=true"  >> "$GITHUB_OUTPUT"
           else
-            echo "No container-relevant changes. Will retag ${PREV_TAG} image."
             echo "needs_rebuild=false" >> "$GITHUB_OUTPUT"
-            echo "prev_tag=${PREV_TAG}" >> "$GITHUB_OUTPUT"
+            echo "source_tag=${SOURCE_TAG}" >> "$GITHUB_OUTPUT"
           fi
 
-      # ── Common setup (needed for both build and retag paths) ─────────────
+      # ══ Path A: full multi-arch rebuild ══════════════════════════════════
       - name: Set up QEMU
+        if: steps.check.outputs.needs_rebuild == 'true'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
+        if: steps.check.outputs.needs_rebuild == 'true'
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
+      - name: Log in to GHCR (build path)
+        if: steps.check.outputs.needs_rebuild == 'true'
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata
+        if: steps.check.outputs.needs_rebuild == 'true'
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -80,7 +83,6 @@ jobs:
             type=ref,event=tag
             type=raw,value=latest
 
-      # ── Path A: rebuild ───────────────────────────────────────────────────
       - name: Build and push
         if: steps.check.outputs.needs_rebuild == 'true'
         uses: docker/build-push-action@v6
@@ -96,13 +98,24 @@ jobs:
           cache-from: type=gha,scope=pump
           cache-to: type=gha,mode=max,scope=pump
 
-      # ── Path B: retag existing image (no rebuild, no layer transfer) ──────
-      - name: Retag previous image
+      # ══ Path B: retag existing image (manifest copy only) ════════════════
+      # No QEMU or buildx setup needed — imagetools only makes registry API
+      # calls; it does not pull or push any image layers.
+      - name: Log in to GHCR (retag path)
+        if: steps.check.outputs.needs_rebuild == 'false'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Retag existing image
         if: steps.check.outputs.needs_rebuild == 'false'
         run: |
-          PREV="${{ steps.check.outputs.prev_tag }}"
-          echo "Retagging ${IMAGE}:${PREV} → ${{ github.ref_name }} + latest"
+          SOURCE="${{ steps.check.outputs.source_tag }}"
+          echo "Source image : ${IMAGE}:${SOURCE}"
+          echo "New tags     : ${{ github.ref_name }}, latest"
           docker buildx imagetools create \
             --tag "${{ env.IMAGE }}:${{ github.ref_name }}" \
             --tag "${{ env.IMAGE }}:latest" \
-            "${{ env.IMAGE }}:${PREV}"
+            "${{ env.IMAGE }}:${SOURCE}"
