@@ -3,8 +3,8 @@
   <rect x="28" y="14" width="22" height="72" rx="4" fill="#666666"/>
   <!-- plate left inner -->
   <rect x="52" y="27" width="14" height="46" rx="3" fill="#888888"/>
-  <!-- bar (slightly bent — sags 4px in center under load) -->
-  <path d="M 66,42 Q 200,46 334,42 L 334,54 Q 200,58 66,54 Z" fill="#777777"/>
+  <!-- bar (ends droop down noticeably under load) -->
+  <path d="M 66,42 C 100,56 300,56 334,42 L 334,54 C 300,68 100,68 66,54 Z" fill="#777777"/>
   <!-- plate right inner -->
   <rect x="334" y="27" width="14" height="46" rx="3" fill="#888888"/>
   <!-- plate right outer -->
