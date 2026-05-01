@@ -24,7 +24,7 @@ PUMP runs as two independent services:
 ```
 ┌──────────────────────────┐        ┌──────────────────────────┐
 │  pump-frontend           │─HTTP──▶│  pump-api                │
-│  Web UI  (default :8080) │        │  JSON API  (default :8851│
+│  Web UI  (default :8080) │        │  JSON API  (default :8851) │
 └──────────────────────────┘        └───────────┬──────────────┘
                                                  │
                                             PostgreSQL
