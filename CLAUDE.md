@@ -38,3 +38,28 @@ Before tagging, scan for cruft introduced since the last tag and delete it:
 - Dead Go code (unreachable handlers, unused struct fields, removed config keys)
 
 Commit the cleanup in the same PR as the screenshot/README updates, before pushing the tag.
+
+## Database schema rules
+
+### Schema is always the source of truth
+
+Every table, column, and index that the Go code reads or writes must be defined in a migration in `internal/db/postgres.go`. There must be no ad-hoc `CREATE TABLE` or `ALTER TABLE` calls outside of `pgMigrations`. If a query references a column that no migration creates, add a migration before merging.
+
+### How to add or change the schema
+
+1. Append a new entry to `pgMigrations` in `internal/db/postgres.go`. **Never edit or delete an existing entry** — the migration runner skips versions already recorded in `schema_version`, so modifying a past entry has no effect on existing databases and will cause drift.
+2. Give the new entry the next sequential `Version` integer.
+3. Write the migration as idempotent SQL where practical (`IF EXISTS`, `IF NOT EXISTS`, `DO $$ … IF NOT EXISTS $$`).
+4. Update the Go model in `internal/models/models.go` and any store methods in `internal/store/` to match the new schema.
+5. Verify the migration runs cleanly from a fresh database and from an existing v(N-1) database.
+
+### Schema changes require a version bump
+
+Any PR that adds, removes, or renames a table or column must also increment the patch version (e.g. `v0.0.9` → `v0.0.10`). Document the schema change in the commit message.
+
+### Migration checklist before tagging
+
+- [ ] All columns referenced in `internal/store/postgres.go` and `internal/store/apiclient.go` exist in a migration
+- [ ] No migration entry has been modified after it was merged
+- [ ] `schema_version` table will contain a row for every migration after a fresh run
+- [ ] `models.Conf` and `models.Set` / `models.Exercise` / `models.BodyWeight` match the current schema
