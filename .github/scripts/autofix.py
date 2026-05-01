@@ -153,6 +153,21 @@ in a single pass — so that re-running the build succeeds.
 4. **Stay surgical.** Only change what is broken or provably about to
    break. Do not refactor, reformat, or improve unrelated code.
 
+## Third-party GitHub Actions
+
+When a third-party action (e.g. `uses: vendor/some-action@v1`) is the
+source of an error — hardcoded tool paths, missing SDK versions, wrong
+defaults — **do not try to work around it with inputs or env vars**.
+Instead, replace the action entirely with a direct shell implementation
+(`run:`) that accomplishes the same task. Shell steps are explicit,
+version-independent, and easier to debug.
+
+## Workflow file errors
+
+If the failing workflow YAML is provided, treat it as a first-class
+fixable file. Infrastructure errors (missing SDK tools, wrong action
+versions, bad env vars) are fixed in the workflow, not in source code.
+
 ## Output
 
 Return a single valid JSON object — no markdown fences, no prose outside

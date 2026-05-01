@@ -12,11 +12,13 @@ on:
 jobs:
   autofix:
     name: Diagnose and fix
-    # Only run when the upstream workflow actually failed.
+    # Only run when the upstream workflow actually failed on our own repo.
+    # The author check is intentionally omitted here — consecutive-attempt
+    # limiting is handled in a step below using git log, which allows one
+    # retry when a first fix was insufficient while still preventing loops.
     if: |
       github.event.workflow_run.conclusion == 'failure' &&
-      github.event.workflow_run.repository.full_name == github.repository &&
-      github.event.workflow_run.head_commit.author.name != 'github-actions[bot]'
+      github.event.workflow_run.repository.full_name == github.repository
 
     runs-on: ubuntu-latest
 
@@ -31,11 +33,25 @@ jobs:
       HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
 
     steps:
-      # ── 1. Bail out early if no API key is configured ─────────────────────
+      # ── 1. Early-exit checks ──────────────────────────────────────────────
       - name: Check CLAUDE_CODE_OAUTH_TOKEN is present
         run: |
           if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
-            echo "CLAUDE_CODE_OAUTH_TOKEN secret is not set — skipping auto-fix."
+            echo "::warning::CLAUDE_CODE_OAUTH_TOKEN secret is not set — skipping auto-fix."
+            exit 0
+          fi
+
+      - name: Check consecutive autofix attempt count
+        run: |
+          # Allow at most 1 consecutive autofix commit at HEAD before stopping.
+          # This lets Claude make a second attempt when a first fix was wrong,
+          # while still preventing infinite loops.
+          STREAK=$(git log --format='%an' -3 "${{ env.HEAD_SHA }}" \
+            | grep -c '^github-actions\[bot\]$' || true)
+          echo "Consecutive autofix commits at HEAD: $STREAK"
+          if [ "$STREAK" -ge 2 ]; then
+            echo "::warning::Two consecutive autofix attempts have already failed." \
+                 " Manual intervention required."
             exit 0
           fi
 
