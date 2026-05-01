@@ -1,5 +1,7 @@
-[![Publish Container Images](https://github.com/rwlove/PUMP/actions/workflows/container-publish.yml/badge.svg)](https://github.com/rwlove/PUMP/actions/workflows/container-publish.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/rwlove/PUMP)](https://goreportcard.com/report/github.com/rwlove/PUMP)
+<p align="center">
+<a href="https://github.com/rwlove/PUMP/actions/workflows/container-publish.yml"><img src="https://github.com/rwlove/PUMP/actions/workflows/container-publish.yml/badge.svg" alt="Publish Container Images"></a>
+<a href="https://goreportcard.com/report/github.com/rwlove/PUMP"><img src="https://goreportcard.com/badge/github.com/rwlove/PUMP" alt="Go Report Card"></a>
+</p>
 
 <p align="center"><img src="assets/logo.svg" alt="PUMP" width="320"></p>
 
