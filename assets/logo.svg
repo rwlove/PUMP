@@ -1,12 +1,12 @@
 <svg width="400" height="100" viewBox="0 0 400 100" xmlns="http://www.w3.org/2000/svg">
   <!-- plate left outer -->
-  <rect x="28" y="18" width="22" height="70" rx="4" fill="#666666"/>
+  <rect x="28" y="14" width="22" height="72" rx="4" fill="#666666"/>
   <!-- plate left inner -->
-  <rect x="52" y="31" width="14" height="44" rx="3" fill="#888888"/>
-  <!-- bar (center arches up; weight-loaded ends hang lower) -->
-  <path d="M 66,48 C 100,41 300,41 334,48 L 334,60 C 300,53 100,53 66,60 Z" fill="#777777"/>
+  <rect x="52" y="27" width="14" height="46" rx="3" fill="#888888"/>
+  <!-- bar (gentle upward arch from end to end) -->
+  <path d="M 66,46 Q 200,37 334,46 L 334,58 Q 200,49 66,58 Z" fill="#777777"/>
   <!-- plate right inner -->
-  <rect x="334" y="31" width="14" height="44" rx="3" fill="#888888"/>
+  <rect x="334" y="27" width="14" height="46" rx="3" fill="#888888"/>
   <!-- plate right outer -->
-  <rect x="350" y="18" width="22" height="70" rx="4" fill="#666666"/>
+  <rect x="350" y="14" width="22" height="72" rx="4" fill="#666666"/>
 </svg>
