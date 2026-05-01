@@ -1,0 +1,47 @@
+name: Notify Renovate
+
+# Fires after the container publish workflow completes successfully.
+# Running in its own workflow means a webhook failure never affects
+# the image build or publish result.
+on:
+  workflow_run:
+    workflows:
+      - "Publish Container Images"
+    types: [completed]
+
+jobs:
+  notify:
+    name: Trigger Renovate webhook
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.repository.full_name == github.repository
+
+    runs-on: ubuntu-latest
+
+    env:
+      RENOVATE_WEBHOOK_URL: ${{ secrets.RENOVATE_WEBHOOK_URL }}
+      IMAGE_TAG: ${{ github.event.workflow_run.head_branch }}
+
+    steps:
+      - name: Skip if secret not configured
+        run: |
+          if [ -z "$RENOVATE_WEBHOOK_URL" ]; then
+            echo "RENOVATE_WEBHOOK_URL secret is not set — skipping."
+            exit 0
+          fi
+
+      - name: Notify Renovate
+        run: |
+          echo "Notifying Renovate of new image tag ${IMAGE_TAG}…"
+          curl --silent --show-error --fail \
+            --max-time 10 \
+            --retry 3 --retry-delay 2 \
+            -X POST "$RENOVATE_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"action\": \"published\",
+              \"package\": \"pump\",
+              \"registry\": \"ghcr.io\",
+              \"tag\": \"${IMAGE_TAG}\"
+            }"
+          echo "Renovate webhook notified."

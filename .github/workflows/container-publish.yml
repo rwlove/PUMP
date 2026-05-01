@@ -16,9 +16,6 @@ jobs:
       contents: read
       packages: write
 
-    env:
-      RENOVATE_WEBHOOK_URL: ${{ secrets.RENOVATE_WEBHOOK_URL }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -123,20 +120,3 @@ jobs:
             --tag "${{ env.IMAGE }}:latest" \
             "${{ env.IMAGE }}:${SOURCE}"
 
-      # ══ Notify Renovate (both paths) ═════════════════════════════════════
-      - name: Notify Renovate webhook
-        if: env.RENOVATE_WEBHOOK_URL != ''
-        run: |
-          echo "Notifying Renovate of new image tag ${{ github.ref_name }}…"
-          curl --silent --show-error --fail \
-            --max-time 10 \
-            --retry 3 --retry-delay 2 \
-            -X POST "$RENOVATE_WEBHOOK_URL" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "action": "published",
-              "package": "pump",
-              "registry": "ghcr.io",
-              "tag": "${{ github.ref_name }}"
-            }'
-          echo "Renovate webhook notified."
