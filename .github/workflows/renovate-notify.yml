@@ -20,28 +20,38 @@ jobs:
 
     env:
       RENOVATE_WEBHOOK_URL: ${{ secrets.RENOVATE_WEBHOOK_URL }}
-      IMAGE_TAG: ${{ github.event.workflow_run.head_branch }}
+      WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
 
     steps:
-      - name: Skip if secret not configured
+      - name: Skip if secrets not configured
         run: |
-          if [ -z "$RENOVATE_WEBHOOK_URL" ]; then
-            echo "RENOVATE_WEBHOOK_URL secret is not set — skipping."
+          if [ -z "$RENOVATE_WEBHOOK_URL" ] || [ -z "$WEBHOOK_SECRET" ]; then
+            echo "RENOVATE_WEBHOOK_URL or WEBHOOK_SECRET not set — skipping."
             exit 0
           fi
 
       - name: Notify Renovate
         run: |
-          echo "Notifying Renovate of new image tag ${IMAGE_TAG}…"
+          # Build the payload that the github-rwlove-pump-package hook expects:
+          #   - repository.owner.login = rwlove   (owner check)
+          #   - repository.name        = pump     (repo check)
+          #   - action                 = published (event check)
+          # X-GitHub-Event: release and a valid HMAC-SHA1 X-Hub-Signature
+          # are also required by the trigger-rule.
+          PAYLOAD='{"action":"published","repository":{"name":"pump","owner":{"login":"rwlove"}}}'
+
+          # Compute HMAC-SHA1 signature of the exact payload bytes
+          SIGNATURE="sha1=$(printf '%s' "$PAYLOAD" \
+            | openssl dgst -sha1 -hmac "$WEBHOOK_SECRET" \
+            | awk '{print $2}')"
+
+          echo "Sending release/published event to Renovate webhook…"
           curl --silent --show-error --fail \
             --max-time 10 \
             --retry 3 --retry-delay 2 \
             -X POST "$RENOVATE_WEBHOOK_URL" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"action\": \"published\",
-              \"package\": \"pump\",
-              \"registry\": \"ghcr.io\",
-              \"tag\": \"${IMAGE_TAG}\"
-            }"
+            -H "X-GitHub-Event: release" \
+            -H "X-Hub-Signature: $SIGNATURE" \
+            -d "$PAYLOAD"
           echo "Renovate webhook notified."
