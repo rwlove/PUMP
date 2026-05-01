@@ -4,7 +4,54 @@
 
 Complete all steps in order before running `git tag`:
 
-### 0. Android screenshots (if Android changes were made)
+### 0. Android APK QR code (every release)
+
+Every time a new version tag is applied, regenerate `assets/qr-android-install.png` so it encodes the **exact download URL for that release's APK**:
+
+```
+# Replace TAG with the new version, e.g. v0.0.14
+TAG=v0.0.14
+
+cd /tmp/qrgen   # the Go helper created during v0.0.11 — see commit message for source
+go run . /path/to/PUMP/assets/qr-android-install.png \
+  "https://github.com/rwlove/PUMP/releases/download/${TAG}/app-release.apk"
+```
+
+If `/tmp/qrgen` no longer exists, recreate it:
+
+```go
+// /tmp/qrgen/main.go
+package main
+
+import (
+    "fmt"
+    "os"
+    "github.com/skip2/go-qrcode"
+)
+
+func main() {
+    if len(os.Args) != 3 {
+        fmt.Fprintln(os.Stderr, "usage: qrgen <output.png> <url>")
+        os.Exit(1)
+    }
+    err := qrcode.WriteFile(os.Args[2], qrcode.Medium, 256, os.Args[1])
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "error: %v\n", err)
+        os.Exit(1)
+    }
+}
+```
+
+```
+# /tmp/qrgen/go.mod
+module qrgen
+go 1.21
+require github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
+```
+
+After regenerating, verify the QR code decodes to the correct URL, then commit the updated `assets/qr-android-install.png` and push **before** pushing the tag. The README `<img>` tag already references this file — no README edit needed unless the file path changes.
+
+### 0b. Android screenshots (if Android changes were made)
 
 If any Android source files under `android/` changed since the last tag, take fresh screenshots using an Android emulator or connected device:
 
@@ -14,7 +61,7 @@ adb shell screencap -p /sdcard/pump_stats.png   && adb pull /sdcard/pump_stats.p
 adb shell screencap -p /sdcard/pump_weight.png  && adb pull /sdcard/pump_weight.png  assets/screenshot-android-weight.png
 ```
 
-Update the Android screenshot table in README.md to reference the new images. If no Android changes were made, skip this step.
+Update the Android screenshot table in README.md to reference the new images. If no Android changes were made, skip this step (but step 0 — QR code — still applies).
 
 ### 1. Regenerate screenshots
 
