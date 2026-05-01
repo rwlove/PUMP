@@ -20,13 +20,15 @@ jobs:
 
     env:
       RENOVATE_WEBHOOK_URL: ${{ secrets.RENOVATE_WEBHOOK_URL }}
-      WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+      # Same secret as GITHUB_WEBHOOK_SECRET in the webhook operator's
+      # ExternalSecret (1Password: github → renovate_app_webhook_secret).
+      GITHUB_WEBHOOK_SECRET: ${{ secrets.GITHUB_WEBHOOK_SECRET }}
 
     steps:
       - name: Skip if secrets not configured
         run: |
-          if [ -z "$RENOVATE_WEBHOOK_URL" ] || [ -z "$WEBHOOK_SECRET" ]; then
-            echo "RENOVATE_WEBHOOK_URL or WEBHOOK_SECRET not set — skipping."
+          if [ -z "$RENOVATE_WEBHOOK_URL" ] || [ -z "$GITHUB_WEBHOOK_SECRET" ]; then
+            echo "RENOVATE_WEBHOOK_URL or GITHUB_WEBHOOK_SECRET not set — skipping."
             exit 0
           fi
 
@@ -42,7 +44,7 @@ jobs:
 
           # Compute HMAC-SHA1 signature of the exact payload bytes
           SIGNATURE="sha1=$(printf '%s' "$PAYLOAD" \
-            | openssl dgst -sha1 -hmac "$WEBHOOK_SECRET" \
+            | openssl dgst -sha1 -hmac "$GITHUB_WEBHOOK_SECRET" \
             | awk '{print $2}')"
 
           echo "Sending release/published event to Renovate webhook…"
