@@ -73,13 +73,13 @@
                     </div>
                     <div class="col-6">
                       <div class="p-3 rounded-3 bg-body-secondary text-center">
-                        <div class="stat-label">Most Common</div>
+                        <div class="stat-label">Most Performed</div>
                         <div id="most-common" class="fw-bold" style="font-size:0.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">-</div>
                       </div>
                     </div>
                     <div class="col-6">
                       <div class="p-3 rounded-3 bg-body-secondary text-center">
-                        <div class="stat-label">Least Common</div>
+                        <div class="stat-label">Least Performed</div>
                         <div id="least-common" class="fw-bold" style="font-size:0.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">-</div>
                       </div>
                     </div>
@@ -148,7 +148,7 @@
               <div class="panel">
                 <div class="panel-header"><span class="panel-title">Exercise History</span></div>
                 <div class="panel-body">
-                  <form onchange='sOffset=0; setStatsPage({{ .ExData.Sets }}, {{ .Config.HeatColor }}, 0, window._pageStep);'>
+                  <form onchange='sOffset=0; setStatsPage({{ .ExData.Sets }}, window._chartColor, 0, window._pageStep);'>
                     <select class="form-select form-select-sm mb-3" id="ex-value">
                       {{ range $gr := .GroupMap }}
                       <option value="{{ $gr }}">{{ $gr }}</option>
@@ -167,8 +167,8 @@
                     <tbody id="stats-table"></tbody>
                   </table>
                   <div class="d-flex gap-2 justify-content-center">
-                    <button onclick='setStatsPage({{ .ExData.Sets }}, {{ .Config.HeatColor }}, 1, window._pageStep)' class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left-square"></i></button>
-                    <button onclick='setStatsPage({{ .ExData.Sets }}, {{ .Config.HeatColor }}, -1, window._pageStep)' class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-right-square"></i></button>
+                    <button onclick='setStatsPage({{ .ExData.Sets }}, window._chartColor, 1, window._pageStep)' class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left-square"></i></button>
+                    <button onclick='setStatsPage({{ .ExData.Sets }}, window._chartColor, -1, window._pageStep)' class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-right-square"></i></button>
                   </div>
                 </div>
               </div>
@@ -206,11 +206,11 @@
     </div>
 
 <script>
-    window.currentSets  = {{ .ExData.Sets }};
+    window.currentSets   = {{ .ExData.Sets }};
     window._colorHeatMap = {{ .ColorHeatMap }};
-    window._allWeight   = {{ .ExData.Weight }};
-    window._heatColor   = {{ .Config.HeatColor }};
-    window._pageStep    = {{ .Config.PageStep }};
+    window._allWeight    = {{ .ExData.Weight }};
+    window._chartColor   = getComputedStyle(document.documentElement).getPropertyValue('--bs-primary').trim() || '#2780e3';
+    window._pageStep     = {{ .Config.PageStep }};
 
     // Init all displays with default period
     setGlobalPeriod('weekly');
@@ -221,10 +221,10 @@
     });
     document.getElementById('tab-exercises-btn').addEventListener('shown.bs.tab', function() {
         sOffset = 0;
-        setStatsPage(window.currentSets, window._heatColor, 0, window._pageStep);
+        setStatsPage(window.currentSets, window._chartColor, 0, window._pageStep);
     });
     document.getElementById('tab-weight-btn').addEventListener('shown.bs.tab', function() {
-        generateWeightChart(filterWeightByPeriod(window._allWeight, currentPeriod), window._heatColor, 0, 'stats-body-weight');
+        generateWeightChart(filterWeightByPeriod(window._allWeight, currentPeriod), window._chartColor, 0, 'stats-body-weight');
     });
 </script>
 

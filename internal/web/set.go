@@ -29,7 +29,7 @@ func setHandler(c *gin.Context) {
 		if wc, ok := formMap["workout_color"]; ok && i < len(wc) {
 			oneSet.WorkoutColor = wc[i]
 		} else {
-			oneSet.WorkoutColor = "#03a70c"
+			oneSet.WorkoutColor = "#2780e3"
 		}
 		formData = append(formData, oneSet)
 	}

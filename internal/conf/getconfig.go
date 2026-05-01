@@ -17,7 +17,7 @@ func GetFromEnv() (config models.Conf, authConf auth.Conf) {
 	v.SetDefault("PORT", "8851")
 	v.SetDefault("THEME", "cosmo")
 	v.SetDefault("COLOR", "dark")
-	v.SetDefault("HEATCOLOR", "#03a70c")
+	v.SetDefault("HEATCOLOR", "#2780e3")
 	v.SetDefault("PAGESTEP", 10)
 	v.SetDefault("FREQUENCY_DAYS", 30)
 	v.SetDefault("AUTH_EXPIRE", "7d")
