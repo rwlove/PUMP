@@ -22,32 +22,50 @@ jobs:
         with:
           fetch-depth: 0   # required for git tag comparison
 
-      # ── Decide whether a rebuild or a retag is needed ────────────────────
-      - name: Find source tag or confirm rebuild needed
+      # Login first so we can probe the registry during the source check.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Decide: rebuild or retag ──────────────────────────────────────────
+      - name: Find published image with identical source
         id: check
         run: |
           CURRENT_TAG="${{ github.ref_name }}"
 
-          # Walk backward through all previous tags to find the most recent
-          # one whose container-relevant source is identical to the current
-          # tag. That is the image we can retag rather than rebuild.
-          #
-          # Checking all tags (not just the previous one) handles cases where
-          # source was reverted or a tag was skipped.
-          echo "Scanning previous tags for identical container source…"
+          # Walk backward through all prior tags.
+          # For each tag:
+          #   - source differs from current → stop, rebuild needed
+          #   - source same, image exists in GHCR → retag from here
+          #   - source same, no image in GHCR (failed build) → keep looking
+
           SOURCE_TAG=""
           for TAG in $(git tag --sort=-version:refname | grep -v "^${CURRENT_TAG}$"); do
+
             CHANGED=$(git diff --name-only "${TAG}..${CURRENT_TAG}" -- \
               cmd/ internal/ go.mod go.sum Dockerfile.pump 2>/dev/null)
-            if [ -z "$CHANGED" ]; then
-              SOURCE_TAG="$TAG"
-              echo "Match: ${SOURCE_TAG} has identical container source."
+
+            if [ -n "$CHANGED" ]; then
+              echo "${TAG}: source differs — stopping search, rebuild required."
               break
+            fi
+
+            # Same source — does the image actually exist in the registry?
+            if docker buildx imagetools inspect "${IMAGE}:${TAG}" \
+                 > /dev/null 2>&1; then
+              echo "${TAG}: same source, image exists — will retag."
+              SOURCE_TAG="$TAG"
+              break
+            else
+              echo "${TAG}: same source but no image in GHCR (failed build?) — continuing."
             fi
           done
 
           if [ -z "$SOURCE_TAG" ]; then
-            echo "No prior tag with identical source — full build required."
+            echo "No published image with identical source found — full build required."
             echo "needs_rebuild=true" >> "$GITHUB_OUTPUT"
           else
             echo "needs_rebuild=false" >> "$GITHUB_OUTPUT"
@@ -62,14 +80,6 @@ jobs:
       - name: Set up Docker Buildx
         if: steps.check.outputs.needs_rebuild == 'true'
         uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR (build path)
-        if: steps.check.outputs.needs_rebuild == 'true'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata
         if: steps.check.outputs.needs_rebuild == 'true'
@@ -99,22 +109,12 @@ jobs:
           cache-to: type=gha,mode=max,scope=pump
 
       # ══ Path B: retag existing image (manifest copy only) ════════════════
-      # No QEMU or buildx setup needed — imagetools only makes registry API
-      # calls; it does not pull or push any image layers.
-      - name: Log in to GHCR (retag path)
-        if: steps.check.outputs.needs_rebuild == 'false'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Retag existing image
         if: steps.check.outputs.needs_rebuild == 'false'
         run: |
           SOURCE="${{ steps.check.outputs.source_tag }}"
-          echo "Source image : ${IMAGE}:${SOURCE}"
-          echo "New tags     : ${{ github.ref_name }}, latest"
+          echo "Source : ${IMAGE}:${SOURCE}"
+          echo "New tags: ${{ github.ref_name }}, latest"
           docker buildx imagetools create \
             --tag "${{ env.IMAGE }}:${{ github.ref_name }}" \
             --tag "${{ env.IMAGE }}:latest" \
