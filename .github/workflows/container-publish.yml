@@ -20,12 +20,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - image: pump-api
-            dockerfile: Dockerfile.api
-            description: "PUMP JSON API backend"
           - image: pump
             dockerfile: Dockerfile.pump
-            description: "PUMP all-in-one server (web UI + JSON API in one container)"
+            description: "PUMP server (web UI + JSON API)"
 
     steps:
       - name: Checkout repository

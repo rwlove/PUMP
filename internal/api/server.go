@@ -40,7 +40,7 @@ func Start() {
 	apiKey := os.Getenv("API_KEY")
 	postgresDSN := os.Getenv("POSTGRES_DSN")
 
-	slog.Info("pump-api starting",
+	slog.Info("pump starting",
 		slog.String("host", appConfig.Host),
 		slog.String("port", appConfig.Port),
 		slog.String("theme", appConfig.Theme),
@@ -87,7 +87,7 @@ func Start() {
 	registerRoutes(r)
 
 	address := appConfig.Host + ":" + appConfig.Port
-	slog.Info("pump-api ready", slog.String("addr", "http://"+address))
+	slog.Info("pump ready", slog.String("addr", "http://"+address))
 
 	if err := r.Run(address); err != nil {
 		slog.Error("server failed", slog.Any("error", err))

@@ -58,7 +58,7 @@ On first launch, open **Settings** and enter:
 
 All configuration is via environment variables. No config file is required.
 
-### `pump` / `pump-api`
+### `pump`
 
 | Variable | Description | Default |
 |---|---|---|
