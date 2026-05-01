@@ -27,12 +27,12 @@ PUMP runs as two independent services:
 │  Web UI  (default :8080) │        │  JSON API  (default :8851│
 └──────────────────────────┘        └───────────┬──────────────┘
                                                  │
-                                            SQLite DB
+                                            PostgreSQL
 ```
 
 | Service | Image | Description |
 |---|---|---|
-| API backend | `ghcr.io/rwlove/pump-api` | Owns the SQLite database, exposes a JSON REST API |
+| API backend | `ghcr.io/rwlove/pump-api` | Owns the PostgreSQL database, exposes a JSON REST API |
 | Web frontend | `ghcr.io/rwlove/pump-frontend` | Serves the browser UI, talks to the API over HTTP |
 
 ## Quick start
@@ -69,8 +69,7 @@ Both services are configured exclusively via environment variables. No config fi
 |---|---|---|
 | `PORT` | Listen port | `8851` |
 | `HOST` | Listen address | `0.0.0.0` |
-| `DATA_DIR` | SQLite data directory (also settable via `-d` flag) | `/data/PUMP` |
-| `POSTGRES_DSN` | PostgreSQL connection string — when set, PostgreSQL is used instead of SQLite | `""` (SQLite) |
+| `POSTGRES_DSN` | PostgreSQL connection string **(required)** | — |
 | `API_KEY` | Require this value on every `X-Api-Key` request header; empty = no auth | `""` |
 | `THEME` | Any [Bootswatch](https://bootswatch.com) theme (lowercase) or extras: `emerald`, `grass`, `grayscale`, `ocean`, `sand`, `wood` | `grass` |
 | `COLOR` | Background: `light` or `dark` | `dark` |
@@ -78,15 +77,13 @@ Both services are configured exclusively via environment variables. No config fi
 | `PAGESTEP` | Rows per page | `10` |
 | `TZ` | Timezone | `""` |
 
-#### PostgreSQL
-
-Set `POSTGRES_DSN` to switch the backend from SQLite to PostgreSQL:
+`POSTGRES_DSN` must be set or the API server will not start:
 
 ```
 POSTGRES_DSN=postgres://user:password@host:5432/pump
 ```
 
-The schema is versioned and managed automatically on startup — no manual `CREATE TABLE` needed. When switching from SQLite, use the **Migrate SQLite → PostgreSQL** button on the Settings page to copy existing data across without data loss.
+The schema is versioned and managed automatically on startup — no manual `CREATE TABLE` needed.
 
 ### Frontend server (`pump-frontend`)
 
