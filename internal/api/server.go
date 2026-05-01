@@ -31,7 +31,7 @@ var (
 //	HOST        listen host              (default: 0.0.0.0)
 //	THEME       UI theme                 (default: cosmo)
 //	COLOR       light or dark            (default: light)
-//	HEATCOLOR   heatmap colour           (default: #03a70c)
+//	HEATCOLOR   heatmap colour           (default: #2780e3)
 //	PAGESTEP    rows per page            (default: 10)
 //	AUTH        enable session auth      (default: false)
 //	AUTH_USER   username                 (default: "")

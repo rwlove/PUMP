@@ -13,7 +13,7 @@ services:
       HOST: "0.0.0.0"
       THEME: "cosmo"
       COLOR: "dark"
-      HEATCOLOR: "#03a70c"
+      HEATCOLOR: "#2780e3"
       PAGESTEP: "10"
       # API_KEY: "changeme"         # uncomment to require X-Api-Key on every request
       # AUTH: "true"                # uncomment to enable session auth

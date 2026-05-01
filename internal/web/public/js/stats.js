@@ -52,13 +52,13 @@ function setGlobalPeriod(period) {
     const exTab = document.getElementById('tab-exercises');
     if (exTab && exTab.classList.contains('show')) {
         sOffset = 0;
-        setStatsPage(window.currentSets, window._heatColor, 0, window._pageStep || 10);
+        setStatsPage(window.currentSets, window._chartColor, 0, window._pageStep || 10);
     }
 
     // Refresh Body Weight if visible
     const wtTab = document.getElementById('tab-weight');
     if (wtTab && wtTab.classList.contains('show')) {
-        generateWeightChart(filterWeightByPeriod(window._allWeight, period), window._heatColor, 0, 'stats-body-weight');
+        generateWeightChart(filterWeightByPeriod(window._allWeight, period), window._chartColor, 0, 'stats-body-weight');
     }
 }
 
