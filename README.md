@@ -5,17 +5,17 @@
 
 **Please Use More Protein** — workout diary with GitHub-style year visualization. Log daily sets, track body weight, and visualize training history with intensity heatmaps.
 
-| Workout tab | Trends tab |
-|---|---|
-| ![Workout tab](assets/screenshot-workout.png) | ![Trends tab](assets/screenshot-trends.png) |
+| Workout | Stats: Overview | Stats: Activity |
+|---|---|---|
+| ![Workout](assets/screenshot-workout.png) | ![Stats Overview](assets/screenshot-stats-overview.png) | ![Stats Activity](assets/screenshot-stats-activity.png) |
+
+| Stats: Exercises | Stats: Body Weight | Config |
+|---|---|---|
+| ![Stats Exercises](assets/screenshot-stats-exercises.png) | ![Stats Body Weight](assets/screenshot-stats-weight.png) | ![Config](assets/screenshot-config.png) |
 
 - [Architecture](#architecture)
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
-- [API server options](#api-server-options)
-- [Frontend options](#frontend-options)
-- [Local network only](#local-network-only)
-- [Thanks](#thanks)
 
 ## Architecture
 
