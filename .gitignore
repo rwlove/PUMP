@@ -11,3 +11,4 @@ exercise_data/
 
 # Logs
 *.log
+.claude/worktrees/
