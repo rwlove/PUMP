@@ -3,13 +3,10 @@ package api
 import (
 	"log/slog"
 	"net/http"
-	"os"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rwlove/PUMP/internal/conf"
-	"github.com/rwlove/PUMP/internal/db"
-	"github.com/rwlove/PUMP/internal/logger"
 	"github.com/rwlove/PUMP/internal/models"
 	"github.com/rwlove/PUMP/internal/store"
 )
@@ -18,82 +15,6 @@ var (
 	appConfig models.Conf
 	dataStore store.Store
 )
-
-// Start reads config from environment variables and begins serving the JSON API.
-// POSTGRES_DSN is required.
-//
-// All other settings (port, API key, theme, …) are read from
-// environment variables:
-//
-//	LOG_LEVEL    log verbosity: debug/info/warn/error  (default: info)
-//	PORT         listen port                           (default: 8851)
-//	API_KEY      required X-Api-Key value              (default: "", no auth)
-//	HOST         listen host                           (default: 0.0.0.0)
-//	THEME        UI theme                              (default: cosmo)
-//	COLOR        light or dark                         (default: dark)
-//	HEATCOLOR    heatmap colour                        (default: #2780e3)
-//	PAGESTEP     rows per page                         (default: 10)
-//	DISPLAY_DAYS main-page history days                (default: 30)
-func Start() {
-	appConfig = conf.GetFromEnv()
-
-	apiKey := os.Getenv("API_KEY")
-	postgresDSN := os.Getenv("POSTGRES_DSN")
-
-	slog.Info("pump starting",
-		slog.String("host", appConfig.Host),
-		slog.String("port", appConfig.Port),
-		slog.String("theme", appConfig.Theme),
-		slog.String("color", appConfig.Color),
-		slog.String("heatcolor", appConfig.HeatColor),
-		slog.Int("pagestep", appConfig.PageStep),
-		slog.Int("frequency_days", appConfig.FrequencyDays),
-		slog.Int("display_days", appConfig.DisplayDays),
-		slog.Bool("api_key_set", apiKey != ""),
-	)
-
-	if postgresDSN == "" {
-		slog.Error("POSTGRES_DSN environment variable is required")
-		os.Exit(1)
-	}
-
-	slog.Info("connecting to PostgreSQL")
-	pgStore, err := store.NewPostgres(postgresDSN)
-	if err != nil {
-		slog.Error("failed to connect to PostgreSQL", slog.Any("error", err))
-		os.Exit(1)
-	}
-	slog.Info("PostgreSQL connection established")
-
-	slog.Info("running schema migrations")
-	if err := db.MigratePostgres(pgStore.Pool()); err != nil {
-		slog.Error("schema migration failed", slog.Any("error", err))
-		os.Exit(1)
-	}
-	slog.Info("schema migrations complete")
-	dataStore = pgStore
-
-	gin.SetMode(gin.ReleaseMode)
-	r := gin.New()
-	r.Use(gin.Recovery())
-	r.Use(logger.GinMiddleware())
-
-	// API key middleware (optional – skip when API_KEY is unset)
-	if apiKey != "" {
-		r.Use(apiKeyMiddleware(apiKey))
-		slog.Info("API key authentication enabled")
-	}
-
-	registerRoutes(r)
-
-	address := appConfig.Host + ":" + appConfig.Port
-	slog.Info("pump ready", slog.String("addr", "http://"+address))
-
-	if err := r.Run(address); err != nil {
-		slog.Error("server failed", slog.Any("error", err))
-		os.Exit(1)
-	}
-}
 
 // RegisterRoutes mounts all API routes on r using the provided store and config.
 // Used by cmd/pump (monolith). Does not call r.Run().
