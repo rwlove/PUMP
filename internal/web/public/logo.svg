@@ -4,7 +4,7 @@
   <!-- plate left inner -->
   <rect x="52" y="27" width="14" height="46" rx="3" fill="#888888"/>
   <!-- bar (gentle upward arch from end to end) -->
-  <path d="M 66,46 Q 200,37 334,46 L 334,58 Q 200,49 66,58 Z" fill="#777777"/>
+  <path d="M 66,46 Q 200,28 334,46 L 334,58 Q 200,40 66,58 Z" fill="#777777"/>
   <!-- plate right inner -->
   <rect x="334" y="27" width="14" height="46" rx="3" fill="#888888"/>
   <!-- plate right outer -->
