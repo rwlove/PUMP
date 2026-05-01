@@ -3,7 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -65,6 +65,13 @@ ALTER TABLE sets DROP COLUMN IF EXISTS intensity;
 
 // MigratePostgres creates the schema_version table if needed and applies any
 // pending migrations in order, each wrapped in its own transaction.
+//
+// Multi-version upgrades: the runner always iterates the full pgMigrations
+// slice in order and applies every version not yet recorded in schema_version.
+// This guarantees a database at any past version (e.g. v1) is safely and
+// completely brought to the latest version (e.g. v5) without skipping steps
+// or corrupting data. Each migration runs in its own transaction; if one
+// fails the database is left at the last successfully applied version.
 func MigratePostgres(pool *pgxpool.Pool) error {
 	ctx := context.Background()
 
@@ -79,6 +86,27 @@ func MigratePostgres(pool *pgxpool.Pool) error {
 		return fmt.Errorf("create schema_version table: %w", err)
 	}
 
+	// Determine current schema version for logging.
+	var currentVersion int
+	_ = pool.QueryRow(ctx,
+		"SELECT COALESCE(MAX(version), 0) FROM schema_version",
+	).Scan(&currentVersion)
+
+	latestVersion := pgMigrations[len(pgMigrations)-1].Version
+	pending := 0
+	for _, m := range pgMigrations {
+		if m.Version > currentVersion {
+			pending++
+		}
+	}
+
+	slog.Info("db migrations: checking schema",
+		slog.Int("current_version", currentVersion),
+		slog.Int("latest_version", latestVersion),
+		slog.Int("pending", pending),
+	)
+
+	applied := 0
 	for _, m := range pgMigrations {
 		var exists bool
 		err := pool.QueryRow(ctx,
@@ -89,10 +117,17 @@ func MigratePostgres(pool *pgxpool.Pool) error {
 			return fmt.Errorf("check schema version %d: %w", m.Version, err)
 		}
 		if exists {
+			slog.Debug("db migrations: skipping already-applied version",
+				slog.Int("version", m.Version),
+				slog.String("description", m.Description),
+			)
 			continue
 		}
 
-		log.Printf("INFO postgres: applying migration v%d: %s", m.Version, m.Description)
+		slog.Info("db migrations: applying",
+			slog.Int("version", m.Version),
+			slog.String("description", m.Description),
+		)
 
 		tx, err := pool.Begin(ctx)
 		if err != nil {
@@ -100,15 +135,15 @@ func MigratePostgres(pool *pgxpool.Pool) error {
 		}
 
 		if _, err := tx.Exec(ctx, m.SQL); err != nil {
-			tx.Rollback(ctx)
-			return fmt.Errorf("apply migration v%d: %w", m.Version, err)
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("apply migration v%d (%s): %w", m.Version, m.Description, err)
 		}
 
 		if _, err := tx.Exec(ctx,
 			"INSERT INTO schema_version (version, description) VALUES ($1, $2)",
 			m.Version, m.Description,
 		); err != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			return fmt.Errorf("record migration v%d: %w", m.Version, err)
 		}
 
@@ -116,7 +151,20 @@ func MigratePostgres(pool *pgxpool.Pool) error {
 			return fmt.Errorf("commit migration v%d: %w", m.Version, err)
 		}
 
-		log.Printf("INFO postgres: migration v%d applied", m.Version)
+		slog.Info("db migrations: applied successfully",
+			slog.Int("version", m.Version),
+			slog.String("description", m.Description),
+		)
+		applied++
+	}
+
+	if applied == 0 {
+		slog.Info("db migrations: schema is up to date", slog.Int("version", latestVersion))
+	} else {
+		slog.Info("db migrations: all pending migrations applied",
+			slog.Int("applied", applied),
+			slog.Int("version", latestVersion),
+		)
 	}
 
 	return nil

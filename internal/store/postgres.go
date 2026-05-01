@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
@@ -18,6 +19,7 @@ type PostgresStore struct {
 // NewPostgres dials the PostgreSQL DSN, pings the server, and returns a
 // ready-to-use store. Call db.MigratePostgres before using the store.
 func NewPostgres(dsn string) (*PostgresStore, error) {
+	slog.Debug("postgres: dialing")
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
 		return nil, fmt.Errorf("connect to postgres: %w", err)
@@ -26,6 +28,7 @@ func NewPostgres(dsn string) (*PostgresStore, error) {
 		pool.Close()
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
+	slog.Debug("postgres: ping OK")
 	return &PostgresStore{pool: pool}, nil
 }
 
@@ -37,6 +40,7 @@ func (s *PostgresStore) Pool() *pgxpool.Pool {
 // ─── exercises ────────────────────────────────────────────────────────────────
 
 func (s *PostgresStore) SelectEx() ([]models.Exercise, error) {
+	slog.Debug("db: SelectEx")
 	rows, err := s.pool.Query(context.Background(),
 		`SELECT id, gr, place, name, descr, image, color, weight::text, reps
 		 FROM exercises ORDER BY id ASC`)
@@ -56,24 +60,34 @@ func (s *PostgresStore) SelectEx() ([]models.Exercise, error) {
 		ex.Weight, _ = decimal.NewFromString(weightStr)
 		exes = append(exes, ex)
 	}
+	slog.Debug("db: SelectEx complete", slog.Int("rows", len(exes)))
 	return exes, rows.Err()
 }
 
 func (s *PostgresStore) InsertEx(ex models.Exercise) error {
+	slog.Debug("db: InsertEx", slog.String("name", ex.Name), slog.String("group", ex.Group))
 	_, err := s.pool.Exec(context.Background(),
 		`INSERT INTO exercises (gr, place, name, descr, image, color, weight, reps)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 		ex.Group, ex.Place, ex.Name, ex.Descr, ex.Image, ex.Color,
 		ex.Weight.String(), ex.Reps)
+	if err != nil {
+		slog.Debug("db: InsertEx failed", slog.Any("error", err))
+	}
 	return err
 }
 
 func (s *PostgresStore) DeleteEx(id int) error {
+	slog.Debug("db: DeleteEx", slog.Int("id", id))
 	_, err := s.pool.Exec(context.Background(), "DELETE FROM exercises WHERE id = $1", id)
+	if err != nil {
+		slog.Debug("db: DeleteEx failed", slog.Int("id", id), slog.Any("error", err))
+	}
 	return err
 }
 
 func (s *PostgresStore) UpdateExColor(id int, color string) error {
+	slog.Debug("db: UpdateExColor", slog.Int("id", id), slog.String("color", color))
 	_, err := s.pool.Exec(context.Background(),
 		"UPDATE exercises SET color = $1 WHERE id = $2", color, id)
 	return err
@@ -82,6 +96,7 @@ func (s *PostgresStore) UpdateExColor(id int, color string) error {
 // ─── sets ─────────────────────────────────────────────────────────────────────
 
 func (s *PostgresStore) SelectSet() ([]models.Set, error) {
+	slog.Debug("db: SelectSet")
 	rows, err := s.pool.Query(context.Background(),
 		`SELECT id, date::text, name, color, workout_color, weight::text, reps
 		 FROM sets ORDER BY id ASC`)
@@ -101,10 +116,12 @@ func (s *PostgresStore) SelectSet() ([]models.Set, error) {
 		set.Weight, _ = decimal.NewFromString(weightStr)
 		sets = append(sets, set)
 	}
+	slog.Debug("db: SelectSet complete", slog.Int("rows", len(sets)))
 	return sets, rows.Err()
 }
 
 func (s *PostgresStore) BulkReplaceSetsByDate(date string, sets []models.Set) error {
+	slog.Debug("db: BulkReplaceSetsByDate", slog.String("date", date), slog.Int("sets", len(sets)))
 	ctx := context.Background()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -115,23 +132,30 @@ func (s *PostgresStore) BulkReplaceSetsByDate(date string, sets []models.Set) er
 	if _, err := tx.Exec(ctx, "DELETE FROM sets WHERE date = $1::date", date); err != nil {
 		return err
 	}
+	slog.Debug("db: deleted existing sets for date", slog.String("date", date))
 
-	for _, set := range sets {
+	for i, set := range sets {
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO sets (date, name, color, workout_color, weight, reps)
 			 VALUES ($1::date, $2, $3, $4, $5, $6)`,
 			set.Date, set.Name, set.Color, set.WorkoutColor,
 			set.Weight.String(), set.Reps); err != nil {
+			slog.Debug("db: insert set failed", slog.Int("index", i), slog.Any("error", err))
 			return err
 		}
 	}
 
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	slog.Debug("db: BulkReplaceSetsByDate committed", slog.String("date", date), slog.Int("count", len(sets)))
+	return nil
 }
 
 // ─── weight ───────────────────────────────────────────────────────────────────
 
 func (s *PostgresStore) SelectW() ([]models.BodyWeight, error) {
+	slog.Debug("db: SelectW")
 	rows, err := s.pool.Query(context.Background(),
 		"SELECT id, date::text, weight::text FROM weight ORDER BY id ASC")
 	if err != nil {
@@ -149,10 +173,12 @@ func (s *PostgresStore) SelectW() ([]models.BodyWeight, error) {
 		w.Weight, _ = decimal.NewFromString(weightStr)
 		ws = append(ws, w)
 	}
+	slog.Debug("db: SelectW complete", slog.Int("rows", len(ws)))
 	return ws, rows.Err()
 }
 
 func (s *PostgresStore) InsertW(w models.BodyWeight) error {
+	slog.Debug("db: InsertW", slog.String("date", w.Date), slog.String("weight", w.Weight.String()))
 	_, err := s.pool.Exec(context.Background(),
 		"INSERT INTO weight (date, weight) VALUES ($1::date, $2)",
 		w.Date, w.Weight.String())
@@ -160,6 +186,7 @@ func (s *PostgresStore) InsertW(w models.BodyWeight) error {
 }
 
 func (s *PostgresStore) DeleteW(id int) error {
+	slog.Debug("db: DeleteW", slog.Int("id", id))
 	_, err := s.pool.Exec(context.Background(), "DELETE FROM weight WHERE id = $1", id)
 	return err
 }

@@ -74,6 +74,7 @@ Both services are configured exclusively via environment variables. No config fi
 | `HOST` | Listen address | `0.0.0.0` |
 | `POSTGRES_DSN` | PostgreSQL connection string **(required)** | — |
 | `API_KEY` | Require this value on every `X-Api-Key` request header; empty = no auth | `""` |
+| `LOG_LEVEL` | Log verbosity: `debug`, `info`, `warn`, `error` | `info` |
 | `THEME` | Any [Bootswatch](https://bootswatch.com) theme (lowercase) or extras: `emerald`, `grass`, `grayscale`, `ocean`, `sand`, `wood` | `cosmo` |
 | `COLOR` | Background: `light` or `dark` | `dark` |
 | `HEATCOLOR` | Heatmap cell color | `#2780e3` |
@@ -96,4 +97,5 @@ The schema is versioned and managed automatically on startup — no manual `CREA
 | `PORT` | Listen port | `8080` |
 | `API_URL` | Base URL of the API server | `http://localhost:8851` |
 | `API_KEY` | `X-Api-Key` value sent to the API (must match API server `API_KEY`) | `""` |
+| `LOG_LEVEL` | Log verbosity: `debug`, `info`, `warn`, `error` | `info` |
 | `TZ` | Timezone | `""` |
