@@ -43,7 +43,11 @@ The PUMP Android app provides the same workout logging experience as the web UI,
 
 ### Installation
 
-Download the latest APK from the [Releases page](https://github.com/rwlove/PUMP/releases) and install it on your device. You may need to allow installation from unknown sources.
+Scan to download the latest APK:
+
+<p align="center"><img src="assets/qr-android-install.png" width="180" alt="QR code — PUMP Android APK"></p>
+
+Or download directly from the [Releases page](https://github.com/rwlove/PUMP/releases). You may need to allow installation from unknown sources on your device.
 
 ### Configuration
 
