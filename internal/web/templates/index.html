@@ -1,0 +1,213 @@
+{{ define "index.html" }}
+</head>
+<script src="/fs/public/js/index.js"></script>
+<link rel="stylesheet" type="text/css" href="/fs/public/css/index.css">
+
+<!-- ── Add Weight Modal ─────────────────────────────────────────────────── -->
+<div class="modal fade" id="mWeight" tabindex="-1" aria-labelledby="mWeightLabel" aria-hidden="true">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content rounded-4 border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h6 class="modal-title fw-bold" id="mWeightLabel">
+          <i class="bi bi-speedometer2 me-2 text-primary"></i>Log Weight
+        </h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form action="/weight/" method="post">
+          <div class="mb-3">
+            <label class="form-label small text-secondary fw-semibold text-uppercase" style="font-size:0.72rem;letter-spacing:.06em;">Date</label>
+            <input name="date" type="date" class="form-control rounded-3" id="weightDate">
+          </div>
+          <div class="mb-4">
+            <label class="form-label small text-secondary fw-semibold text-uppercase" style="font-size:0.72rem;letter-spacing:.06em;">Weight</label>
+            <input name="weight" type="number" step="any" min="0" class="form-control rounded-3" placeholder="e.g. 75.5">
+          </div>
+          <button type="submit" class="btn btn-primary w-100 rounded-3">
+            <i class="bi bi-check2 me-1"></i>Save
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Exercise Detail Modals ────────────────────────────────────────────── -->
+{{ range .ExData.Exs }}
+<div class="modal fade" id="modal{{ .ID }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4 border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <div class="d-flex align-items-center gap-2">
+          <div style="width:14px;height:14px;border-radius:50%;background:{{ .Color }};flex-shrink:0;"></div>
+          <h6 class="modal-title fw-bold mb-0">{{ .Name }}</h6>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body pt-2">
+        {{ if .Image }}
+        <img src="{{ .Image }}" class="w-100 rounded-3 mb-3" style="max-height:200px;object-fit:cover;" alt="{{ .Name }}">
+        {{ end }}
+        {{ if .Descr }}
+        <p class="text-secondary small mb-3">{{ .Descr }}</p>
+        {{ end }}
+        <div class="d-flex gap-2">
+          <div class="flex-fill text-center p-2 rounded-3 bg-body-secondary">
+            <div class="fw-bold">{{ .Weight }}</div>
+            <div class="text-secondary" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;">Weight</div>
+          </div>
+          <div class="flex-fill text-center p-2 rounded-3 bg-body-secondary">
+            <div class="fw-bold">{{ .Reps }}</div>
+            <div class="text-secondary" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;">Reps</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <a href="/exercise/?id={{ .ID }}" class="btn btn-sm btn-outline-secondary rounded-3">
+          <i class="bi bi-pencil me-1"></i>Edit exercise
+        </a>
+        <button type="button" class="btn btn-sm btn-primary rounded-3" data-bs-dismiss="modal"
+          onclick='addExercise("{{ .Name }}", "{{ .Weight }}", "{{ .Reps }}", "{{ .Color }}")'>
+          <i class="bi bi-plus me-1"></i>Add to today
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{{ end }}
+
+<!-- ── Sticky Date Navigation Bar ───────────────────────────────────────── -->
+<div class="date-nav-bar">
+  <div class="container-xl">
+    <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+      <!-- Date navigation -->
+      <div class="d-flex align-items-center gap-2">
+        <button class="nav-day-btn" onclick='moveDayLeftRight(-1, window._allSets)' title="Previous day">
+          <i class="bi bi-chevron-left"></i>
+        </button>
+        <input type="date" class="form-control" id="realDate"
+          onchange='setFormContent(window._allSets, this.value)'>
+        <button class="nav-day-btn" onclick='moveDayLeftRight(1, window._allSets)' title="Next day">
+          <i class="bi bi-chevron-right"></i>
+        </button>
+        <button class="today-chip" onclick="goToToday()">Today</button>
+      </div>
+      <!-- Quick actions -->
+      <div class="d-flex gap-2">
+        <button class="quick-action-btn" data-bs-toggle="modal" data-bs-target="#mWeight" onclick="setWeightDate()">
+          <i class="bi bi-speedometer2"></i><span>Log Weight</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Main Content ───────────────────────────────────────────────────────── -->
+<div class="container-xl py-4">
+
+  <!-- 7-day streak -->
+  <div id="weekStreak" class="mb-4"></div>
+
+  <div class="row g-4">
+
+    <!-- ── Exercise Picker ─────────────────────────────────────────────── -->
+    <div class="col-12 col-lg-5">
+      <div class="panel" style="min-height:340px;">
+        <div class="panel-header">
+          <span class="panel-title">Exercises</span>
+          <a href="/exercise/?id=new" class="btn btn-sm btn-primary rounded-pill px-3" style="font-size:0.78rem;">
+            <i class="bi bi-plus me-1"></i>New
+          </a>
+        </div>
+
+        <!-- Step 1: Group chips -->
+        <div class="group-selector" id="groupSelector">
+          <div class="group-chips">
+            {{ range $gr, $grID := .GroupMap }}
+            <button class="group-chip" data-group="{{ $gr }}"
+              onclick='selectGroup("{{ $gr }}")'>{{ $gr }}</button>
+            {{ end }}
+          </div>
+        </div>
+
+        <!-- Step 2: Exercise list for selected group -->
+        <div class="exercise-list-area">
+          <!-- Group header shown when a group is selected -->
+          <div id="groupHeader" class="group-list-header" style="display:none;">
+            <button class="back-btn" onclick="clearGroup()" title="Back to groups">
+              <i class="bi bi-arrow-left"></i>
+            </button>
+            <span id="groupHeaderName" class="fw-semibold" style="font-size:0.9rem;"></span>
+            <div class="ms-auto">
+              <input type="text" id="exSearch" class="form-control form-control-sm ex-search-inline"
+                placeholder="Filter…" oninput="filterExercises()" autocomplete="off">
+            </div>
+          </div>
+
+          <!-- Exercise items (all rendered, shown/hidden by group) -->
+          <div id="exerciseListBody">
+            {{ range .ExData.Exs }}
+            <div class="exercise-item" data-name="{{ .Name }}" data-group="{{ .Group }}" style="display:none;">
+              <div class="ex-color-dot" style="background-color:{{ .Color }};"></div>
+              <button class="ex-name-btn"
+                onclick='addExercise("{{ .Name }}", "{{ .Weight }}", "{{ .Reps }}", "{{ .Color }}")'
+                title="Add to today">{{ .Name }}</button>
+              <div class="ex-icon-group">
+                <button class="ex-icon-btn" title="Details"
+                  data-bs-toggle="modal" data-bs-target="#modal{{ .ID }}">
+                  <i class="bi bi-info-circle"></i>
+                </button>
+                <a class="ex-icon-btn" href="/exercise/?id={{ .ID }}" title="Edit">
+                  <i class="bi bi-pencil"></i>
+                </a>
+                <button class="ex-icon-btn ex-plus-btn"
+                  onclick='addExercise("{{ .Name }}", "{{ .Weight }}", "{{ .Reps }}", "{{ .Color }}")'
+                  title="Add">
+                  <i class="bi bi-plus-lg"></i>
+                </button>
+              </div>
+            </div>
+            {{ end }}
+          </div>
+
+          <!-- Shown when no group selected yet -->
+          <div id="noGroupState" class="empty-state" style="padding:28px 20px;">
+            <div class="empty-icon"><i class="bi bi-collection"></i></div>
+            <p>Select a group above to browse exercises</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── Today's Workout Log ─────────────────────────────────────────── -->
+    <div class="col-12 col-lg-7">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Today's Workout</span>
+          <span class="save-status" id="saveStatus"></span>
+        </div>
+        <form action="/set/" method="post" name="sets">
+          <input name="date" type="hidden" id="formDate">
+          <div class="workout-log-body">
+            <div id="todayEx"></div>
+            <div class="empty-state" id="emptyState">
+              <div class="empty-icon"><i class="bi bi-dumbbell"></i></div>
+              <p>Tap an exercise on the left to add it here</p>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  window._allSets = {{ .ExData.Sets }};
+  window._allExs  = {{ .ExData.Exs }};
+  setFormDate(window._allSets);
+  renderWeekStreak(window._allSets);
+</script>
+{{ template "footer.html" }}
+{{ end }}

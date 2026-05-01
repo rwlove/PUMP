@@ -1,0 +1,13 @@
+# Ignore tmp
+tmp/
+
+# Binaries
+PUMP
+cmd/PUMP/PUMP
+
+# Data
+cmd/PUMP/temp_data/
+exercise_data/
+
+# Logs
+*.log

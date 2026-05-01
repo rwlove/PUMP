@@ -1,0 +1,124 @@
+{{ define "config.html" }}
+
+<link rel="stylesheet" type="text/css" href="/fs/public/css/config.css" />
+<body>
+    <div class="container-lg mt-4">
+    <div class="row">
+        <div class="col-md mb-4">
+        <div class="card border-primary">
+            <div class="card-header">Config</div>
+        <div class="card-body table-responsive">
+        <table class="table table-borderless">
+            <form action="/config/" method="post">
+                <tr>
+                    <td>Theme</td>
+                    <td><select name="theme" id="themeSelect" class="form-select" onchange="previewTheme(this.value)">
+                        <option selected>{{ .Config.Theme }}</option>
+                        {{ range .Themes }}
+                            <option value="{{ . }}">{{ . }}</option>
+                        {{ end }}
+                    </select></td>
+                </tr>
+                <tr>
+                    <td>Color mode</td>
+                    <td><select name="color" class="form-select">
+                        <option selected>{{ .Config.Color }}</option>
+                        <option value="light">light</option>
+                        <option value="dark">dark</option>
+                    </select></td>
+                </tr>
+                <tr>
+                    <td>HeatMap Color</td>
+                    <td>
+                        <input name="heatcolor" value="{{ .Config.HeatColor }}" type="color" class="form-control form-control-color">
+                    </td>
+                </tr>
+                <tr>
+                    <td>Page Step<button type="button" class="btn tip-button" mytitle="How many items to show on one page (for Weight and Stats)">
+                        <i class="bi bi-question-circle"></i>
+                    </button></td>
+                    <td><input name="pagestep" type="number" class="form-control" value="{{ .Config.PageStep }}"></td>
+                </tr>
+                <tr>
+                    <td>Exercise sort window (days)<button type="button" class="btn tip-button" mytitle="Exercises are sorted by how often they were used in the last N days. Higher = appears at the top.">
+                        <i class="bi bi-question-circle"></i>
+                    </button></td>
+                    <td><input name="frequencydays" type="number" min="1" class="form-control" value="{{ .Config.FrequencyDays }}"></td>
+                </tr>
+                <tr>
+                    <td><button type="submit" class="btn btn-primary">Save</button></td>
+                    <td></td>
+                </tr>
+            </form>
+        </table>
+        </div>
+        </div>
+        </div>
+        <div class="col-md">
+            <div class="card border-primary mb-4">
+                <div class="card-header">Auth</div>
+                <div class="card-body table-responsive">
+                    <table class="table table-borderless">
+                        <form action="/config/auth" method="post">
+                            <tr>
+                                <td>Enable<button type="button" class="btn tip-button" mytitle="Authentication is only safe when used over HTTPS and with a strong password">
+                                    <i class="bi bi-question-circle"></i>
+                                </button></td>
+                                <td>
+                                    <div class="form-check form-switch">
+                                        {{ if .Auth.Auth }}
+                                        <input class="form-check-input" type="checkbox" name="auth" checked>
+                                        {{ else }}
+                                        <input class="form-check-input" type="checkbox" name="auth">
+                                        {{ end }}
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Expire after<button type="button" class="btn tip-button" mytitle="When user session expires. Can be set with suffixes m(minute), h(hour), d(day) or M(month). Default: 7d">
+                                    <i class="bi bi-question-circle"></i>
+                                </button></td>
+                                <td><input name="expire" type="text" class="form-control" value="{{ .Auth.ExpStr }}"></td>
+                            </tr>
+                            <tr>
+                                <td>Login<button type="button" class="btn tip-button" mytitle="Must not be empty">
+                                    <i class="bi bi-question-circle"></i>
+                                </button></td>
+                                <td><input name="user" type="text" class="form-control" value="{{ .Auth.User }}"></td>
+                            </tr>
+                            <tr>
+                                <td>New password<button type="button" class="btn tip-button" mytitle="Stored encrypted in config file">
+                                    <i class="bi bi-question-circle"></i>
+                                </button></td>
+                                <td><input name="password" type="password" class="form-control"></td>
+                            </tr>
+                            <tr>
+                                <td><button type="submit" class="btn btn-primary">Save</button></td>
+                                <td></td>
+                            </tr>
+                        </form>
+                    </table>
+                </div>
+            </div>
+            <div class="card border-primary mb-4">
+                <div class="card-header">About (<a href="https://github.com/rwlove/PUMP/releases/tag/{{ .Version }}" target="_blank">{{ .Version }}</a>)</div>
+            <div class="card-body">
+                <p>PUMP — Please Use More Protein — open source workout tracker</p>
+            </div>
+        </div>
+    </div>
+    </div>
+
+<script>
+var _themeLink = document.getElementById('bootstrap-theme-link');
+
+function previewTheme(theme) {
+    if (!_themeLink) return;
+    var current = _themeLink.href;
+    // Replace the theme segment in the URL (works for both CDN and node paths)
+    _themeLink.href = current.replace(/\/dist\/[^/]+\/bootstrap/, '/dist/' + theme + '/bootstrap');
+}
+</script>
+
+{{ template "footer.html" }}
+{{ end }}
