@@ -3,7 +3,6 @@ package web
 import (
 	"embed"
 
-	"github.com/rwlove/PUMP/internal/auth"
 	"github.com/rwlove/PUMP/internal/models"
 	"github.com/rwlove/PUMP/internal/store"
 )
@@ -18,9 +17,6 @@ var Version = "dev"
 var (
 	// appConfig - config for Web Gui
 	appConfig models.Conf
-
-	// authConf - config for auth
-	authConf auth.Conf
 
 	// Exercise data
 	exData models.AllExData

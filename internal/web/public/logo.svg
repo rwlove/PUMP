@@ -1,4 +1,4 @@
-<svg width="400" height="100" viewBox="0 0 400 100" xmlns="http://www.w3.org/2000/svg">
+<svg width="400" height="130" viewBox="0 0 400 130" xmlns="http://www.w3.org/2000/svg">
   <!-- plate left outer -->
   <rect x="28" y="14" width="22" height="72" rx="4" fill="#666666"/>
   <!-- plate left inner -->
@@ -9,4 +9,11 @@
   <rect x="334" y="27" width="14" height="46" rx="3" fill="#888888"/>
   <!-- plate right outer -->
   <rect x="350" y="14" width="22" height="72" rx="4" fill="#666666"/>
+  <!-- PUMP lettering: outer P's raised to look like they're lifting the bar -->
+  <text x="200" y="120"
+        font-family="system-ui, -apple-system, Arial, sans-serif"
+        font-weight="600" font-size="44" letter-spacing="5"
+        fill="white" text-anchor="middle">
+    <tspan dy="-4">P</tspan><tspan dy="4">UM</tspan><tspan dy="-4">P</tspan>
+  </text>
 </svg>

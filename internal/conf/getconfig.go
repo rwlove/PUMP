@@ -3,14 +3,13 @@ package conf
 import (
 	"github.com/spf13/viper"
 
-	"github.com/rwlove/PUMP/internal/auth"
 	"github.com/rwlove/PUMP/internal/models"
 )
 
 // GetFromEnv reads all configuration from environment variables only.
 // No config file is required. This is the primary configuration path for
 // the split-service deployment.
-func GetFromEnv() (config models.Conf, authConf auth.Conf) {
+func GetFromEnv() models.Conf {
 	v := viper.New()
 
 	v.SetDefault("HOST", "0.0.0.0")
@@ -21,10 +20,10 @@ func GetFromEnv() (config models.Conf, authConf auth.Conf) {
 	v.SetDefault("PAGESTEP", 10)
 	v.SetDefault("FREQUENCY_DAYS", 30)
 	v.SetDefault("DISPLAY_DAYS", 30)
-	v.SetDefault("AUTH_EXPIRE", "7d")
 
 	v.AutomaticEnv()
 
+	var config models.Conf
 	config.Host = v.GetString("HOST")
 	config.Port = v.GetString("PORT")
 	config.Theme = v.GetString("THEME")
@@ -34,19 +33,12 @@ func GetFromEnv() (config models.Conf, authConf auth.Conf) {
 	config.FrequencyDays = v.GetInt("FREQUENCY_DAYS")
 	config.DisplayDays = v.GetInt("DISPLAY_DAYS")
 
-	authConf.Auth = v.GetBool("AUTH")
-	authConf.User = v.GetString("AUTH_USER")
-	authConf.Password = v.GetString("AUTH_PASSWORD")
-	authConf.ExpStr = v.GetString("AUTH_EXPIRE")
-	authConf.Expire = auth.ToTime(authConf.ExpStr)
-	config.Auth = authConf.Auth
-
-	return config, authConf
+	return config
 }
 
 // Write persists config to the YAML file at config.ConfPath.
 // It is a no-op when ConfPath is empty (env-var-only mode).
-func Write(config models.Conf, authConf auth.Conf) {
+func Write(config models.Conf) {
 	if config.ConfPath == "" {
 		return
 	}
@@ -63,11 +55,6 @@ func Write(config models.Conf, authConf auth.Conf) {
 	v.Set("pagestep", config.PageStep)
 	v.Set("frequency_days", config.FrequencyDays)
 	v.Set("display_days", config.DisplayDays)
-
-	v.Set("auth", authConf.Auth)
-	v.Set("auth_user", authConf.User)
-	v.Set("auth_password", authConf.Password)
-	v.Set("auth_expire", authConf.ExpStr)
 
 	if err := v.WriteConfig(); err != nil {
 		// Best-effort — don't crash when running in env-var-only mode

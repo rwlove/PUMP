@@ -181,18 +181,3 @@ func (a *APIClient) SaveConfig(cfg models.Conf) error {
 	return checkStatus(resp)
 }
 
-// SaveConfigAuth updates authentication settings via the API.
-func (a *APIClient) SaveConfigAuth(user, password, expStr string, authEnabled bool) error {
-	body := map[string]interface{}{
-		"user":     user,
-		"password": password,
-		"expire":   expStr,
-		"auth":     authEnabled,
-	}
-	resp, err := a.do("PUT", "/api/config/auth", body)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	return checkStatus(resp)
-}
