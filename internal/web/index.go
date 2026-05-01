@@ -52,9 +52,24 @@ func indexHandler(c *gin.Context) {
 	guiData.ExData = exData
 	guiData.GroupMap = createGroupMap()
 
+	// Heatmap and frequency sorting always use the full set history.
 	guiData.ColorHeatMap = generateHeatMap(exData.Sets)
-
 	sortExsByFrequency(guiData.ExData.Exs, sets, appConfig.FrequencyDays)
+
+	// Limit sets sent to the main page to the configured display window.
+	days := appConfig.DisplayDays
+	if days <= 0 {
+		days = 30
+	}
+	cutoff := time.Now().AddDate(0, 0, -days).Format("2006-01-02")
+	var displaySets []models.Set
+	for _, s := range sets {
+		if s.Date >= cutoff {
+			displaySets = append(displaySets, s)
+		}
+	}
+	guiData.ExData.Sets = displaySets
+
 	sort.Slice(guiData.ExData.Weight, func(i, j int) bool {
 		return guiData.ExData.Weight[i].Date < guiData.ExData.Weight[j].Date
 	})

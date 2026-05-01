@@ -1,6 +1,6 @@
-var sOffset = 0;
 var currentPeriod = 'weekly';
 var distributionChart = null;
+var _volumeChart = null;
 
 // ─── Period helpers ───────────────────────────────────────────────────────────
 
@@ -42,17 +42,10 @@ function setGlobalPeriod(period) {
     updateSummaryDisplay(sets);
     updateExerciseDistribution(sets, window.exercises);
 
-    // Refresh Activity if visible
+    // Refresh Weight Moved if visible
     const actTab = document.getElementById('tab-activity');
     if (actTab && actTab.classList.contains('show')) {
-        makeColorChart(getHeatForPeriod(window._colorHeatMap, period));
-    }
-
-    // Refresh Exercises if visible
-    const exTab = document.getElementById('tab-exercises');
-    if (exTab && exTab.classList.contains('show')) {
-        sOffset = 0;
-        setStatsPage(window.currentSets, window._chartColor, 0, window._pageStep || 10);
+        refreshVolumeChart();
     }
 
     // Refresh Body Weight if visible
@@ -63,16 +56,6 @@ function setGlobalPeriod(period) {
 }
 
 // ─── Period helpers for non-set data ─────────────────────────────────────────
-
-function getHeatForPeriod(heat, period) {
-    if (period === 'annual') return heat;
-    const { start, end } = getPeriodDates(period);
-    return heat.map(cell => {
-        const d = new Date(cell.D);
-        if (d >= start && d <= end) return cell;
-        return Object.assign({}, cell, { Colors: [], Color: '', V: 0, WorkoutNames: [], WorkoutWeights: [], WorkoutReps: [] });
-    });
-}
 
 function filterWeightByPeriod(weight, period) {
     if (!weight) return [];
@@ -143,47 +126,86 @@ function updateExerciseDistribution(sets, exercises) {
     });
 }
 
-// ─── Exercise history (Exercises tab) ────────────────────────────────────────
+// ─── Volume chart (Weight Moved tab) ─────────────────────────────────────────
 
-function addRow(i, date, weight, reps) {
-    document.getElementById('stats-table').insertAdjacentHTML('beforeend',
-        `<tr><td style="opacity:45%;">${i}.</td><td>${date}</td><td>${weight}</td><td>${reps}</td></tr>`);
+function updateVolumeChart(sets, exercises, period, exerciseName) {
+    const { start, end } = getPeriodDates(period);
+    const filtered = sets.filter(s => {
+        if (s.Name !== exerciseName) return false;
+        const d = new Date(s.Date);
+        return d >= start && d <= end;
+    });
+
+    // Group by date — sum weight × reps for every set that day
+    const volumeByDate = {};
+    filtered.forEach(s => {
+        const vol = parseFloat(s.Weight) * parseInt(s.Reps, 10);
+        if (!isNaN(vol)) {
+            volumeByDate[s.Date] = (volumeByDate[s.Date] || 0) + vol;
+        }
+    });
+
+    const dates   = Object.keys(volumeByDate).sort();
+    const volumes = dates.map(d => volumeByDate[d]);
+
+    const noDataEl = document.getElementById('volume-no-data');
+    const ctx = document.getElementById('volume-chart');
+    if (!ctx) return;
+
+    if (_volumeChart) { _volumeChart.destroy(); _volumeChart = null; }
+
+    if (dates.length === 0) {
+        if (noDataEl) noDataEl.style.display = '';
+        return;
+    }
+    if (noDataEl) noDataEl.style.display = 'none';
+
+    // Use exercise's own color so bars match the distribution chart
+    const colorMap = {};
+    (exercises || []).forEach(ex => { colorMap[ex.Name] = ex.Color; });
+    const color = colorMap[exerciseName] || window._chartColor || '#2780e3';
+
+    _volumeChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: dates,
+            datasets: [{
+                label: 'Total Volume',
+                data: volumes,
+                backgroundColor: color + '55',
+                borderColor: color,
+                borderWidth: 1.5,
+                borderRadius: 4,
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: { grid: { display: false } },
+                y: {
+                    beginAtZero: true,
+                    grid: { display: false },
+                    ticks: {
+                        callback(v) { return v.toLocaleString() + ' lbs'; }
+                    }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label(ctx) {
+                            return `Volume: ${ctx.raw.toLocaleString(undefined, { maximumFractionDigits: 1 })} lbs`;
+                        }
+                    }
+                }
+            }
+        }
+    });
 }
 
-function setStatsPage(sets, hcolor, off, step) {
-    window.currentSets = sets;
-
-    const periodSets = filterByPeriod(sets, currentPeriod);
-
-    const ex = document.getElementById('ex-value');
-    if (!ex) return;
-    const selectedEx = ex.value;
-    const exSets = periodSets.filter(s => s.Name === selectedEx);
-
-    sOffset = Math.max(0, sOffset + off);
-
-    const len  = exSets.length;
-    const move = step + sOffset * step;
-    let start2, end2;
-
-    if (len > move) {
-        start2 = len - move;
-        end2   = start2 + step;
-    } else {
-        sOffset = Math.max(0, sOffset - 1);
-        end2    = Math.min(step, len);
-        start2  = 0;
-    }
-
-    document.getElementById('stats-table').innerHTML = '';
-    const dates = [], ws = [];
-    for (let i = start2; i < end2; i++) {
-        addRow(i + 1, exSets[i].Date, exSets[i].Weight, exSets[i].Reps);
-        dates.push(exSets[i].Date);
-        ws.push(exSets[i].Weight);
-    }
-
-    weightChart('stats-ex-weight', dates, ws, hcolor, true);
-    updateSummaryDisplay(periodSets);
-    updateExerciseDistribution(periodSets, window.exercises);
+function refreshVolumeChart() {
+    const sel = document.getElementById('volume-ex-select');
+    if (!sel) return;
+    updateVolumeChart(window.currentSets, window.exercises, currentPeriod, sel.value);
 }

@@ -18,6 +18,7 @@ type Conf struct {
 	HeatColor     string
 	PageStep      int
 	FrequencyDays int // days to look back when sorting exercises by usage frequency
+	DisplayDays   int // days of history shown on main page (7/30/90/365)
 	Auth          bool
 }
 

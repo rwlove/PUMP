@@ -75,6 +75,7 @@ Both services are configured exclusively via environment variables. No config fi
 | `COLOR` | Background: `light` or `dark` | `dark` |
 | `HEATCOLOR` | Heatmap cell color | `#2780e3` |
 | `PAGESTEP` | Rows per page | `10` |
+| `DISPLAY_DAYS` | Days of history shown on the main page (7/30/90/365) | `30` |
 | `TZ` | Timezone | `""` |
 
 `POSTGRES_DSN` must be set or the API server will not start:

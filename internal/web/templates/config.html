@@ -46,6 +46,17 @@
                     <td><input name="frequencydays" type="number" min="1" class="form-control" value="{{ .Config.FrequencyDays }}"></td>
                 </tr>
                 <tr>
+                    <td>Main page history<button type="button" class="btn tip-button" mytitle="How many days of workouts are available on the main page for review.">
+                        <i class="bi bi-question-circle"></i>
+                    </button></td>
+                    <td><select name="displaydays" class="form-select">
+                        <option value="7"{{ if eq .Config.DisplayDays 7 }} selected{{ end }}>Weekly (7 days)</option>
+                        <option value="30"{{ if eq .Config.DisplayDays 30 }} selected{{ end }}>Monthly (30 days)</option>
+                        <option value="90"{{ if eq .Config.DisplayDays 90 }} selected{{ end }}>Quarterly (90 days)</option>
+                        <option value="365"{{ if eq .Config.DisplayDays 365 }} selected{{ end }}>Annually (365 days)</option>
+                    </select></td>
+                </tr>
+                <tr>
                     <td><button type="submit" class="btn btn-primary">Save</button></td>
                     <td></td>
                 </tr>
