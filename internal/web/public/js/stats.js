@@ -22,6 +22,64 @@ function filterByPeriod(sets, period) {
     return sets.filter(s => { const d = new Date(s.Date); return d >= start && d <= end; });
 }
 
+// ─── Global period selector ───────────────────────────────────────────────────
+
+function setGlobalPeriod(period) {
+    currentPeriod = period;
+
+    // Update button active states
+    document.querySelectorAll('#global-period-btns .btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.period === period);
+    });
+
+    // Update period range label
+    const { start, end } = getPeriodDates(period);
+    const rangeEl = document.getElementById('period-range');
+    if (rangeEl) rangeEl.textContent = `${formatDate(start)} \u2013 ${formatDate(end)}`;
+
+    // Always refresh Overview
+    const sets = filterByPeriod(window.currentSets, period);
+    updateSummaryDisplay(sets);
+    updateExerciseDistribution(sets, window.exercises);
+
+    // Refresh Activity if visible
+    const actTab = document.getElementById('tab-activity');
+    if (actTab && actTab.classList.contains('show')) {
+        makeColorChart(getHeatForPeriod(window._colorHeatMap, period));
+    }
+
+    // Refresh Exercises if visible
+    const exTab = document.getElementById('tab-exercises');
+    if (exTab && exTab.classList.contains('show')) {
+        sOffset = 0;
+        setStatsPage(window.currentSets, window._heatColor, 0, window._pageStep || 10);
+    }
+
+    // Refresh Body Weight if visible
+    const wtTab = document.getElementById('tab-weight');
+    if (wtTab && wtTab.classList.contains('show')) {
+        generateWeightChart(filterWeightByPeriod(window._allWeight, period), window._heatColor, 0, 'stats-body-weight');
+    }
+}
+
+// ─── Period helpers for non-set data ─────────────────────────────────────────
+
+function getHeatForPeriod(heat, period) {
+    if (period === 'annual') return heat;
+    const { start, end } = getPeriodDates(period);
+    return heat.map(cell => {
+        const d = new Date(cell.D);
+        if (d >= start && d <= end) return cell;
+        return Object.assign({}, cell, { Colors: [], Color: '', V: 0, WorkoutNames: [], WorkoutWeights: [], WorkoutReps: [] });
+    });
+}
+
+function filterWeightByPeriod(weight, period) {
+    if (!weight) return [];
+    const { start, end } = getPeriodDates(period);
+    return weight.filter(w => { const d = new Date(w.Date); return d >= start && d <= end; });
+}
+
 // ─── Summary stats ────────────────────────────────────────────────────────────
 
 function calculateSummaryStats(sets) {
@@ -46,22 +104,6 @@ function updateSummaryDisplay(sets) {
     document.getElementById('active-days').textContent  = stats.activeDays;
     document.getElementById('most-common').textContent  = stats.mostCommon;
     document.getElementById('least-common').textContent = stats.leastCommon;
-}
-
-function toggleSummaryPeriod(period) {
-    currentPeriod = period;
-
-    document.querySelectorAll('#period-btns .btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.period === period);
-    });
-
-    const { start, end } = getPeriodDates(period);
-    const rangeEl = document.getElementById('period-range');
-    if (rangeEl) rangeEl.textContent = `${formatDate(start)} – ${formatDate(end)}`;
-
-    const periodSets = filterByPeriod(window.currentSets, period);
-    updateSummaryDisplay(periodSets);
-    updateExerciseDistribution(periodSets, window.exercises);
 }
 
 // ─── Exercise distribution pie ────────────────────────────────────────────────
@@ -112,10 +154,6 @@ function setStatsPage(sets, hcolor, off, step) {
     window.currentSets = sets;
 
     const periodSets = filterByPeriod(sets, currentPeriod);
-
-    const { start, end } = getPeriodDates(currentPeriod);
-    const rangeEl = document.getElementById('period-range');
-    if (rangeEl) rangeEl.textContent = `${formatDate(start)} – ${formatDate(end)}`;
 
     const ex = document.getElementById('ex-value');
     if (!ex) return;

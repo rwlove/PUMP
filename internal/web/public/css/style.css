@@ -126,6 +126,18 @@ input[type="date"] {
   margin: 0;
 }
 
+/* ─── Stat card labels (readable in all themes) ─────────────────────────── */
+
+.stat-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--bs-body-color);
+  opacity: 0.6;
+  margin-bottom: 0.25rem;
+}
+
 /* ─── Config page tooltip ────────────────────────────────────────────────── */
 
 .tip-button {

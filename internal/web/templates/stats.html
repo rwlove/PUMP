@@ -10,7 +10,7 @@
 
     <!-- ── Stats Tab Bar ─────────────────────────────────────────────────── -->
     <div class="stats-tabs-bar">
-      <div class="container-xl">
+      <div class="container-xl d-flex align-items-center justify-content-between gap-2 flex-wrap">
         <ul class="nav page-tabs" id="statsTabs" role="tablist">
           <li class="nav-item" role="presentation">
             <button class="page-tab-btn active" data-bs-toggle="tab" data-bs-target="#tab-overview" type="button" role="tab">
@@ -33,12 +33,20 @@
             </button>
           </li>
         </ul>
+        <div class="btn-group btn-group-sm py-1 pe-1" id="global-period-btns" role="group" aria-label="Time period">
+          <button type="button" class="btn btn-sm btn-outline-secondary active"
+            data-period="weekly" onclick="setGlobalPeriod('weekly')">Week</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary"
+            data-period="monthly" onclick="setGlobalPeriod('monthly')">Month</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary"
+            data-period="annual" onclick="setGlobalPeriod('annual')">Year</button>
+        </div>
       </div>
     </div>
 
     <div class="tab-content">
 
-      <!-- ── Overview ────────────────────────��─────────────────────────────── -->
+      <!-- ── Overview ──────────────────────────────────────────────────────── -->
       <div class="tab-pane fade show active" id="tab-overview" role="tabpanel">
         <div class="container-xl py-4">
           <div class="row g-4">
@@ -47,39 +55,31 @@
               <div class="panel">
                 <div class="panel-header">
                   <span class="panel-title">Summary</span>
-                  <div class="btn-group btn-group-sm" id="period-btns" role="group">
-                    <button type="button" class="btn btn-sm btn-outline-secondary active"
-                      data-period="weekly" onclick="toggleSummaryPeriod('weekly')">Week</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary"
-                      data-period="monthly" onclick="toggleSummaryPeriod('monthly')">Month</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary"
-                      data-period="annual" onclick="toggleSummaryPeriod('annual')">Year</button>
-                  </div>
+                  <small id="period-range" class="text-body-secondary" style="font-size:0.75em;"></small>
                 </div>
                 <div class="panel-body">
-                  <small id="period-range" class="text-muted d-block mb-3" style="font-size:0.75em;"></small>
                   <div class="row g-2">
                     <div class="col-6">
                       <div class="p-3 rounded-3 bg-body-secondary text-center">
-                        <div class="text-secondary small text-uppercase mb-1" style="font-size:0.72rem;letter-spacing:.05em;">Total Sets</div>
+                        <div class="stat-label">Total Sets</div>
                         <div id="total-sets" class="fw-bold fs-4">-</div>
                       </div>
                     </div>
                     <div class="col-6">
                       <div class="p-3 rounded-3 bg-body-secondary text-center">
-                        <div class="text-secondary small text-uppercase mb-1" style="font-size:0.72rem;letter-spacing:.05em;">Active Days</div>
+                        <div class="stat-label">Active Days</div>
                         <div id="active-days" class="fw-bold fs-4">-</div>
                       </div>
                     </div>
                     <div class="col-6">
                       <div class="p-3 rounded-3 bg-body-secondary text-center">
-                        <div class="text-secondary small text-uppercase mb-1" style="font-size:0.72rem;letter-spacing:.05em;">Most Common</div>
+                        <div class="stat-label">Most Common</div>
                         <div id="most-common" class="fw-bold" style="font-size:0.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">-</div>
                       </div>
                     </div>
                     <div class="col-6">
                       <div class="p-3 rounded-3 bg-body-secondary text-center">
-                        <div class="text-secondary small text-uppercase mb-1" style="font-size:0.72rem;letter-spacing:.05em;">Least Common</div>
+                        <div class="stat-label">Least Common</div>
                         <div id="least-common" class="fw-bold" style="font-size:0.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">-</div>
                       </div>
                     </div>
@@ -148,7 +148,7 @@
               <div class="panel">
                 <div class="panel-header"><span class="panel-title">Exercise History</span></div>
                 <div class="panel-body">
-                  <form onchange='sOffset=0; setStatsPage({{ .ExData.Sets }}, {{ .Config.HeatColor }}, 0, {{ .Config.PageStep }});'>
+                  <form onchange='sOffset=0; setStatsPage({{ .ExData.Sets }}, {{ .Config.HeatColor }}, 0, window._pageStep);'>
                     <select class="form-select form-select-sm mb-3" id="ex-value">
                       {{ range $gr := .GroupMap }}
                       <option value="{{ $gr }}">{{ $gr }}</option>
@@ -167,8 +167,8 @@
                     <tbody id="stats-table"></tbody>
                   </table>
                   <div class="d-flex gap-2 justify-content-center">
-                    <button onclick='setStatsPage({{ .ExData.Sets }}, {{ .Config.HeatColor }}, 1, {{ .Config.PageStep }})' class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left-square"></i></button>
-                    <button onclick='setStatsPage({{ .ExData.Sets }}, {{ .Config.HeatColor }}, -1, {{ .Config.PageStep }})' class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-right-square"></i></button>
+                    <button onclick='setStatsPage({{ .ExData.Sets }}, {{ .Config.HeatColor }}, 1, window._pageStep)' class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left-square"></i></button>
+                    <button onclick='setStatsPage({{ .ExData.Sets }}, {{ .Config.HeatColor }}, -1, window._pageStep)' class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-right-square"></i></button>
                   </div>
                 </div>
               </div>
@@ -206,30 +206,25 @@
     </div>
 
 <script>
-    window.currentSets = {{ .ExData.Sets }};
+    window.currentSets  = {{ .ExData.Sets }};
     window._colorHeatMap = {{ .ColorHeatMap }};
-    window._allWeight = {{ .ExData.Weight }};
-    window._heatColor = {{ .Config.HeatColor }};
+    window._allWeight   = {{ .ExData.Weight }};
+    window._heatColor   = {{ .Config.HeatColor }};
+    window._pageStep    = {{ .Config.PageStep }};
 
-    // Overview (active by default)
-    (function() {
-        var { start, end } = getPeriodDates('weekly');
-        var rangeEl = document.getElementById('period-range');
-        if (rangeEl) rangeEl.textContent = formatDate(start) + ' – ' + formatDate(end);
-    })();
-    var _initSets = filterByPeriod(window.currentSets, 'weekly');
-    updateSummaryDisplay(_initSets);
-    updateExerciseDistribution(_initSets, window.exercises);
+    // Init all displays with default period
+    setGlobalPeriod('weekly');
 
-    // Lazy-init hidden tabs on first show
+    // Lazy-init hidden tabs on first show, respecting current period
     document.getElementById('tab-activity-btn').addEventListener('shown.bs.tab', function() {
-        makeColorChart(window._colorHeatMap);
+        makeColorChart(getHeatForPeriod(window._colorHeatMap, currentPeriod));
     });
     document.getElementById('tab-exercises-btn').addEventListener('shown.bs.tab', function() {
-        setStatsPage(window.currentSets, window._heatColor, 0, {{ .Config.PageStep }});
+        sOffset = 0;
+        setStatsPage(window.currentSets, window._heatColor, 0, window._pageStep);
     });
     document.getElementById('tab-weight-btn').addEventListener('shown.bs.tab', function() {
-        generateWeightChart(window._allWeight, window._heatColor, 0, 'stats-body-weight');
+        generateWeightChart(filterWeightByPeriod(window._allWeight, currentPeriod), window._heatColor, 0, 'stats-body-weight');
     });
 </script>
 
