@@ -8,6 +8,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -45,12 +46,12 @@ object NetworkModule {
             val originalRequest = chain.request()
             val originalUrl = originalRequest.url
 
-            val baseUrl = okhttp3.HttpUrl.parse(currentUrl.trimEnd('/'))
+            val baseUrl = currentUrl.trimEnd('/').toHttpUrlOrNull()
             if (baseUrl != null) {
                 val newUrl = originalUrl.newBuilder()
-                    .scheme(baseUrl.scheme())
-                    .host(baseUrl.host())
-                    .port(baseUrl.port())
+                    .scheme(baseUrl.scheme)
+                    .host(baseUrl.host)
+                    .port(baseUrl.port)
                     .build()
                 val newRequest = originalRequest.newBuilder().url(newUrl).build()
                 chain.proceed(newRequest)
