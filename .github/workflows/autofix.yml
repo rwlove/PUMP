@@ -24,7 +24,7 @@ jobs:
       contents: write   # needed to push the fix commit
 
     env:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       FAILED_RUN_ID: ${{ github.event.workflow_run.id }}
       HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
@@ -32,10 +32,10 @@ jobs:
 
     steps:
       # ── 1. Bail out early if no API key is configured ─────────────────────
-      - name: Check ANTHROPIC_API_KEY is present
+      - name: Check CLAUDE_CODE_OAUTH_TOKEN is present
         run: |
-          if [ -z "$ANTHROPIC_API_KEY" ]; then
-            echo "ANTHROPIC_API_KEY secret is not set — skipping auto-fix."
+          if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            echo "CLAUDE_CODE_OAUTH_TOKEN secret is not set — skipping auto-fix."
             exit 0
           fi
 

@@ -129,11 +129,11 @@ def build_user_message(log: str, file_map: dict[str, str]) -> str:
 
 
 def call_claude(user_msg: str) -> dict:
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY not set")
+    oauth_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
+    if not oauth_token:
+        raise RuntimeError("CLAUDE_CODE_OAUTH_TOKEN not set")
 
-    client = anthropic.Anthropic(api_key=api_key)
+    client = anthropic.Anthropic(auth_token=oauth_token)
     response = client.messages.create(
         model="claude-opus-4-5",
         max_tokens=8192,
