@@ -66,6 +66,22 @@ def extract_candidate_paths(log: str) -> list[str]:
     return list(seen.keys())
 
 
+def failing_workflow_file() -> str | None:
+    """
+    Return the repo-relative path of the workflow file that failed,
+    passed in via the FAILED_WORKFLOW_PATH env var set by the workflow step.
+    E.g. ".github/workflows/android-publish.yml"
+    """
+    path = os.environ.get("FAILED_WORKFLOW_PATH", "").strip()
+    if not path:
+        return None
+    abs_p = os.path.abspath(path)
+    repo_root = os.path.abspath(".")
+    if os.path.isfile(abs_p) and abs_p.startswith(repo_root):
+        return path
+    return None
+
+
 def sibling_files(error_paths: list[str], max_extra: int = 8) -> list[str]:
     """
     For each directory that contains an error file, collect all source
@@ -156,11 +172,27 @@ Set can_fix=false only when you genuinely cannot determine a correct fix.
 """
 
 
-def build_user_message(log: str, file_map: dict[str, str], sibling_map: dict[str, str]) -> str:
+def build_user_message(
+    log: str,
+    workflow_file: str | None,
+    workflow_content: str | None,
+    file_map: dict[str, str],
+    sibling_map: dict[str, str],
+) -> str:
     parts = [f"## CI failure log\n\n```\n{log}\n```\n"]
 
+    # Always show the failing workflow YAML — many errors (missing SDK tools,
+    # wrong action versions, bad env vars) require editing the workflow itself.
+    if workflow_file and workflow_content:
+        parts.append(
+            f"## Failing workflow file: `{workflow_file}`\n"
+            "*(This is the workflow that produced the errors above. "
+            "Edit it if the fix belongs here rather than in source code.)*\n"
+        )
+        parts.append(f"```yaml\n{workflow_content}\n```\n")
+
     if file_map:
-        parts.append("## Files directly referenced in errors\n")
+        parts.append("## Source files directly referenced in errors\n")
         for path, content in file_map.items():
             ext = path.rsplit(".", 1)[-1] if "." in path else ""
             parts.append(f"### `{path}`\n```{ext}\n{content}\n```\n")
@@ -174,7 +206,7 @@ def build_user_message(log: str, file_map: dict[str, str], sibling_map: dict[str
             ext = path.rsplit(".", 1)[-1] if "." in path else ""
             parts.append(f"### `{path}`\n```{ext}\n{content}\n```\n")
 
-    if not file_map and not sibling_map:
+    if not workflow_content and not file_map and not sibling_map:
         parts.append("*(No source files could be automatically identified.)*\n")
 
     parts.append(
@@ -253,8 +285,17 @@ def main() -> None:
     # Use the full log up to MAX_LOG_CHARS; prefer the tail (most relevant errors)
     log = raw_log if len(raw_log) <= MAX_LOG_CHARS else raw_log[-MAX_LOG_CHARS:]
 
-    # 2. Find source files directly mentioned in errors
+    # 2. Always include the failing workflow YAML — errors from CI steps like
+    #    missing SDK tools or bad action inputs require editing the workflow,
+    #    not source code, and won't reference any source file path in the log.
+    wf_rel = failing_workflow_file()
+    wf_content = read_file_truncated(wf_rel) if wf_rel else None
+    print(f"Failing workflow file: {wf_rel or '(not resolved)'}")
+
+    # 3. Find source files directly mentioned in errors
     error_paths = extract_candidate_paths(raw_log)
+    # Exclude the workflow file itself — it's already included above
+    error_paths = [p for p in error_paths if p != wf_rel]
     print(f"Error files: {error_paths}")
 
     file_map: dict[str, str] = {}
@@ -263,7 +304,7 @@ def main() -> None:
         if content is not None:
             file_map[rel] = content
 
-    # 3. Collect sibling files from the same directories for broader context
+    # 4. Collect sibling files from the same directories for broader context
     remaining_slots = MAX_FILES - len(file_map)
     siblings = sibling_files(error_paths, max_extra=remaining_slots) if remaining_slots > 0 else []
     sibling_map: dict[str, str] = {}
@@ -274,10 +315,10 @@ def main() -> None:
 
     print(f"Sibling files for context: {list(sibling_map.keys())}")
 
-    # 4. Ask Claude
-    user_msg = build_user_message(log, file_map, sibling_map)
+    # 5. Ask Claude
+    user_msg = build_user_message(log, wf_rel, wf_content, file_map, sibling_map)
     print(
-        f"Calling Claude (log {len(log)} chars, "
+        f"Calling Claude (log {len(log)} chars, workflow={'yes' if wf_content else 'no'}, "
         f"{len(file_map)} error files, {len(sibling_map)} sibling files)…"
     )
 
@@ -298,14 +339,14 @@ def main() -> None:
         gh_output("fixed", "false")
         return
 
-    # 5. Apply fixes
+    # 6. Apply fixes
     changed = apply_fixes(result["files"])
     if not changed:
         print("No files were actually written.")
         gh_output("fixed", "false")
         return
 
-    # 6. Write commit message (file avoids multiline GITHUB_OUTPUT issues)
+    # 7. Write commit message (file avoids multiline GITHUB_OUTPUT issues)
     commit_msg = result.get("commit_message", "fix: auto-fix CI failure").strip()
     commit_msg += "\n\nCo-Authored-By: Claude Opus 4 <noreply@anthropic.com>"
     with open(COMMIT_FILE, "w") as f:
