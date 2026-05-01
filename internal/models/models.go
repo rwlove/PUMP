@@ -2,8 +2,6 @@ package models
 
 import (
 	"github.com/shopspring/decimal"
-
-	"github.com/rwlove/PUMP/internal/auth"
 )
 
 // Conf - web gui config
@@ -19,7 +17,6 @@ type Conf struct {
 	PageStep      int
 	FrequencyDays int // days to look back when sorting exercises by usage frequency
 	DisplayDays   int // days of history shown on main page (7/30/90/365)
-	Auth          bool
 }
 
 // Exercise - one exercise
@@ -82,5 +79,4 @@ type GuiData struct {
 	OneEx        Exercise
 	ColorHeatMap []HeatMapData
 	Version      string
-	Auth         auth.Conf
 }

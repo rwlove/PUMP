@@ -14,7 +14,6 @@
 | ![Stats Body Weight](assets/screenshot-stats-weight.png) | ![Config](assets/screenshot-config.png) | |
 
 - [Architecture](#architecture)
-- [Quick start](#quick-start)
 - [Configuration](#configuration)
 
 ## Architecture
@@ -34,30 +33,6 @@ PUMP runs as two independent services:
 |---|---|---|
 | API backend | `ghcr.io/rwlove/pump-api` | Owns the PostgreSQL database, exposes a JSON REST API |
 | Web frontend | `ghcr.io/rwlove/pump-frontend` | Serves the browser UI, talks to the API over HTTP |
-
-## Quick start
-
-```sh
-docker compose up
-```
-
-Or run each service manually:
-
-```sh
-# Start the API backend (stores data in /data/PUMP)
-docker run --name exdiary-api \
-  -v ~/.dockerdata/PUMP:/data/PUMP \
-  -p 8851:8851 \
-  ghcr.io/rwlove/pump-api
-
-# Start the web frontend
-docker run --name exdiary-frontend \
-  -e API_URL=http://<YOUR_HOST_IP>:8851 \
-  -p 8080:8080 \
-  ghcr.io/rwlove/pump-frontend
-```
-
-Then open **http://localhost:8080** in your browser.
 
 ## Configuration
 

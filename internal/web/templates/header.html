@@ -36,9 +36,8 @@
 <body>
     <nav class="navbar navbar-expand-sm bg-body-tertiary border-bottom">
         <div class="container-xl">
-            <a class="navbar-brand d-flex flex-column align-items-center" href="/">
-                <img src="/fs/public/logo.svg" style="height:1.8em; margin-bottom:-0.15em;" alt="logo">
-                <span style="font-size:1.2em; letter-spacing:0.15em; line-height:1;"><span style="position:relative;top:-3px;">P</span>UM<span style="position:relative;top:-3px;">P</span></span>
+            <a class="navbar-brand" href="/">
+                <img src="/fs/public/logo.svg" style="height:3em;" alt="PUMP">
             </a>
             <button class="navbar-toggler border-0" type="button"
                 data-bs-toggle="collapse" data-bs-target="#mainNav"
@@ -62,13 +61,6 @@
                             <i class="bi bi-gear"></i><span>Settings</span>
                         </a>
                     </li>
-                    {{ if .Config.Auth }}
-                    <li class="nav-item">
-                        <a class="nav-link d-flex align-items-center gap-1" href="/login/?logout=yes">
-                            <i class="bi bi-box-arrow-right"></i><span>Log Out</span>
-                        </a>
-                    </li>
-                    {{ end }}
                 </ul>
             </div>
         </div>

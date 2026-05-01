@@ -9,7 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/rwlove/PUMP/internal/auth"
 	"github.com/rwlove/PUMP/internal/store"
 )
 
@@ -29,17 +28,11 @@ func GuiWithStore(s store.Store, ac *store.APIClient, port, nodePath string) {
 	appConfig.NodePath = nodePath
 	appConfig.Icon = icon
 
-	// Auth config is also sourced from the API so the frontend enforces the
-	// same auth settings as the backend.
-	authConf.Auth = cfg.Auth
-
 	apiClient = ac
 	startRouter(s, ac, "0.0.0.0:"+port)
 }
 
 // startRouter wires up the Gin router with the given store and starts serving.
-// authMW selects the right auth strategy: local sessions (monolith) or
-// pass-through (frontend, where the API already enforces auth via API key).
 func startRouter(s store.Store, ac *store.APIClient, address string) {
 	dataStore = s
 	apiClient = ac
@@ -64,21 +57,17 @@ func startRouter(s store.Store, ac *store.APIClient, address string) {
 	router.SetHTMLTemplate(templ)
 	router.StaticFS("/fs/", http.FS(pubFS))
 
-	router.GET("/login/", loginHandler)
-	router.POST("/login/", loginHandler)
+	router.GET("/", indexHandler)
+	router.GET("/config/", configHandler)
+	router.GET("/exercise/", exerciseHandler)
+	router.GET("/stats/", statsHandler)
+	router.GET("/weight/", weightHandler)
 
-	router.GET("/", auth.Auth(&authConf), indexHandler)
-	router.GET("/config/", auth.Auth(&authConf), configHandler)
-	router.GET("/exercise/", auth.Auth(&authConf), exerciseHandler)
-	router.GET("/stats/", auth.Auth(&authConf), statsHandler)
-	router.GET("/weight/", auth.Auth(&authConf), weightHandler)
-
-	router.POST("/config/", auth.Auth(&authConf), saveConfigHandler)
-	router.POST("/config/auth", auth.Auth(&authConf), saveConfigAuth)
-	router.POST("/exercise/", auth.Auth(&authConf), saveExerciseHandler)
-	router.POST("/exdel/", auth.Auth(&authConf), deleteExerciseHandler)
-	router.POST("/set/", auth.Auth(&authConf), setHandler)
-	router.POST("/weight/", auth.Auth(&authConf), addWeightHandler)
+	router.POST("/config/", saveConfigHandler)
+	router.POST("/exercise/", saveExerciseHandler)
+	router.POST("/exdel/", deleteExerciseHandler)
+	router.POST("/set/", setHandler)
+	router.POST("/weight/", addWeightHandler)
 	if err := router.Run(address); err != nil {
 		log.Fatalf("ERROR: router failed: %v", err)
 	}

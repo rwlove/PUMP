@@ -7,7 +7,6 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/rwlove/PUMP/internal/auth"
 	"github.com/rwlove/PUMP/internal/conf"
 	"github.com/rwlove/PUMP/internal/db"
 	"github.com/rwlove/PUMP/internal/models"
@@ -16,14 +15,13 @@ import (
 
 var (
 	appConfig models.Conf
-	authConf  auth.Conf
 	dataStore store.Store
 )
 
 // Start reads config from environment variables and begins serving the JSON API.
 // POSTGRES_DSN is required.
 //
-// All other settings (port, API key, theme, auth, …) are read from
+// All other settings (port, API key, theme, …) are read from
 // environment variables:
 //
 //	PORT        listen port              (default: 8851)
@@ -34,12 +32,8 @@ var (
 //	HEATCOLOR    heatmap colour           (default: #2780e3)
 //	PAGESTEP     rows per page            (default: 10)
 //	DISPLAY_DAYS main-page history days   (default: 30)
-//	AUTH        enable session auth      (default: false)
-//	AUTH_USER   username                 (default: "")
-//	AUTH_PASSWORD bcrypt password        (default: "")
-//	AUTH_EXPIRE session expiry           (default: 7d)
 func Start() {
-	appConfig, authConf = conf.GetFromEnv()
+	appConfig = conf.GetFromEnv()
 
 	apiKey := os.Getenv("API_KEY")
 	postgresDSN := os.Getenv("POSTGRES_DSN")
@@ -83,7 +77,6 @@ func Start() {
 	// Config
 	r.GET("/api/config", getConfig)
 	r.PUT("/api/config", putConfig)
-	r.PUT("/api/config/auth", putConfigAuth)
 
 	address := appConfig.Host + ":" + appConfig.Port
 	log.Println("=================================== ")
@@ -268,34 +261,6 @@ func putConfig(c *gin.Context) {
 	appConfig.HeatColor = cfg.HeatColor
 	appConfig.PageStep = cfg.PageStep
 	appConfig.FrequencyDays = cfg.FrequencyDays
-	conf.Write(appConfig, authConf)
-	c.Status(http.StatusOK)
-}
-
-func putConfigAuth(c *gin.Context) {
-	var body struct {
-		User     string `json:"user"`
-		Password string `json:"password"`
-		Expire   string `json:"expire"`
-		Auth     bool   `json:"auth"`
-	}
-	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	authConf.User = body.User
-	authConf.ExpStr = body.Expire
-	authConf.Auth = body.Auth
-	appConfig.Auth = body.Auth
-	if body.Password != "" {
-		authConf.Password = auth.HashPassword(body.Password)
-	}
-	authConf.Expire = auth.ToTime(authConf.ExpStr)
-	if authConf.Auth && (authConf.User == "" || authConf.Password == "") {
-		log.Println("WARNING: Auth won't work with empty login or password.")
-		authConf.Auth = false
-		appConfig.Auth = false
-	}
-	conf.Write(appConfig, authConf)
+	conf.Write(appConfig)
 	c.Status(http.StatusOK)
 }

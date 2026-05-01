@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/rwlove/PUMP/internal/auth"
 	"github.com/rwlove/PUMP/internal/conf"
 	"github.com/rwlove/PUMP/internal/models"
 )
@@ -24,7 +23,6 @@ func configHandler(c *gin.Context) {
 	var guiData models.GuiData
 
 	guiData.Config = appConfig
-	guiData.Auth = authConf
 	guiData.Themes = themes
 	guiData.Version = Version
 
@@ -49,44 +47,9 @@ func saveConfigHandler(c *gin.Context) {
 		}
 	} else {
 		// Monolith: write config file directly
-		conf.Write(appConfig, authConf)
+		conf.Write(appConfig)
 		log.Println("INFO: writing new config to", appConfig.ConfPath)
 	}
 
 	c.Redirect(http.StatusFound, "/config")
 }
-
-func saveConfigAuth(c *gin.Context) {
-	authConf.User = c.PostForm("user")
-	authConf.ExpStr = c.PostForm("expire")
-	authEnabled := c.PostForm("auth") == "on"
-	pw := c.PostForm("password")
-
-	authConf.Auth = authEnabled
-	appConfig.Auth = authEnabled
-
-	if pw != "" {
-		authConf.Password = auth.HashPassword(pw)
-	}
-
-	authConf.Expire = auth.ToTime(authConf.ExpStr)
-
-	if authConf.Auth && (authConf.User == "" || authConf.Password == "") {
-		log.Println("WARNING: Auth won't work with empty login or password.")
-		authConf.Auth = false
-		appConfig.Auth = false
-	}
-
-	if apiClient != nil {
-		if err := apiClient.SaveConfigAuth(authConf.User, pw, authConf.ExpStr, authConf.Auth); err != nil {
-			log.Println("ERROR saveConfigAuth SaveConfigAuth:", err)
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-	} else {
-		conf.Write(appConfig, authConf)
-	}
-
-	c.Redirect(http.StatusFound, "/config")
-}
-
