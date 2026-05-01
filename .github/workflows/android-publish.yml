@@ -43,8 +43,12 @@ jobs:
             | sort -V | tail -1)
           echo "Using build-tools: $BUILD_TOOLS"
 
-          # Decode keystore
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.jks
+          # Decode keystore — strip whitespace first so GNU base64 doesn't
+          # reject secrets that were encoded on macOS/Windows (which may
+          # contain line breaks or trailing spaces).
+          echo "${{ secrets.KEYSTORE_BASE64 }}" \
+            | tr -d '[:space:]' \
+            | base64 -d > /tmp/release.jks
 
           # Locate the unsigned APK produced by Gradle
           UNSIGNED=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
