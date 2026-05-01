@@ -69,23 +69,38 @@ jobs:
         id: autofix
         run: python .github/scripts/autofix.py
 
-      # ── 6. Commit and push the fix ────────────────────────────────────────
-      - name: Commit and push fix
+      # ── 6. Commit and push the fix, then re-trigger the build ───────────────
+      - name: Commit, push fix, and re-trigger build
         if: steps.autofix.outputs.fixed == 'true'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Stage everything the script touched
           git add -A
-
-          # Commit using the message Claude wrote
           git commit -F /tmp/fix_commit_msg.txt
+          FIX_SHA=$(git rev-parse HEAD)
 
-          # Push to the branch that failed
-          git push origin "HEAD:refs/heads/${HEAD_BRANCH}"
+          # Detect whether the failing run was triggered by a version tag
+          # (github.event.workflow_run.head_branch is the tag name for tag pushes,
+          # e.g. "v0.0.19", or the branch name for branch pushes).
+          if [[ "$HEAD_BRANCH" =~ ^v[0-9]+\.[0-9] ]]; then
+            TAG="$HEAD_BRANCH"
+            echo "Tag-triggered build detected (tag: $TAG). Pushing fix to main and re-tagging."
 
-          echo "Fix pushed to branch ${HEAD_BRANCH}."
+            # Push the fix commit to main so the history is clean
+            git push origin "HEAD:refs/heads/main"
+
+            # Move the tag to the fix commit — this re-triggers the build workflows
+            git push origin ":refs/tags/${TAG}"   # delete remote tag
+            git tag -f "$TAG" "$FIX_SHA"          # recreate locally on fix commit
+            git push origin "$TAG"                # push new tag → re-triggers workflows
+
+            echo "Re-tagged ${TAG} → ${FIX_SHA}. Build workflows will re-run."
+          else
+            # Branch-triggered: pushing the fix commit re-triggers the workflow directly
+            git push origin "HEAD:refs/heads/${HEAD_BRANCH}"
+            echo "Fix pushed to branch ${HEAD_BRANCH}. Workflow will re-run on new commit."
+          fi
 
       # ── 7. Report outcome ────────────────────────────────────────────────
       - name: Report — no fix found
