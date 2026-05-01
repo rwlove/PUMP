@@ -23,11 +23,11 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-LOG_FILE      = "/tmp/ci_errors.txt"
-COMMIT_FILE   = "/tmp/fix_commit_msg.txt"
-MAX_LOG_CHARS = 12_000   # keep prompt manageable
-MAX_FILES     = 12       # cap on source files sent to Claude
-MAX_FILE_LINES = 400     # lines per file
+LOG_FILE       = "/tmp/ci_errors.txt"
+COMMIT_FILE    = "/tmp/fix_commit_msg.txt"
+MAX_LOG_CHARS  = 16_000  # full log — Claude needs to see every error
+MAX_FILES      = 20      # direct error files + sibling context
+MAX_FILE_LINES = 500     # lines per file
 
 
 def gh_output(key: str, value: str) -> None:
@@ -45,7 +45,7 @@ def gh_output(key: str, value: str) -> None:
 def extract_candidate_paths(log: str) -> list[str]:
     """
     Pull relative file paths out of CI error lines.
-    Handles Kotlin, Go, YAML and generic patterns.
+    Handles Kotlin (e: file:///…), Go, YAML and generic patterns.
     """
     repo_root = os.path.abspath(".")
     runner_prefix_re = re.compile(
@@ -63,14 +63,47 @@ def extract_candidate_paths(log: str) -> list[str]:
             if os.path.isfile(abs_p) and rel not in seen:
                 seen[rel] = None
 
-    # Deduplicate while preserving order
     return list(seen.keys())
+
+
+def sibling_files(error_paths: list[str], max_extra: int = 8) -> list[str]:
+    """
+    For each directory that contains an error file, collect all source
+    files in the same directory. This lets Claude spot related issues
+    (e.g. other deprecated API usages in the same package) without us
+    having to know in advance which files are affected.
+    """
+    repo_root = os.path.abspath(".")
+    source_exts = {".kt", ".go", ".java", ".kts", ".gradle", ".py", ".yml", ".yaml", ".toml"}
+    seen_dirs: set[str] = set()
+    extras: dict[str, None] = {}
+
+    for rel in error_paths:
+        dir_rel = os.path.dirname(rel)
+        if dir_rel in seen_dirs:
+            continue
+        seen_dirs.add(dir_rel)
+
+        abs_dir = os.path.join(repo_root, dir_rel)
+        try:
+            for fname in sorted(os.listdir(abs_dir)):
+                _, ext = os.path.splitext(fname)
+                if ext not in source_exts:
+                    continue
+                candidate = os.path.join(dir_rel, fname) if dir_rel else fname
+                if candidate not in extras and candidate not in set(error_paths):
+                    extras[candidate] = None
+                    if len(extras) >= max_extra:
+                        return list(extras.keys())
+        except OSError:
+            pass
+
+    return list(extras.keys())
 
 
 def read_file_truncated(rel_path: str) -> str | None:
     abs_p = os.path.abspath(rel_path)
     repo_root = os.path.abspath(".")
-    # Security: reject paths outside repo
     if not abs_p.startswith(repo_root + os.sep) and abs_p != repo_root:
         return None
     try:
@@ -89,41 +122,64 @@ def read_file_truncated(rel_path: str) -> str | None:
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT = """\
 You are an expert software engineer embedded in a CI/CD pipeline.
-Your job: read the error logs from a failed GitHub Actions build and
-return a JSON object that fixes the problem.
+A GitHub Actions build has failed. Your job is to fix it — completely,
+in a single pass — so that re-running the build succeeds.
 
-Rules:
-- Only fix what is clearly broken. Do not refactor unrelated code.
-- Return complete file contents (not diffs).
-- If you are not confident, set can_fix=false.
-- Your entire response must be a single valid JSON object — no markdown fences,
-  no explanation outside the JSON.
+## Strategy
 
-JSON schema:
+1. **Read every error in the log.** Do not stop at the first one.
+2. **Look for patterns.** If one file uses a deprecated API, scan all
+   provided source files for the same pattern and fix every occurrence.
+3. **Predict follow-on failures.** After fixing the reported errors,
+   reason about whether your fixes could expose new compile errors
+   (e.g. wrong import after an API change, missing override, type
+   mismatch). Fix those pre-emptively too.
+4. **Stay surgical.** Only change what is broken or provably about to
+   break. Do not refactor, reformat, or improve unrelated code.
+
+## Output
+
+Return a single valid JSON object — no markdown fences, no prose outside
+the JSON.
+
+Schema:
 {
   "can_fix": true | false,
-  "explanation": "one-sentence diagnosis",
-  "commit_message": "fix: concise imperative description (≤72 chars)",
+  "explanation": "concise summary of all issues found and fixes applied",
+  "commit_message": "fix: imperative description covering all changes (≤72 chars)",
   "files": [
-    { "path": "repo-relative/path/to/file.ext", "content": "full file text" }
+    { "path": "repo-relative/path/to/file.ext", "content": "complete file text" }
   ]
 }
+
+Set can_fix=false only when you genuinely cannot determine a correct fix.
 """
 
 
-def build_user_message(log: str, file_map: dict[str, str]) -> str:
+def build_user_message(log: str, file_map: dict[str, str], sibling_map: dict[str, str]) -> str:
     parts = [f"## CI failure log\n\n```\n{log}\n```\n"]
 
     if file_map:
-        parts.append("## Relevant source files\n")
+        parts.append("## Files directly referenced in errors\n")
         for path, content in file_map.items():
             ext = path.rsplit(".", 1)[-1] if "." in path else ""
             parts.append(f"### `{path}`\n```{ext}\n{content}\n```\n")
-    else:
+
+    if sibling_map:
+        parts.append(
+            "## Sibling files in the same directories\n"
+            "*(Scan these for the same class of error even if not mentioned in the log.)*\n"
+        )
+        for path, content in sibling_map.items():
+            ext = path.rsplit(".", 1)[-1] if "." in path else ""
+            parts.append(f"### `{path}`\n```{ext}\n{content}\n```\n")
+
+    if not file_map and not sibling_map:
         parts.append("*(No source files could be automatically identified.)*\n")
 
     parts.append(
-        "Diagnose the failure and return the JSON fix object described in the system prompt."
+        "Fix **all** errors visible in the log and any related issues you can "
+        "predict in the provided source files. Return the JSON fix object."
     )
     return "\n".join(parts)
 
@@ -136,7 +192,7 @@ def call_claude(user_msg: str) -> dict:
     client = anthropic.Anthropic(auth_token=oauth_token)
     response = client.messages.create(
         model="claude-opus-4-5",
-        max_tokens=8192,
+        max_tokens=16384,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_msg}],
     )
@@ -194,21 +250,36 @@ def main() -> None:
         gh_output("fixed", "false")
         return
 
-    log = raw_log[-MAX_LOG_CHARS:]  # keep the tail (most relevant)
+    # Use the full log up to MAX_LOG_CHARS; prefer the tail (most relevant errors)
+    log = raw_log if len(raw_log) <= MAX_LOG_CHARS else raw_log[-MAX_LOG_CHARS:]
 
-    # 2. Find source files referenced in the logs
-    candidates = extract_candidate_paths(raw_log)
-    print(f"Candidate files: {candidates}")
+    # 2. Find source files directly mentioned in errors
+    error_paths = extract_candidate_paths(raw_log)
+    print(f"Error files: {error_paths}")
 
     file_map: dict[str, str] = {}
-    for rel in candidates[:MAX_FILES]:
+    for rel in error_paths[:MAX_FILES]:
         content = read_file_truncated(rel)
         if content is not None:
             file_map[rel] = content
 
-    # 3. Ask Claude
-    user_msg = build_user_message(log, file_map)
-    print(f"Calling Claude (log {len(log)} chars, {len(file_map)} files)…")
+    # 3. Collect sibling files from the same directories for broader context
+    remaining_slots = MAX_FILES - len(file_map)
+    siblings = sibling_files(error_paths, max_extra=remaining_slots) if remaining_slots > 0 else []
+    sibling_map: dict[str, str] = {}
+    for rel in siblings:
+        content = read_file_truncated(rel)
+        if content is not None:
+            sibling_map[rel] = content
+
+    print(f"Sibling files for context: {list(sibling_map.keys())}")
+
+    # 4. Ask Claude
+    user_msg = build_user_message(log, file_map, sibling_map)
+    print(
+        f"Calling Claude (log {len(log)} chars, "
+        f"{len(file_map)} error files, {len(sibling_map)} sibling files)…"
+    )
 
     try:
         result = call_claude(user_msg)
@@ -227,14 +298,14 @@ def main() -> None:
         gh_output("fixed", "false")
         return
 
-    # 4. Apply fixes
+    # 5. Apply fixes
     changed = apply_fixes(result["files"])
     if not changed:
         print("No files were actually written.")
         gh_output("fixed", "false")
         return
 
-    # 5. Write commit message to a file (avoids multiline GITHUB_OUTPUT issues)
+    # 6. Write commit message (file avoids multiline GITHUB_OUTPUT issues)
     commit_msg = result.get("commit_message", "fix: auto-fix CI failure").strip()
     commit_msg += "\n\nCo-Authored-By: Claude Opus 4 <noreply@anthropic.com>"
     with open(COMMIT_FILE, "w") as f:
