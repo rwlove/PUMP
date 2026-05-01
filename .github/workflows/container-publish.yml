@@ -6,28 +6,56 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  IMAGE: ghcr.io/${{ github.repository_owner }}/pump
 
 jobs:
   build:
-    name: Build and push ${{ matrix.image }}
+    name: Build and push pump
     runs-on: ubuntu-latest
 
     permissions:
       contents: read
       packages: write
 
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - image: pump
-            dockerfile: Dockerfile.pump
-            description: "PUMP server (web UI + JSON API)"
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # required for git tag comparison
 
+      # ── Decide whether a rebuild is needed ───────────────────────────────
+      - name: Check if container-relevant files changed
+        id: check
+        run: |
+          CURRENT_TAG="${{ github.ref_name }}"
+
+          # Find the most recent tag before this one
+          PREV_TAG=$(git tag --sort=-version:refname \
+            | grep -v "^${CURRENT_TAG}$" \
+            | head -1)
+
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous tag — full build required."
+            echo "needs_rebuild=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Comparing ${PREV_TAG} → ${CURRENT_TAG}"
+
+          CHANGED=$(git diff --name-only "${PREV_TAG}..${CURRENT_TAG}" -- \
+            cmd/ internal/ go.mod go.sum Dockerfile.pump)
+
+          if [ -n "$CHANGED" ]; then
+            echo "Container-relevant changes detected:"
+            echo "$CHANGED"
+            echo "needs_rebuild=true"  >> "$GITHUB_OUTPUT"
+          else
+            echo "No container-relevant changes. Will retag ${PREV_TAG} image."
+            echo "needs_rebuild=false" >> "$GITHUB_OUTPUT"
+            echo "prev_tag=${PREV_TAG}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Common setup (needed for both build and retag paths) ─────────────
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -45,23 +73,36 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}
+          images: ${{ env.IMAGE }}
           labels: |
-            org.opencontainers.image.description=${{ matrix.description }}
+            org.opencontainers.image.description=PUMP server (web UI + JSON API)
           tags: |
             type=ref,event=tag
             type=raw,value=latest
 
+      # ── Path A: rebuild ───────────────────────────────────────────────────
       - name: Build and push
+        if: steps.check.outputs.needs_rebuild == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
+          file: Dockerfile.pump
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ github.ref_name }}
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          cache-from: type=gha,scope=pump
+          cache-to: type=gha,mode=max,scope=pump
+
+      # ── Path B: retag existing image (no rebuild, no layer transfer) ──────
+      - name: Retag previous image
+        if: steps.check.outputs.needs_rebuild == 'false'
+        run: |
+          PREV="${{ steps.check.outputs.prev_tag }}"
+          echo "Retagging ${IMAGE}:${PREV} → ${{ github.ref_name }} + latest"
+          docker buildx imagetools create \
+            --tag "${{ env.IMAGE }}:${{ github.ref_name }}" \
+            --tag "${{ env.IMAGE }}:latest" \
+            "${{ env.IMAGE }}:${PREV}"
