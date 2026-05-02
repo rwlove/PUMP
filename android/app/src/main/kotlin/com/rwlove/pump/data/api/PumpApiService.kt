@@ -10,6 +10,9 @@ import retrofit2.http.PUT
 import retrofit2.http.Path
 
 interface PumpApiService {
+    @GET("api/ping")
+    suspend fun ping(): Response<Unit>
+
     @GET("api/exercises")
     suspend fun getExercises(): List<ExerciseDto>
 

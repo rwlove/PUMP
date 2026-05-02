@@ -42,6 +42,9 @@ func APIKeyMiddleware(key string) gin.HandlerFunc {
 
 // registerRoutes mounts all API routes on r. Shared by Start() and RegisterRoutes().
 func registerRoutes(r *gin.Engine) {
+	// Health / connectivity probe (no auth required)
+	r.GET("/api/ping", getPing)
+
 	// Exercises
 	r.GET("/api/exercises", getExercises)
 	r.POST("/api/exercises", postExercise)
@@ -67,16 +70,26 @@ func registerRoutes(r *gin.Engine) {
 
 func apiKeyMiddleware(key string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if c.GetHeader("X-Api-Key") != key {
+		provided := c.GetHeader("X-Api-Key")
+		if provided != key {
 			slog.Warn("rejected request: missing or invalid API key",
 				slog.String("ip", c.ClientIP()),
+				slog.String("method", c.Request.Method),
 				slog.String("path", c.Request.URL.Path),
+				slog.Bool("key_provided", provided != ""),
 			)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 		c.Next()
 	}
+}
+
+// getPing is an unauthenticated liveness probe used by Android clients
+// to verify connectivity before committing settings.
+func getPing(c *gin.Context) {
+	slog.Debug("ping", slog.String("ip", c.ClientIP()))
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 // ─── exercises ────────────────────────────────────────────────────────────────

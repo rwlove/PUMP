@@ -11,6 +11,23 @@ import javax.inject.Singleton
 class PumpRepository @Inject constructor(
     private val apiService: PumpApiService
 ) {
+    /**
+     * Hits GET /api/ping to verify the server is reachable and the API key is accepted.
+     * Returns [Result.success] on HTTP 200, [Result.failure] with a descriptive message otherwise.
+     */
+    suspend fun testConnection(): Result<Unit> = runCatching {
+        val response = apiService.ping()
+        if (!response.isSuccessful) {
+            throw Exception(
+                when (response.code()) {
+                    401 -> "Invalid API key (401 Unauthorized)"
+                    403 -> "Access denied (403 Forbidden)"
+                    else -> "Server returned HTTP ${response.code()}"
+                }
+            )
+        }
+    }
+
     suspend fun getExercises(): Result<List<ExerciseDto>> = runCatching {
         apiService.getExercises()
     }
