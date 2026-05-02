@@ -214,8 +214,8 @@ function setFormContent(sets, date) {
     updateEmptyState();
     document.getElementById("formDate").value = date;
     document.getElementById("realDate").value = date;
-    var friendly = document.getElementById('friendlyDate');
-    if (friendly) friendly.textContent = formatFriendlyDate(date);
+    var btn = document.getElementById('dateDisplayBtn');
+    if (btn) btn.textContent = formatFriendlyDate(date);
 
     if (sets) {
         for (var i = 0; i < sets.length; i++) {

@@ -103,6 +103,8 @@ jobs:
           git checkout main
           git pull --ff-only origin main
 
-          git add assets/qr-android-install.png
+          # Keep both copies in sync: assets/ (README) and internal/web/public/ (served by the app)
+          cp assets/qr-android-install.png internal/web/public/qr-android-install.png
+          git add assets/qr-android-install.png internal/web/public/qr-android-install.png
           git commit -m "$(printf 'chore: update QR code for %s APK [skip ci]' "${TAG}")"
           git push origin main

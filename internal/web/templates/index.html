@@ -47,25 +47,58 @@
 </div>
 {{ end }}
 
+<!-- ── Log Weight Modal ───────────────────────────────────────────────────── -->
+<div class="modal fade" id="logWeightModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content rounded-4 border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h6 class="modal-title fw-bold"><i class="bi bi-speedometer2 me-2"></i>Log Body Weight</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form action="/weight/" method="post" class="d-flex flex-column gap-3" id="logWeightForm">
+          <div>
+            <label class="form-label small text-body-secondary mb-1">Date</label>
+            <input name="date" type="date" class="form-control rounded-3" id="logWeightDate">
+          </div>
+          <div>
+            <label class="form-label small text-body-secondary mb-1">Weight (lbs)</label>
+            <input name="weight" type="number" step="0.1" min="0" class="form-control rounded-3"
+              placeholder="e.g. 185.5" required>
+          </div>
+          <button type="submit" class="btn btn-primary rounded-3">
+            <i class="bi bi-check-lg me-1"></i>Save
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Sticky Date Navigation Bar ───────────────────────────────────────── -->
 <div class="date-nav-bar">
   <div class="container-xl">
     <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
       <!-- Date navigation -->
-      <div class="d-flex flex-column gap-1">
-        <div class="d-flex align-items-center gap-2">
-          <button class="nav-day-btn" onclick='moveDayLeftRight(-1, window._allSets)' title="Previous day">
-            <i class="bi bi-chevron-left"></i>
-          </button>
-          <input type="date" class="form-control" id="realDate"
-            onchange='setFormContent(window._allSets, this.value)'>
-          <button class="nav-day-btn" onclick='moveDayLeftRight(1, window._allSets)' title="Next day">
-            <i class="bi bi-chevron-right"></i>
-          </button>
-          <button class="today-chip" onclick="goToToday()">Today</button>
-        </div>
-        <span id="friendlyDate" class="text-body-secondary" style="font-size:0.82rem; padding-left:2px;"></span>
+      <div class="d-flex align-items-center gap-2">
+        <button class="nav-day-btn" onclick='moveDayLeftRight(-1, window._allSets)' title="Previous day">
+          <i class="bi bi-chevron-left"></i>
+        </button>
+        <button class="today-chip date-display-btn" id="dateDisplayBtn"
+          onclick="document.getElementById('realDate').showPicker()" title="Pick a date"></button>
+        <input type="date" id="realDate" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;"
+          onchange='setFormContent(window._allSets, this.value)'>
+        <button class="nav-day-btn" onclick='moveDayLeftRight(1, window._allSets)' title="Next day">
+          <i class="bi bi-chevron-right"></i>
+        </button>
+        <button class="today-chip" onclick="goToToday()">Today</button>
       </div>
+      <!-- Log weight button -->
+      <button class="btn btn-sm btn-outline-secondary rounded-pill px-3"
+        data-bs-toggle="modal" data-bs-target="#logWeightModal"
+        onclick="document.getElementById('logWeightDate').value=document.getElementById('realDate').value">
+        <i class="bi bi-speedometer2 me-1"></i>Log Weight
+      </button>
     </div>
   </div>
 </div>
