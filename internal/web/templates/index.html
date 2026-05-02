@@ -3,35 +3,6 @@
 <script src="/fs/public/js/index.js"></script>
 <link rel="stylesheet" type="text/css" href="/fs/public/css/index.css">
 
-<!-- ── Add Weight Modal ─────────────────────────────────────────────────── -->
-<div class="modal fade" id="mWeight" tabindex="-1" aria-labelledby="mWeightLabel" aria-hidden="true">
-  <div class="modal-dialog modal-sm modal-dialog-centered">
-    <div class="modal-content rounded-4 border-0 shadow">
-      <div class="modal-header border-0 pb-0">
-        <h6 class="modal-title fw-bold" id="mWeightLabel">
-          <i class="bi bi-speedometer2 me-2 text-primary"></i>Log Weight
-        </h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <form action="/weight/" method="post">
-          <div class="mb-3">
-            <label class="form-label small text-secondary fw-semibold text-uppercase" style="font-size:0.72rem;letter-spacing:.06em;">Date</label>
-            <input name="date" type="date" class="form-control rounded-3" id="weightDate">
-          </div>
-          <div class="mb-4">
-            <label class="form-label small text-secondary fw-semibold text-uppercase" style="font-size:0.72rem;letter-spacing:.06em;">Weight</label>
-            <input name="weight" type="number" step="any" min="0" class="form-control rounded-3" placeholder="e.g. 75.5">
-          </div>
-          <button type="submit" class="btn btn-primary w-100 rounded-3">
-            <i class="bi bi-check2 me-1"></i>Save
-          </button>
-        </form>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- ── Exercise Detail Modals ────────────────────────────────────────────── -->
 {{ range .ExData.Exs }}
 <div class="modal fade" id="modal{{ .ID }}" tabindex="-1" aria-hidden="true">
@@ -91,12 +62,6 @@
           <i class="bi bi-chevron-right"></i>
         </button>
         <button class="today-chip" onclick="goToToday()">Today</button>
-      </div>
-      <!-- Quick actions -->
-      <div class="d-flex gap-2">
-        <button class="quick-action-btn" data-bs-toggle="modal" data-bs-target="#mWeight" onclick="setWeightDate()">
-          <i class="bi bi-speedometer2"></i><span>Log Weight</span>
-        </button>
       </div>
     </div>
   </div>

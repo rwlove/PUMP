@@ -223,10 +223,6 @@ function goToToday() {
     setFormContent(window._allSets, date);
 }
 
-function setWeightDate() {
-    var date = document.getElementById("realDate").value;
-    document.getElementById("weightDate").value = date;
-}
 
 function moveDayLeftRight(where, sets) {
     var dateStr = document.getElementById("realDate").value;
