@@ -15,6 +15,7 @@ import (
 	"github.com/rwlove/PUMP/internal/web"
 )
 
+
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -40,6 +41,7 @@ func main() {
 	nodePath := os.Getenv("NODE_PATH")
 
 	slog.Info("PUMP monolith starting",
+		slog.String("version", web.Version),
 		slog.String("host", host),
 		slog.String("port", port),
 		slog.String("color", cfg.Color),
