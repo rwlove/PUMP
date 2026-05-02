@@ -654,8 +654,8 @@ function updateBalanceTab(allSets, exercises, period) {
         data: {
             labels: groups,
             datasets: [{
-                label: 'Sets',
-                data: groups.map(g => groupSets[g]),
+                label: 'Volume',
+                data: groups.map(g => Math.round(groupVolume[g] || 0)),
                 backgroundColor: primaryColor + '33',
                 borderColor: primaryColor,
                 borderWidth: 2,
@@ -666,10 +666,11 @@ function updateBalanceTab(allSets, exercises, period) {
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
             scales: {
                 r: {
                     beginAtZero: true,
-                    ticks: { stepSize: 1, font: { size: 10 } },
+                    ticks: { display: false },
                     pointLabels: { font: { size: 13 }, color: labelColor }
                 }
             },
@@ -679,10 +680,11 @@ function updateBalanceTab(allSets, exercises, period) {
                     callbacks: {
                         label(ctx) {
                             const g = ctx.label;
-                            const vol = groupVolume[g]
-                                ? `  ·  ${Math.round(groupVolume[g]).toLocaleString()} lbs`
-                                : '';
-                            return `${ctx.raw} sets${vol}`;
+                            const sets = groupSets[g] || 0;
+                            const vol = ctx.raw
+                                ? `${ctx.raw.toLocaleString()} lbs`
+                                : '— lbs';
+                            return `${vol}  ·  ${sets} set${sets === 1 ? '' : 's'}`;
                         }
                     }
                 }
@@ -699,7 +701,7 @@ function updateBalanceTab(allSets, exercises, period) {
             return `<div class="col-6 col-sm-4">
               <div class="p-3 rounded-3 bg-body-secondary text-center">
                 <div class="stat-label">${escapeHtml(g)}</div>
-                <div class="fw-bold">${groupSets[g]} sets</div>
+                <div class="fw-bold">${groupSets[g]} set${groupSets[g] === 1 ? '' : 's'}</div>
                 <div class="stat-label">${vol}</div>
               </div>
             </div>`;
