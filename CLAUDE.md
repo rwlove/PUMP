@@ -27,7 +27,7 @@ Update the Android screenshot table in README.md to reference the new images. If
 Take fresh screenshots of every page and tab at 1280×900 using the running preview server's CDP endpoint (see the Node.js CDP helper pattern established in this repo). Update all images in `assets/`:
 
 - `screenshot-workout.png` — main workout page (`/`)
-- `screenshot-stats-overview.png` — Stats › Overview tab (`/stats/`)
+- `screenshot-stats-overview.png` — Stats › Exercise Distribution tab (`/stats/`)
 - `screenshot-stats-activity.png` — Stats › Weight Moved tab (click `#tab-activity-btn`)
 - `screenshot-stats-weight.png` — Stats › Body Weight tab (click `#tab-weight-btn`)
 - `screenshot-config.png` — Settings page (`/config/`)

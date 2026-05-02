@@ -18,9 +18,6 @@ var (
 	// appConfig - config for Web Gui
 	appConfig models.Conf
 
-	// Exercise data
-	exData models.AllExData
-
 	// dataStore is the active data source.
 	// SQLiteStore in monolith mode, APIClient in split-frontend mode.
 	dataStore store.Store

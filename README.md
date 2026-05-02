@@ -5,11 +5,11 @@
 
 <p align="center"><img src="assets/logo.svg" alt="PUMP" width="320"></p>
 
-**Please Use More Protein** — workout diary with GitHub-style year visualization. Log daily sets, track body weight, and visualize training history with intensity heatmaps.
+**Please Use More Protein** — workout diary with daily set logging, body weight tracking, and training history stats.
 
-| Workout | Stats: Overview | Stats: Weight Moved |
+| Workout | Stats: Exercise Distribution | Stats: Weight Moved |
 |---|---|---|
-| ![Workout](assets/screenshot-workout.png) | ![Stats Overview](assets/screenshot-stats-overview.png) | ![Stats Weight Moved](assets/screenshot-stats-activity.png) |
+| ![Workout](assets/screenshot-workout.png) | ![Stats Exercise Distribution](assets/screenshot-stats-overview.png) | ![Stats Weight Moved](assets/screenshot-stats-activity.png) |
 
 | Stats: Body Weight | Config | |
 |---|---|---|
@@ -76,14 +76,15 @@ All configuration is via environment variables. No config file is required.
 | `POSTGRES_DSN` | PostgreSQL connection string **(required)** | — |
 | `API_KEY` | Require this value on every `X-Api-Key` request header; empty = no auth | `""` |
 | `LOG_LEVEL` | Log verbosity: `debug`, `info`, `warn`, `error` | `info` |
-| `THEME` | Any [Bootswatch](https://bootswatch.com) theme (lowercase) or extras: `emerald`, `grass`, `grayscale`, `ocean`, `sand`, `wood` | `cosmo` |
-| `COLOR` | Background: `light` or `dark` | `dark` |
-| `HEATCOLOR` | Heatmap cell color | `#2780e3` |
-| `PAGESTEP` | Rows per page | `10` |
-| `DISPLAY_DAYS` | Days of history shown on the main page (7/30/90/365) | `30` |
+| `COLOR` | UI color mode: `light` or `dark` | `dark` |
+| `PAGESTEP` | Rows per page on the body weight log | `10` |
+| `DISPLAY_DAYS` | Days of workout history shown on the main page (7/30/90/365) | `30` |
+| `FREQUENCY_DAYS` | Look-back window (days) for sorting exercises by usage frequency | `30` |
+| `AUTOFILL` | Pre-fill weight/reps from last performance when adding a set | `true` |
+| `NODE_PATH` | Path to local `node_modules` directory; empty = use CDN for Bootstrap/Chart.js | `""` |
 | `TZ` | Timezone | `""` |
 
-`POSTGRES_DSN` must be set or the API server will not start:
+`POSTGRES_DSN` must be set or the server will not start:
 
 ```
 POSTGRES_DSN=postgres://user:password@host:5432/pump

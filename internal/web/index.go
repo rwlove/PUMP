@@ -1,8 +1,7 @@
 package web
 
 import (
-	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"sort"
 	"time"
@@ -13,23 +12,21 @@ import (
 )
 
 func indexHandler(c *gin.Context) {
-	var guiData models.GuiData
-
 	exs, err := dataStore.SelectEx()
 	if err != nil {
-		log.Println("ERROR indexHandler SelectEx:", err)
+		slog.Error("indexHandler: SelectEx failed", slog.Any("error", err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 	sets, err := dataStore.SelectSet()
 	if err != nil {
-		log.Println("ERROR indexHandler SelectSet:", err)
+		slog.Error("indexHandler: SelectSet failed", slog.Any("error", err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 	weights, err := dataStore.SelectW()
 	if err != nil {
-		log.Println("ERROR indexHandler SelectW:", err)
+		slog.Error("indexHandler: SelectW failed", slog.Any("error", err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}
@@ -40,21 +37,10 @@ func indexHandler(c *gin.Context) {
 		// Reload so the template sees the updated colors.
 		if refreshed, err := dataStore.SelectEx(); err == nil {
 			exs = refreshed
-			sortExsByFrequency(exs, sets, appConfig.FrequencyDays)
 		}
 	}
 
-	exData.Exs = exs
-	exData.Sets = sets
-	exData.Weight = weights
-
-	guiData.Config = appConfig
-	guiData.ExData = exData
-	guiData.GroupMap = createGroupMap()
-
-	// Heatmap and frequency sorting always use the full set history.
-	guiData.ColorHeatMap = generateHeatMap(exData.Sets)
-	sortExsByFrequency(guiData.ExData.Exs, sets, appConfig.FrequencyDays)
+	sortExsByFrequency(exs, sets, appConfig.FrequencyDays)
 
 	// Limit sets sent to the main page to the configured display window.
 	days := appConfig.DisplayDays
@@ -68,26 +54,33 @@ func indexHandler(c *gin.Context) {
 			displaySets = append(displaySets, s)
 		}
 	}
-	guiData.ExData.Sets = displaySets
 
-	sort.Slice(guiData.ExData.Weight, func(i, j int) bool {
-		return guiData.ExData.Weight[i].Date < guiData.ExData.Weight[j].Date
+	sort.Slice(weights, func(i, j int) bool {
+		return weights[i].Date < weights[j].Date
 	})
+
+	var guiData models.GuiData
+	guiData.Config = appConfig
+	guiData.ExData.Exs = exs
+	guiData.ExData.Sets = displaySets
+	guiData.ExData.Weight = weights
+	guiData.GroupMap = buildGroupList(exs)
 
 	c.HTML(http.StatusOK, "header.html", guiData)
 	c.HTML(http.StatusOK, "index.html", guiData)
 }
 
-func createGroupMap() map[string]string {
-	i := 0
-	grMap := make(map[string]string)
-	for _, ex := range exData.Exs {
-		if _, ok := grMap[ex.Group]; !ok {
-			grMap[ex.Group] = "grID" + fmt.Sprintf("%d", i)
-			i++
+// buildGroupList returns unique group names in first-seen order from exs.
+func buildGroupList(exs []models.Exercise) []string {
+	seen := make(map[string]bool)
+	var groups []string
+	for _, ex := range exs {
+		if !seen[ex.Group] {
+			seen[ex.Group] = true
+			groups = append(groups, ex.Group)
 		}
 	}
-	return grMap
+	return groups
 }
 
 // sortExsByFrequency sorts exs in-place by how many times each was used in

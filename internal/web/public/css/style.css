@@ -35,6 +35,7 @@ input[type="date"] {
 
 .navbar-brand img {
   border-radius: 6px;
+  height: 3.9em;  /* 3em × 1.3 — 30% larger */
 }
 
 .navbar-nav .nav-link {
@@ -79,51 +80,6 @@ input[type="date"] {
 
 .panel-body {
   padding: 1rem;
-}
-
-.panel-footer {
-  padding: 0.75rem 1rem;
-  border-top: var(--panel-border);
-}
-
-.panel-action-btn {
-  background: none;
-  border: var(--panel-border);
-  border-radius: 8px;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--bs-secondary-color);
-  transition: var(--transition);
-  flex-shrink: 0;
-  font-size: 1rem;
-  line-height: 1;
-}
-
-.panel-action-btn:hover {
-  background: var(--bs-secondary-bg);
-  color: var(--bs-primary);
-  border-color: var(--bs-primary-border-subtle);
-}
-
-/* ─── Section Headers ────────────────────────────────────────────────────── */
-
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.section-title {
-  font-weight: 700;
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--bs-secondary-color);
-  margin: 0;
 }
 
 /* ─── Stat card labels (readable in all themes) ─────────────────────────── */
@@ -204,72 +160,4 @@ input[type="date"] {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
-}
-
-/* ─── Workout details slide panel (heatmap tooltip) ──────────────────────── */
-
-.workout-details-panel {
-  position: fixed;
-  right: -420px;
-  top: 0;
-  width: 380px;
-  height: 100vh;
-  background: var(--bs-body-bg);
-  border-left: var(--panel-border);
-  box-shadow: -4px 0 24px rgba(0,0,0,0.12);
-  padding: 24px;
-  transition: right 0.25s ease;
-  z-index: 1050;
-  overflow-y: auto;
-}
-
-.workout-details-panel.show {
-  right: 0;
-}
-
-.workout-details-panel .close-btn {
-  position: absolute;
-  right: 16px;
-  top: 16px;
-  background: none;
-  border: none;
-  font-size: 1.25rem;
-  cursor: pointer;
-  color: var(--bs-secondary-color);
-  line-height: 1;
-  padding: 4px;
-  border-radius: 6px;
-  transition: var(--transition);
-}
-
-.workout-details-panel .close-btn:hover {
-  color: var(--bs-body-color);
-  background: var(--bs-secondary-bg);
-}
-
-.workout-item {
-  background: var(--bs-secondary-bg);
-  border-radius: 10px;
-  padding: 12px;
-  margin-bottom: 10px;
-  border-left: 4px solid;
-}
-
-.workout-item h3 {
-  font-size: 1rem;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.workout-item p {
-  margin: 4px 0;
-  color: var(--bs-secondary-color);
-  font-size: 0.875rem;
-}
-
-@media (max-width: 600px) {
-  .workout-details-panel {
-    width: 100%;
-    right: -100%;
-  }
 }

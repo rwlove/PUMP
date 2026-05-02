@@ -1,7 +1,7 @@
 package web
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -31,7 +31,7 @@ func saveConfigHandler(c *gin.Context) {
 	if apiClient != nil {
 		// Split-frontend: persist config via API
 		if err := apiClient.SaveConfig(appConfig); err != nil {
-			log.Println("ERROR saveConfigHandler SaveConfig:", err)
+			slog.Error("saveConfigHandler: SaveConfig failed", slog.Any("error", err))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -41,7 +41,7 @@ func saveConfigHandler(c *gin.Context) {
 	} else {
 		// Standalone: write config file directly
 		conf.Write(appConfig)
-		log.Println("INFO: writing new config to", appConfig.ConfPath)
+		slog.Info("config written", slog.String("path", appConfig.ConfPath))
 	}
 
 	c.Redirect(http.StatusFound, "/config")

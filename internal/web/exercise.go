@@ -1,7 +1,7 @@
 package web
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -12,33 +12,30 @@ import (
 )
 
 func exerciseHandler(c *gin.Context) {
-	var guiData models.GuiData
-	var id int
-
 	exs, err := dataStore.SelectEx()
 	if err != nil {
-		log.Println("ERROR exerciseHandler SelectEx:", err)
+		slog.Error("exerciseHandler: SelectEx failed", slog.Any("error", err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 	sets, err := dataStore.SelectSet()
 	if err != nil {
-		log.Println("ERROR exerciseHandler SelectSet:", err)
+		slog.Error("exerciseHandler: SelectSet failed", slog.Any("error", err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}
-	exData.Exs = exs
 
+	sortExsByFrequency(exs, sets, appConfig.FrequencyDays)
+
+	var guiData models.GuiData
 	guiData.Config = appConfig
-	guiData.ExData = exData
-	guiData.GroupMap = createGroupMap()
-
-	sortExsByFrequency(guiData.ExData.Exs, sets, appConfig.FrequencyDays)
+	guiData.ExData.Exs = exs
+	guiData.GroupMap = buildGroupList(exs)
 
 	idStr, ok := c.GetQuery("id")
 	if ok && idStr != "new" {
-		id, _ = strconv.Atoi(idStr)
-		for _, oneEx := range exData.Exs {
+		id, _ := strconv.Atoi(idStr)
+		for _, oneEx := range exs {
 			if oneEx.ID == id {
 				guiData.OneEx = oneEx
 				break
@@ -71,20 +68,18 @@ func saveExerciseHandler(c *gin.Context) {
 		}
 	}
 
-	log.Println("ONEEX =", oneEx)
+	slog.Debug("saveExerciseHandler", slog.String("name", oneEx.Name), slog.Int("id", oneEx.ID))
 
 	// Upsert: delete the old record first (ID=0 means new exercise, skip delete)
 	if oneEx.ID != 0 {
 		if err := dataStore.DeleteEx(oneEx.ID); err != nil {
-			log.Println("ERROR saveExerciseHandler DeleteEx:", err)
+			slog.Warn("saveExerciseHandler: DeleteEx failed (continuing)",
+				slog.Int("id", oneEx.ID), slog.Any("error", err))
 		}
-		// Clear ID so the store inserts a new row (SQLite auto-increment);
-		// for the API client InsertEx with ID!=0 does a PUT instead.
-		// We keep ID here so APIClient.InsertEx routes to PUT /api/exercises/:id.
 	}
 
 	if err := dataStore.InsertEx(oneEx); err != nil {
-		log.Println("ERROR saveExerciseHandler InsertEx:", err)
+		slog.Error("saveExerciseHandler: InsertEx failed", slog.Any("error", err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}
@@ -96,7 +91,8 @@ func deleteExerciseHandler(c *gin.Context) {
 	id, _ := strconv.Atoi(c.PostForm("id"))
 
 	if err := dataStore.DeleteEx(id); err != nil {
-		log.Println("ERROR deleteExerciseHandler:", err)
+		slog.Error("deleteExerciseHandler: DeleteEx failed",
+			slog.Int("id", id), slog.Any("error", err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}

@@ -49,19 +49,6 @@ type AllExData struct {
 	Weight []BodyWeight
 }
 
-// HeatMapData - data for HeatMap
-type HeatMapData struct {
-	X             string   `json:"X"`
-	Y             string   `json:"Y"`
-	D             string   `json:"D"`
-	V             int      `json:"V"`
-	Color         string   `json:"Color"`
-	Colors        []string `json:"Colors"`
-	WorkoutNames  []string `json:"WorkoutNames"`  // Names of workouts
-	WorkoutWeights []string `json:"WorkoutWeights"` // Weight used for each workout
-	WorkoutReps   []int    `json:"WorkoutReps"`   // Reps for each workout
-}
-
 // BodyWeight - store weight
 type BodyWeight struct {
 	ID     int             `db:"ID"`
@@ -71,10 +58,9 @@ type BodyWeight struct {
 
 // GuiData - web gui data
 type GuiData struct {
-	Config       Conf
-	ExData       AllExData
-	GroupMap     map[string]string
-	OneEx        Exercise
-	ColorHeatMap []HeatMapData
-	Version      string
+	Config   Conf
+	ExData   AllExData
+	GroupMap []string // unique exercise groups, in display order
+	OneEx    Exercise
+	Version  string
 }

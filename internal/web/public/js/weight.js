@@ -1,50 +1,48 @@
 var offset = 0;
 
 function setToday() {
-    today = new Date().toJSON().slice(0, 10);
+    var today = new Date().toJSON().slice(0, 10);
     document.getElementById("todayDate").value = today;
-};
-
+}
 
 function addWeight(i, date, weight, id) {
+    // Delete via POST form to avoid GET-based deletion (CSRF risk)
+    var deleteForm = '<form action="/wdel/" method="post" style="display:inline;">'
+        + '<input type="hidden" name="id" value="' + id + '">'
+        + '<button type="submit" class="btn btn-sm del-set-button" title="Delete">'
+        + '<i class="bi bi-x-square"></i></button></form>';
 
-    html_code = '<tr><td style="opacity: 45%;">'+i+'.</td><td>'+date+'</td><td>'+weight+'</td><td><a href="/weight/?del='+id+'"><button class="btn del-set-button" title="Delete" ><i class="bi bi-x-square"></i></button></a></td></tr>';
+    var row = '<tr>'
+        + '<td class="ps-3" style="opacity:45%;">' + i + '.</td>'
+        + '<td>' + date + '</td>'
+        + '<td>' + weight + '</td>'
+        + '<td>' + deleteForm + '</td>'
+        + '</tr>';
 
-    document.getElementById('weightList').insertAdjacentHTML('beforeend', html_code);
-};
+    document.getElementById('weightList').insertAdjacentHTML('beforeend', row);
+}
 
 function setWeights(weights, wcolor, off, step) {
-    let start = 0, end = 0;
-    let dates = [], ws = [];
+    offset = Math.max(0, offset + off);
 
-    offset = offset + off;
-    if (offset<0) {
-        offset = 0;
-    };
+    var len  = weights.length;
+    var end  = Math.max(0, len - offset * step);
+    var start = Math.max(0, end - step);
 
-    let arrayLength = weights.length;
-    let move = step + offset*step;
+    // Clamp offset if we've gone past the beginning
+    if (end === 0 && offset > 0) {
+        offset = Math.ceil(len / step) - 1;
+        end   = Math.max(0, len - offset * step);
+        start = Math.max(0, end - step);
+    }
 
-    if (arrayLength > move) {
-        start = arrayLength - move;
-        end = start + step;
-    } else {
-        offset = offset - 1;
-        if (arrayLength > step) {
-            end = step;
-        } else {
-            end = arrayLength;
-        }
-    };
+    document.getElementById('weightList').innerHTML = '';
 
-    // console.log("OFF =", offset, ", START =", start, ", END =", end)
-
-    document.getElementById('weightList').innerHTML = "";
-
-    for (let i = start ; i < end; i++) {
+    var dates = [], ws = [];
+    for (var i = start; i < end; i++) {
         dates.push(weights[i].Date);
         ws.push(weights[i].Weight);
-        addWeight(i+1, weights[i].Date, weights[i].Weight, weights[i].ID)
-    };
+        addWeight(i + 1, weights[i].Date, weights[i].Weight, weights[i].ID);
+    }
     weightChart('weight-chart', dates, ws, wcolor, true);
-};
+}

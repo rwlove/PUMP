@@ -88,9 +88,9 @@
         <!-- Step 1: Group chips -->
         <div class="group-selector" id="groupSelector">
           <div class="group-chips">
-            {{ range $gr, $grID := .GroupMap }}
-            <button class="group-chip" data-group="{{ $gr }}"
-              onclick='selectGroup("{{ $gr }}")'>{{ $gr }}</button>
+            {{ range .GroupMap }}
+            <button class="group-chip" data-group="{{ . }}"
+              onclick='selectGroup("{{ . }}")'>{{ . }}</button>
             {{ end }}
           </div>
         </div>

@@ -235,15 +235,6 @@ function moveDayLeftRight(where, sets) {
     setFormContent(sets, newDate);
 }
 
-function addAllGroup(exs, gr) {
-    if (!exs) return;
-    for (var i = 0; i < exs.length; i++) {
-        if (exs[i].Group == gr) {
-            addExercise(exs[i].Name, exs[i].Weight, exs[i].Reps, exs[i].Color, true);
-        }
-    }
-}
-
 function selectGroup(gr) {
     window._selectedGroup = gr;
 

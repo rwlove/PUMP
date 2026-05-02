@@ -69,6 +69,7 @@ func RegisterRoutes(r *gin.Engine, s store.Store, cfg models.Conf, onConfigSave 
 	r.POST("/exdel/", deleteExerciseHandler)
 	r.POST("/set/", setHandler)
 	r.POST("/weight/", addWeightHandler)
+	r.POST("/wdel/", deleteWeightHandler)
 }
 
 // startRouter wires up the Gin router with the given store and starts serving.

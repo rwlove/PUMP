@@ -1,7 +1,7 @@
 package web
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -19,6 +19,10 @@ func setHandler(c *gin.Context) {
 	formMap := c.Request.PostForm
 
 	formLen := len(formMap["name"])
+	if formLen == 0 {
+		c.Status(http.StatusOK)
+		return
+	}
 	date := formMap["date"][0]
 
 	for i := 0; i < formLen; i++ {
@@ -35,10 +39,11 @@ func setHandler(c *gin.Context) {
 	}
 
 	if err := dataStore.BulkReplaceSetsByDate(date, formData); err != nil {
-		log.Println("ERROR setHandler BulkReplaceSetsByDate:", err)
+		slog.Error("setHandler: BulkReplaceSetsByDate failed",
+			slog.String("date", date), slog.Any("error", err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 
-	c.Redirect(http.StatusFound, "/")
+	c.Status(http.StatusOK)
 }
