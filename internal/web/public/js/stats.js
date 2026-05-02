@@ -198,6 +198,25 @@ function renderVolumeExerciseButtons(allSets, exercises, period) {
 
 // ─── Volume chart (Weight Moved tab) ─────────────────────────────────────────
 
+// Parse a 6-digit hex color string into {r, g, b}.
+function hexToRgb(hex) {
+    const h = hex.replace('#', '');
+    return {
+        r: parseInt(h.substring(0, 2), 16),
+        g: parseInt(h.substring(2, 4), 16),
+        b: parseInt(h.substring(4, 6), 16),
+    };
+}
+
+// Blend a color toward white by factor t (0 = original, 1 = white).
+function blendToWhite(hex, t) {
+    const { r, g, b } = hexToRgb(hex);
+    const rr = Math.round(r + (255 - r) * t);
+    const gg = Math.round(g + (255 - g) * t);
+    const bb = Math.round(b + (255 - b) * t);
+    return `rgb(${rr},${gg},${bb})`;
+}
+
 function updateVolumeChart(sets, exercises, period, exerciseName) {
     const { start, end } = getPeriodDates(period);
     const filtered = sets.filter(s => {
@@ -206,21 +225,19 @@ function updateVolumeChart(sets, exercises, period, exerciseName) {
         return d >= start && d <= end;
     });
 
-    // Group by date — collect individual sets and compute total volume per day
-    const volumeByDate = {};    // date → total volume
-    const detailByDate = {};    // date → [{weight, reps, vol}, ...]
+    // Group by date, preserving set order within each day.
+    const setsByDate = {};   // date → [{weight, reps, vol}, ...]
 
     filtered.forEach(s => {
         const w   = parseFloat(s.Weight);
         const r   = parseInt(s.Reps, 10);
         const vol = (!isNaN(w) && !isNaN(r)) ? w * r : 0;
-        volumeByDate[s.Date] = (volumeByDate[s.Date] || 0) + vol;
-        if (!detailByDate[s.Date]) detailByDate[s.Date] = [];
-        detailByDate[s.Date].push({ weight: w, reps: r, vol });
+        if (!setsByDate[s.Date]) setsByDate[s.Date] = [];
+        setsByDate[s.Date].push({ weight: w, reps: r, vol });
     });
 
-    const dates   = Object.keys(volumeByDate).sort();
-    const volumes = dates.map(d => volumeByDate[d]);
+    const dates   = Object.keys(setsByDate).sort();
+    const maxSets = dates.reduce((m, d) => Math.max(m, setsByDate[d].length), 0);
 
     const noDataEl = document.getElementById('volume-no-data');
     const ctx = document.getElementById('volume-chart');
@@ -239,24 +256,47 @@ function updateVolumeChart(sets, exercises, period, exerciseName) {
     (exercises || []).forEach(ex => { colorMap[ex.Name] = ex.Color; });
     const color = colorMap[exerciseName] || window._chartColor || '#2780e3';
 
+    // Build one dataset per set position (index 0 = first/bottom/darkest).
+    // Lightness blend: set i out of N total → t = (i / (N-1)) * MAX_T
+    // MAX_T = 0.55 keeps even the lightest shade visibly colored.
+    const MAX_T = 0.55;
+
+    const datasets = [];
+    for (let i = 0; i < maxSets; i++) {
+        const t    = maxSets === 1 ? 0 : (i / (maxSets - 1)) * MAX_T;
+        const fill = blendToWhite(color, t);
+        // Border: slightly darker than fill — use half the lightening
+        const border = blendToWhite(color, t * 0.4);
+
+        // For each date, use the i-th set's volume (null if that day has fewer sets).
+        const data = dates.map(d => {
+            const daySets = setsByDate[d];
+            return (i < daySets.length) ? daySets[i].vol : null;
+        });
+
+        datasets.push({
+            label: `Set ${i + 1}`,
+            data,
+            backgroundColor: fill,
+            borderColor: border,
+            borderWidth: 1,
+            // Only round the top corners of the topmost non-null segment.
+            // Chart.js applies borderRadius per-dataset; we enable it only on the last.
+            borderRadius: (i === maxSets - 1) ? { topLeft: 4, topRight: 4 } : 0,
+            borderSkipped: false,
+            stack: 'sets',
+        });
+    }
+
     _volumeChart = new Chart(ctx, {
         type: 'bar',
-        data: {
-            labels: dates,
-            datasets: [{
-                label: 'Total Volume',
-                data: volumes,
-                backgroundColor: color + '55',
-                borderColor: color,
-                borderWidth: 1.5,
-                borderRadius: 4,
-            }]
-        },
+        data: { labels: dates, datasets },
         options: {
             responsive: true,
             scales: {
-                x: { grid: { display: false } },
+                x: { stacked: true, grid: { display: false } },
                 y: {
+                    stacked: true,
                     beginAtZero: true,
                     grid: { display: false },
                     ticks: {
@@ -267,27 +307,28 @@ function updateVolumeChart(sets, exercises, period, exerciseName) {
             plugins: {
                 legend: { display: false },
                 tooltip: {
+                    mode: 'index',
                     callbacks: {
-                        // Show math breakdown: e.g. "80×10 + 75×8 + 75×8 = 1,400 lbs"
+                        // Title: the date
+                        title(items) { return items[0] ? items[0].label : ''; },
+                        // One line per set: "Set N: W×R = V lbs"
                         label(ctx) {
+                            const i       = ctx.datasetIndex;
                             const date    = ctx.label;
-                            const details = detailByDate[date] || [];
-                            const total   = ctx.raw;
-
-                            if (details.length === 0) {
-                                return `Volume: ${total.toLocaleString(undefined, { maximumFractionDigits: 1 })} lbs`;
-                            }
-
-                            const math = details
-                                .map(d => {
-                                    const w = isNaN(d.weight) ? '?' : d.weight;
-                                    const r = isNaN(d.reps)   ? '?' : d.reps;
-                                    return `${w}×${r}`;
-                                })
-                                .join(' + ');
-
-                            const totalFmt = total.toLocaleString(undefined, { maximumFractionDigits: 1 });
-                            return `${math} = ${totalFmt} lbs`;
+                            const daySets = setsByDate[date] || [];
+                            if (i >= daySets.length) return null; // skip null entries
+                            const s   = daySets[i];
+                            const w   = isNaN(s.weight) ? '?' : s.weight;
+                            const r   = isNaN(s.reps)   ? '?' : s.reps;
+                            const vol = s.vol.toLocaleString(undefined, { maximumFractionDigits: 1 });
+                            return `Set ${i + 1}: ${w}×${r} = ${vol} lbs`;
+                        },
+                        // Footer: total volume for the day
+                        footer(items) {
+                            const date  = items[0] ? items[0].label : null;
+                            if (!date) return '';
+                            const total = (setsByDate[date] || []).reduce((s, x) => s + x.vol, 0);
+                            return `Total: ${total.toLocaleString(undefined, { maximumFractionDigits: 1 })} lbs`;
                         }
                     }
                 }

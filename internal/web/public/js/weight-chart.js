@@ -42,7 +42,8 @@ function weightChart(id, dates, ws, wcolor, xticks) {
                 borderWidth: 2,
                 fill: true,
                 tension: 0.1,
-                pointBackgroundColor: wcolor,
+                pointBackgroundColor: '#888',
+                pointBorderColor: '#888',
                 pointRadius: 3,
             }]
         },
