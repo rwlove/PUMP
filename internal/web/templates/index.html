@@ -52,16 +52,19 @@
   <div class="container-xl">
     <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
       <!-- Date navigation -->
-      <div class="d-flex align-items-center gap-2">
-        <button class="nav-day-btn" onclick='moveDayLeftRight(-1, window._allSets)' title="Previous day">
-          <i class="bi bi-chevron-left"></i>
-        </button>
-        <input type="date" class="form-control" id="realDate"
-          onchange='setFormContent(window._allSets, this.value)'>
-        <button class="nav-day-btn" onclick='moveDayLeftRight(1, window._allSets)' title="Next day">
-          <i class="bi bi-chevron-right"></i>
-        </button>
-        <button class="today-chip" onclick="goToToday()">Today</button>
+      <div class="d-flex flex-column gap-1">
+        <div class="d-flex align-items-center gap-2">
+          <button class="nav-day-btn" onclick='moveDayLeftRight(-1, window._allSets)' title="Previous day">
+            <i class="bi bi-chevron-left"></i>
+          </button>
+          <input type="date" class="form-control" id="realDate"
+            onchange='setFormContent(window._allSets, this.value)'>
+          <button class="nav-day-btn" onclick='moveDayLeftRight(1, window._allSets)' title="Next day">
+            <i class="bi bi-chevron-right"></i>
+          </button>
+          <button class="today-chip" onclick="goToToday()">Today</button>
+        </div>
+        <span id="friendlyDate" class="text-body-secondary" style="font-size:0.82rem; padding-left:2px;"></span>
       </div>
     </div>
   </div>

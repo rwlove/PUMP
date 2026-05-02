@@ -192,6 +192,21 @@ function updateEmptyState() {
     document.getElementById('emptyState').style.display = hasEntries ? 'none' : '';
 }
 
+// Format a YYYY-MM-DD string as e.g. "Friday, May 1st 2026".
+function formatFriendlyDate(dateStr) {
+    // Parse as local date by splitting manually (avoids UTC shift).
+    var parts = dateStr.split('-');
+    var d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    var day = d.getDate();
+    var suffix = (day === 1 || day === 21 || day === 31) ? 'st'
+               : (day === 2 || day === 22)               ? 'nd'
+               : (day === 3 || day === 23)               ? 'rd' : 'th';
+    var weekday = d.toLocaleDateString('en-US', { weekday: 'long' });
+    var month   = d.toLocaleDateString('en-US', { month: 'long' });
+    var year    = d.getFullYear();
+    return weekday + ', ' + month + ' ' + day + suffix + ' ' + year;
+}
+
 function setFormContent(sets, date) {
     window.sessionStorage.setItem("today", date);
     today = date;
@@ -199,6 +214,8 @@ function setFormContent(sets, date) {
     updateEmptyState();
     document.getElementById("formDate").value = date;
     document.getElementById("realDate").value = date;
+    var friendly = document.getElementById('friendlyDate');
+    if (friendly) friendly.textContent = formatFriendlyDate(date);
 
     if (sets) {
         for (var i = 0; i < sets.length; i++) {
