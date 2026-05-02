@@ -12,7 +12,7 @@
   <!-- PUMP lettering: outer P's raised to look like they're lifting the bar -->
   <text x="200" y="120"
         font-family="system-ui, -apple-system, Arial, sans-serif"
-        font-weight="600" font-size="44" letter-spacing="5"
+        font-weight="900" font-size="44" letter-spacing="5"
         fill="white" text-anchor="middle">
     <tspan dy="-4">P</tspan><tspan dy="4">UM</tspan><tspan dy="-4">P</tspan>
   </text>
