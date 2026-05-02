@@ -80,7 +80,18 @@ function setGlobalPeriod(period) {
     if (balanceTab && balanceTab.classList.contains('show')) {
         updateBalanceTab(window.currentSets, window.exercises, period);
     }
-    // Consistency and Recovery are period-independent; no refresh needed here.
+
+    // Refresh Rest & Recovery if visible (filters out exercises not performed in the period)
+    const recoveryTab = document.getElementById('tab-recovery');
+    if (recoveryTab && recoveryTab.classList.contains('show')) {
+        updateRecoveryTab(window.currentSets, window.exercises, period);
+    }
+
+    // Refresh Consistency stat boxes if visible (heatmap stays year-fixed for context)
+    const consistencyTab = document.getElementById('tab-consistency');
+    if (consistencyTab && consistencyTab.classList.contains('show')) {
+        updateConsistencyTab(window.currentSets, period);
+    }
 }
 
 // ─── Period helpers for non-set data ─────────────────────────────────────────
@@ -720,18 +731,49 @@ function parseDateStr(str) {
     return new Date(y, m - 1, d);
 }
 
-function updateConsistencyTab(allSets) {
-    const workoutDates = {};
-    allSets.forEach(s => {
-        workoutDates[s.Date] = (workoutDates[s.Date] || 0) + 1;
-    });
+function updateConsistencyTab(allSets, period) {
+    period = period || currentPeriod;
 
     const todayStr = getTodayStr();
     const today = parseDateStr(todayStr);
 
-    // Current streak (consecutive days back from today)
+    // All-time set of workout days (used by the heatmap, which always shows
+    // a fixed 1-year window for visual context).
+    const workoutDatesAll = {};
+    allSets.forEach(s => { workoutDatesAll[s.Date] = (workoutDatesAll[s.Date] || 0) + 1; });
+
+    // Period window for the four stat boxes.
+    let periodStartStr, periodDays, periodLabel;
+    if (period === 'weekly') {
+        periodDays = 7;
+        periodLabel = 'this week';
+    } else if (period === 'monthly') {
+        periodDays = 31;
+        periodLabel = 'this month';
+    } else if (period === 'annual') {
+        periodDays = 365;
+        periodLabel = 'last year';
+    } else { // alltime
+        const allKeys = Object.keys(workoutDatesAll).sort();
+        const firstStr = allKeys.length > 0 ? allKeys[0] : todayStr;
+        periodDays = Math.max(1, Math.round((today - parseDateStr(firstStr)) / 86400000) + 1);
+        periodLabel = 'all time';
+    }
+    {
+        const start = new Date(today);
+        start.setDate(today.getDate() - (periodDays - 1));
+        periodStartStr = start.toLocaleDateString('en-CA');
+    }
+
+    // Filter workout days to the selected period.
+    const workoutDates = {};
+    Object.keys(workoutDatesAll).forEach(d => {
+        if (d >= periodStartStr && d <= todayStr) workoutDates[d] = workoutDatesAll[d];
+    });
+
+    // Current streak: consecutive days back from today, capped at the period window.
     let currentStreak = 0;
-    for (let i = 0; i <= 730; i++) {
+    for (let i = 0; i < periodDays; i++) {
         const d = new Date(today);
         d.setDate(today.getDate() - i);
         const ds = d.toLocaleDateString('en-CA');
@@ -742,7 +784,7 @@ function updateConsistencyTab(allSets) {
         }
     }
 
-    // Longest streak (all time)
+    // Longest streak within the period.
     const sortedDates = Object.keys(workoutDates).sort();
     let longestStreak = sortedDates.length > 0 ? 1 : 0;
     let streak = longestStreak;
@@ -758,15 +800,18 @@ function updateConsistencyTab(allSets) {
         }
     }
 
-    // Total days & avg/week over last year
-    const yearAgoStr = new Date(today.getTime() - 364 * 86400000).toLocaleDateString('en-CA');
-    const daysLastYear = sortedDates.filter(d => d >= yearAgoStr).length;
-    const avgPerWeek = (daysLastYear / 52).toFixed(1);
+    // Avg per week over the period.
+    const periodWeeks = Math.max(1, periodDays / 7);
+    const avgPerWeek = (sortedDates.length / periodWeeks).toFixed(1);
 
     document.getElementById('consistency-streak').textContent = currentStreak;
     document.getElementById('consistency-longest').textContent = longestStreak;
     document.getElementById('consistency-total').textContent = sortedDates.length;
     document.getElementById('consistency-avg').textContent = avgPerWeek;
+    const totalLbl = document.getElementById('consistency-total-period');
+    const avgLbl = document.getElementById('consistency-avg-period');
+    if (totalLbl) totalLbl.textContent = periodLabel;
+    if (avgLbl) avgLbl.textContent = periodLabel;
 
     // Build heatmap
     const grid = document.getElementById('heatmap-grid');
@@ -832,7 +877,7 @@ function updateConsistencyTab(allSets) {
             const cellDate = new Date(gridStart);
             cellDate.setDate(gridStart.getDate() + w * 7 + d);
             const ds = cellDate.toLocaleDateString('en-CA');
-            const count = workoutDates[ds] || 0;
+            const count = workoutDatesAll[ds] || 0;
             const isFuture = ds > todayStr;
 
             const cell = document.createElement('div');
@@ -869,13 +914,16 @@ function updateConsistencyTab(allSets) {
 
 // ─── Rest & Recovery ─────────────────────────────────────────────────────────
 
-function updateRecoveryTab(allSets, exercises) {
+function updateRecoveryTab(allSets, exercises, period) {
     const exMap = {};
     (exercises || []).forEach(ex => { exMap[ex.Name] = ex; });
 
+    // Only show exercises performed within the selected period.
+    const periodSets = filterByPeriod(allSets, period || currentPeriod);
+
     const lastDate = {};
     const sessionDates = {};
-    allSets.forEach(s => {
+    periodSets.forEach(s => {
         if (!lastDate[s.Name] || s.Date > lastDate[s.Name]) lastDate[s.Name] = s.Date;
         if (!sessionDates[s.Name]) sessionDates[s.Name] = new Set();
         sessionDates[s.Name].add(s.Date);
