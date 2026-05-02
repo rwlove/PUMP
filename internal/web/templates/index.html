@@ -169,9 +169,10 @@
 </div>
 
 <script>
-  window._allSets  = {{ .ExData.Sets }};
-  window._allExs   = {{ .ExData.Exs }};
-  window._autoFill = {{ .Config.AutoFill }};
+  window._allSets    = {{ .ExData.Sets }};
+  window._allExs     = {{ .ExData.Exs }};
+  window._autoFill   = {{ .Config.AutoFill }};
+  window._serverDate = {{ .ServerDate | json }};
   setFormDate(window._allSets);
   renderWeekStreak(window._allSets);
 </script>

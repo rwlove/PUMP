@@ -213,13 +213,13 @@ function setFormContent(sets, date) {
 function setFormDate(sets) {
     var date = window.sessionStorage.getItem("today");
     if (!date) {
-        date = new Date().toLocaleDateString('en-CA');
+        date = window._serverDate || new Date().toLocaleDateString('en-CA');
     }
     setFormContent(sets, date);
 }
 
 function goToToday() {
-    var date = new Date().toLocaleDateString('en-CA');
+    var date = window._serverDate || new Date().toLocaleDateString('en-CA');
     setFormContent(window._allSets, date);
 }
 

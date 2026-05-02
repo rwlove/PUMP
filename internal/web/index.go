@@ -65,6 +65,7 @@ func indexHandler(c *gin.Context) {
 	guiData.ExData.Sets = displaySets
 	guiData.ExData.Weight = weights
 	guiData.GroupMap = buildGroupList(exs)
+	guiData.ServerDate = time.Now().Format("2006-01-02")
 
 	c.HTML(http.StatusOK, "header.html", guiData)
 	c.HTML(http.StatusOK, "index.html", guiData)

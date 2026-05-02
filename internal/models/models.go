@@ -58,9 +58,10 @@ type BodyWeight struct {
 
 // GuiData - web gui data
 type GuiData struct {
-	Config   Conf
-	ExData   AllExData
-	GroupMap []string // unique exercise groups, in display order
-	OneEx    Exercise
-	Version  string
+	Config     Conf
+	ExData     AllExData
+	GroupMap   []string // unique exercise groups, in display order
+	OneEx      Exercise
+	Version    string
+	ServerDate string // today's date in server timezone (YYYY-MM-DD)
 }
