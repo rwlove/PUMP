@@ -44,6 +44,7 @@ import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.core.cartesian.data.columnSeries
 import com.patrykandpatrick.vico.core.cartesian.data.lineSeries
 import com.rwlove.pump.viewmodel.HeatmapDay
+import com.rwlove.pump.viewmodel.StatsPeriod
 import com.rwlove.pump.viewmodel.StatsViewModel
 
 @Composable
@@ -84,12 +85,31 @@ fun StatsScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Period selector row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            StatsPeriod.entries.forEach { period ->
+                FilterChip(
+                    selected = state.selectedPeriod == period,
+                    onClick = { viewModel.selectPeriod(period) },
+                    label = { Text(period.label) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         when (selectedTab) {
             0 -> OverviewTab(
                 mostPerformed = state.mostPerformed,
                 leastPerformed = state.leastPerformed,
+                totalSets = state.totalSets,
+                activeDays = state.activeDays,
                 heatmapData = state.heatmapData
             )
             1 -> WeightMovedTab(
@@ -107,11 +127,14 @@ fun StatsScreen(
 private fun OverviewTab(
     mostPerformed: com.rwlove.pump.viewmodel.ExerciseStat?,
     leastPerformed: com.rwlove.pump.viewmodel.ExerciseStat?,
+    totalSets: Int,
+    activeDays: Int,
     heatmapData: List<HeatmapDay>
 ) {
     Column(
         modifier = Modifier.verticalScroll(rememberScrollState())
     ) {
+        // Row 1: Most Performed / Least Performed
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -126,6 +149,25 @@ private fun OverviewTab(
                 title = "Least Performed",
                 name = leastPerformed?.name ?: "-",
                 count = leastPerformed?.count ?: 0,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Row 2: Total Sets / Active Days
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            CountCard(
+                title = "Total Sets",
+                count = totalSets,
+                modifier = Modifier.weight(1f)
+            )
+            CountCard(
+                title = "Active Days",
+                count = activeDays,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -174,6 +216,36 @@ private fun StatCard(
                 text = "$count sets",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun CountCard(
+    title: String,
+    count: Int,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = count.toString(),
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
             )
         }
     }

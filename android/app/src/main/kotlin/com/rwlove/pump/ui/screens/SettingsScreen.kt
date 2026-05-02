@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.rwlove.pump.BuildConfig
 import com.rwlove.pump.viewmodel.SettingsViewModel
 
 @Composable
@@ -87,7 +88,7 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.weight(1f))
 
         Text(
-            text = "PUMP v1.0",
+            text = "PUMP ${BuildConfig.VERSION_NAME}",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.align(Alignment.CenterHorizontally)

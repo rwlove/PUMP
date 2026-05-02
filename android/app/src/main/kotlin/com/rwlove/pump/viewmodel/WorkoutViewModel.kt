@@ -50,6 +50,22 @@ data class WorkoutUiState(
             }.toSet()
             return weekDates.associate { it.dayOfWeek to (it in setDates) }
         }
+
+    /**
+     * Trailing 7 real calendar days ending today (today, yesterday, … 6 days ago),
+     * regardless of which date the user is browsing.
+     * Keyed by the actual LocalDate (not DayOfWeek) so ActivityDots can display them in order.
+     */
+    val trailingWeekActivity: Map<LocalDate, Boolean>
+        get() {
+            val today = LocalDate.now()
+            val setDates = allSets.mapNotNull {
+                runCatching { LocalDate.parse(it.Date, DateTimeFormatter.ISO_LOCAL_DATE) }.getOrNull()
+            }.toSet()
+            // oldest first so index 0 = 6 days ago, index 6 = today
+            return (6L downTo 0L).map { today.minusDays(it) }
+                .associate { it to (it in setDates) }
+        }
 }
 
 @HiltViewModel

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Card
@@ -34,7 +35,8 @@ import com.rwlove.pump.data.api.SetDto
 fun SetItem(
     set: SetDto,
     onDelete: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    setBadge: String? = null
 ) {
     val dismissState = rememberSwipeToDismissBoxState()
 
@@ -84,10 +86,29 @@ fun SetItem(
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = set.Name,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = set.Name,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        if (setBadge != null) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(
+                                        MaterialTheme.colorScheme.secondaryContainer
+                                    )
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = setBadge,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                        }
+                    }
                 }
                 Text(
                     text = "${set.Weight} x ${set.Reps}",

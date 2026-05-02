@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -46,7 +47,6 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +56,11 @@ fun WorkoutScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showDatePicker by remember { mutableStateOf(false) }
     var addSetExercise by remember { mutableStateOf<String?>(null) }
+
+    // Formatter for the "Today's Workout" label: e.g. "Monday, Apr 28"
+    val workoutDateFormatter = remember {
+        DateTimeFormatter.ofPattern("EEEE, MMM d")
+    }
 
     Column(
         modifier = Modifier
@@ -76,7 +81,7 @@ fun WorkoutScreen(
             TextButton(onClick = { showDatePicker = true }) {
                 Text(
                     text = state.selectedDate.format(
-                        DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
+                        DateTimeFormatter.ofPattern("MMM d, yyyy")
                     ),
                     style = MaterialTheme.typography.titleMedium
                 )
@@ -89,9 +94,9 @@ fun WorkoutScreen(
             }
         }
 
-        // Weekly activity dots
+        // Weekly activity dots (trailing 7 real days)
         ActivityDots(
-            weekActivity = state.weekActivity,
+            weekActivity = state.trailingWeekActivity,
             modifier = Modifier.padding(vertical = 4.dp)
         )
 
@@ -126,7 +131,7 @@ fun WorkoutScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Exercise list + Today's workout in a single scrollable column
+        // Exercise list + workout log in a single scrollable column
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -139,14 +144,14 @@ fun WorkoutScreen(
                 )
             }
 
-            // Divider before today's sets
+            // Divider before the date's sets
             if (state.setsForDate.isNotEmpty()) {
                 item {
                     Spacer(modifier = Modifier.height(8.dp))
                     HorizontalDivider()
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Today's Workout",
+                        text = state.selectedDate.format(workoutDateFormatter),
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.fillMaxWidth(),
                         textAlign = TextAlign.Center
@@ -154,9 +159,17 @@ fun WorkoutScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                 }
 
-                items(state.setsForDate, key = { it.ID }) { set ->
+                // Build set-number-per-exercise lookup before rendering
+                val setsForDate = state.setsForDate
+                // Count occurrences of each exercise name seen so far; use index to assign badge
+                itemsIndexed(setsForDate, key = { _, it -> it.ID }) { index, set ->
+                    // Count how many entries with the same name come before this index
+                    val setNumber = setsForDate.subList(0, index).count { it.Name == set.Name }
+                    // Total occurrences of this exercise name in the list
+                    val totalForExercise = setsForDate.count { it.Name == set.Name }
                     SetItem(
                         set = set,
+                        setBadge = if (totalForExercise > 1) "S${setNumber + 1}" else null,
                         onDelete = { viewModel.deleteSet(set) }
                     )
                 }
@@ -199,8 +212,32 @@ fun WorkoutScreen(
 
     // Add set dialog
     addSetExercise?.let { exerciseName ->
+        // Determine the set position (0-indexed) for this exercise in today's list
+        val currentSets = state.setsForDate
+        val setPosition = currentSets.count { it.Name == exerciseName }
+
+        // Find the most recent past date where this exercise was performed and get the
+        // (setPosition+1)-th set (or last if fewer exist) for pre-fill values
+        val allSets = state.allSets
+        val todayStr = state.selectedDate.format(DateTimeFormatter.ISO_LOCAL_DATE)
+        val historicalDatesForExercise = allSets
+            .filter { it.Name == exerciseName && it.Date < todayStr }
+            .map { it.Date }
+            .distinct()
+            .sortedDescending()
+        val mostRecentDate = historicalDatesForExercise.firstOrNull()
+        val historicalSets = if (mostRecentDate != null) {
+            allSets.filter { it.Name == exerciseName && it.Date == mostRecentDate }
+        } else emptyList()
+        // Clamp to last if setPosition is beyond bounds
+        val prefillSet = if (historicalSets.isNotEmpty()) {
+            historicalSets.getOrNull(setPosition) ?: historicalSets.last()
+        } else null
+
         AddSetDialog(
             exerciseName = exerciseName,
+            initialWeight = prefillSet?.Weight ?: "",
+            initialReps = prefillSet?.Reps?.toString() ?: "",
             onDismiss = { addSetExercise = null },
             onSave = { weight, reps ->
                 viewModel.addSet(exerciseName, weight, reps)

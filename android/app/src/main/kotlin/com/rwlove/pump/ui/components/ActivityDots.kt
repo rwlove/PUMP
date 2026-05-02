@@ -15,29 +15,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
-import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
+/**
+ * Displays activity dots for a trailing 7-day window.
+ * [weekActivity] is an ordered map of LocalDate → hasActivity,
+ * oldest date first (index 0 = 6 days ago, index 6 = today).
+ */
 @Composable
 fun ActivityDots(
-    weekActivity: Map<DayOfWeek, Boolean>,
+    weekActivity: Map<LocalDate, Boolean>,
     modifier: Modifier = Modifier
 ) {
-    val days = listOf(
-        DayOfWeek.SUNDAY to "S",
-        DayOfWeek.MONDAY to "M",
-        DayOfWeek.TUESDAY to "T",
-        DayOfWeek.WEDNESDAY to "W",
-        DayOfWeek.THURSDAY to "T",
-        DayOfWeek.FRIDAY to "F",
-        DayOfWeek.SATURDAY to "S"
-    )
+    val dayLabelFormatter = DateTimeFormatter.ofPattern("EEE")
 
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        days.forEach { (dayOfWeek, label) ->
-            val isActive = weekActivity[dayOfWeek] == true
+        weekActivity.entries.forEach { (date, isActive) ->
+            val label = date.format(dayLabelFormatter).take(1) // "M", "T", etc.
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {

@@ -28,10 +28,12 @@ import androidx.compose.ui.window.Dialog
 fun AddSetDialog(
     exerciseName: String,
     onDismiss: () -> Unit,
-    onSave: (weight: String, reps: Int) -> Unit
+    onSave: (weight: String, reps: Int) -> Unit,
+    initialWeight: String = "",
+    initialReps: String = ""
 ) {
-    var weight by remember { mutableStateOf("") }
-    var reps by remember { mutableStateOf("") }
+    var weight by remember { mutableStateOf(initialWeight) }
+    var reps by remember { mutableStateOf(initialReps) }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
