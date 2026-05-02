@@ -37,7 +37,19 @@ jobs:
       BUILD_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
 
     steps:
-      # ── 1. Early-exit checks ──────────────────────────────────────────────
+      # ── 1. Check out the default branch ───────────────────────────────────
+      # IMPORTANT: do NOT use ref: head_sha here.  workflow_run runs in a
+      # privileged context (secrets + contents:write).  Checking out an
+      # arbitrary SHA supplied by the triggering event is flagged as
+      # "untrusted-checkout" by CodeQL.  We always run the autofix script
+      # from the trusted default branch; HEAD_SHA is only used as a data
+      # value (git-log lookback, push target) — never as executable code.
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── 2. Early-exit checks ──────────────────────────────────────────────
       - name: Check CLAUDE_CODE_OAUTH_TOKEN is present
         run: |
           if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
@@ -50,6 +62,7 @@ jobs:
           # Allow at most 1 consecutive autofix commit at HEAD before stopping.
           # This lets Claude make a second attempt when a first fix was wrong,
           # while still preventing infinite loops.
+          # Note: checkout must happen before this step so git is available.
           STREAK=$(git log --format='%an' -3 "${{ env.HEAD_SHA }}" \
             | grep -c '^github-actions\[bot\]$' || true)
           echo "Consecutive autofix commits at HEAD: $STREAK"
@@ -58,13 +71,6 @@ jobs:
                  " Manual intervention required."
             exit 0
           fi
-
-      # ── 2. Check out the exact commit ─────────────────────────────────────
-      - name: Checkout commit
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ env.HEAD_SHA }}
-          fetch-depth: 0
 
       # ── 3. Fetch logs and resolve the failing workflow file ───────────────
       - name: Fetch run logs
