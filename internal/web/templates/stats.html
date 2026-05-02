@@ -255,14 +255,14 @@
                       <div class="p-3 rounded-3 bg-body-secondary text-center">
                         <div class="stat-label">Total Days</div>
                         <div id="consistency-total" class="fw-bold fs-4">-</div>
-                        <div class="stat-label">all time</div>
+                        <div id="consistency-total-period" class="stat-label">all time</div>
                       </div>
                     </div>
                     <div class="col-6 col-sm-3">
                       <div class="p-3 rounded-3 bg-body-secondary text-center">
                         <div class="stat-label">Avg / Week</div>
                         <div id="consistency-avg" class="fw-bold fs-4">-</div>
-                        <div class="stat-label">last year</div>
+                        <div id="consistency-avg-period" class="stat-label">last year</div>
                       </div>
                     </div>
                   </div>
@@ -330,10 +330,10 @@
         updateBalanceTab(window.currentSets, window.exercises, currentPeriod);
     });
     document.getElementById('tab-consistency-btn').addEventListener('shown.bs.tab', function() {
-        updateConsistencyTab(window.currentSets);
+        updateConsistencyTab(window.currentSets, currentPeriod);
     });
     document.getElementById('tab-recovery-btn').addEventListener('shown.bs.tab', function() {
-        updateRecoveryTab(window.currentSets, window.exercises);
+        updateRecoveryTab(window.currentSets, window.exercises, currentPeriod);
     });
 </script>
 
