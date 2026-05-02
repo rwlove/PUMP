@@ -1,14 +1,14 @@
 <svg width="400" height="136" viewBox="0 0 400 136" xmlns="http://www.w3.org/2000/svg">
   <!-- plate left outer -->
-  <rect x="28" y="14" width="22" height="72" rx="4" fill="#666666"/>
+  <rect x="88" y="14" width="22" height="72" rx="4" fill="#666666"/>
   <!-- plate left inner -->
-  <rect x="52" y="27" width="14" height="46" rx="3" fill="#888888"/>
+  <rect x="112" y="27" width="14" height="46" rx="3" fill="#888888"/>
   <!-- bar (gentle upward arch from end to end) -->
-  <path d="M 66,46 Q 200,28 334,46 L 334,58 Q 200,40 66,58 Z" fill="#777777"/>
+  <path d="M 126,46 Q 200,28 274,46 L 274,58 Q 200,40 126,58 Z" fill="#777777"/>
   <!-- plate right inner -->
-  <rect x="334" y="27" width="14" height="46" rx="3" fill="#888888"/>
+  <rect x="274" y="27" width="14" height="46" rx="3" fill="#888888"/>
   <!-- plate right outer -->
-  <rect x="350" y="14" width="22" height="72" rx="4" fill="#666666"/>
+  <rect x="290" y="14" width="22" height="72" rx="4" fill="#666666"/>
   <!-- PUMP lettering: outer P's raised to look like they're lifting the bar -->
   <text x="200" y="126"
         font-family="system-ui, -apple-system, Arial, sans-serif"
