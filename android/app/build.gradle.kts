@@ -16,7 +16,9 @@ android {
         minSdk = 36
         targetSdk = 36
         versionCode = 1
-        versionName = "1.0"
+        // VERSION_NAME is injected by CI as the git tag (e.g. "v0.0.64").
+        // Falls back to "dev" for local builds.
+        versionName = System.getenv("VERSION_NAME") ?: "dev"
     }
 
     buildFeatures {

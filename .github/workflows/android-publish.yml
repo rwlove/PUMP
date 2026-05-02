@@ -37,6 +37,7 @@ jobs:
         run: ./gradlew assembleRelease --no-daemon
         env:
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g"
+          VERSION_NAME: ${{ github.ref_name }}
 
       - name: Sign APK
         if: ${{ env.SIGNING_KEY != '' }}
