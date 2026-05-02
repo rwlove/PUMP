@@ -26,6 +26,31 @@
               <i class="bi bi-speedometer2 me-2"></i>Body Weight
             </button>
           </li>
+          <li class="nav-item" role="presentation">
+            <button class="page-tab-btn" id="tab-prs-btn" data-bs-toggle="tab" data-bs-target="#tab-prs" type="button" role="tab">
+              <i class="bi bi-trophy me-2"></i>Personal Records
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="page-tab-btn" id="tab-overload-btn" data-bs-toggle="tab" data-bs-target="#tab-overload" type="button" role="tab">
+              <i class="bi bi-graph-up me-2"></i>Progressive Overload
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="page-tab-btn" id="tab-balance-btn" data-bs-toggle="tab" data-bs-target="#tab-balance" type="button" role="tab">
+              <i class="bi bi-hexagon me-2"></i>Muscle Balance
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="page-tab-btn" id="tab-consistency-btn" data-bs-toggle="tab" data-bs-target="#tab-consistency" type="button" role="tab">
+              <i class="bi bi-calendar3 me-2"></i>Consistency
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="page-tab-btn" id="tab-recovery-btn" data-bs-toggle="tab" data-bs-target="#tab-recovery" type="button" role="tab">
+              <i class="bi bi-arrow-repeat me-2"></i>Recovery
+            </button>
+          </li>
         </ul>
         <div class="btn-group btn-group-sm py-1 pe-1" id="global-period-btns" role="group" aria-label="Time period">
           <button type="button" class="btn btn-sm btn-outline-secondary active"
@@ -136,12 +161,154 @@
         </div>
       </div>
 
+      <!-- ── Personal Records ──────────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="tab-prs" role="tabpanel">
+        <div class="container-xl py-4">
+          <div class="row g-4">
+            <div class="col-12">
+              <div class="panel">
+                <div class="panel-header">
+                  <span class="panel-title">Personal Records</span>
+                  <small class="text-body-secondary" style="font-size:0.75em;">All-time best estimated 1RM · <span id="prs-period-note"></span></small>
+                </div>
+                <div class="panel-body p-0">
+                  <div id="prs-table-container"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Progressive Overload ─────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="tab-overload" role="tabpanel">
+        <div class="container-xl py-4">
+          <div class="row g-4">
+            <div class="col-12">
+              <div class="panel">
+                <div class="panel-header">
+                  <span class="panel-title">Progressive Overload</span>
+                  <small class="text-body-secondary" style="font-size:0.75em;">Est. 1RM via Epley formula</small>
+                </div>
+                <div class="px-3 pt-3 pb-1">
+                  <div id="overload-ex-buttons" class="d-flex flex-wrap gap-2"></div>
+                </div>
+                <div class="panel-body">
+                  <canvas id="overload-chart" style="max-height:320px;"></canvas>
+                  <p class="text-center text-body-secondary mt-3 mb-0" id="overload-no-data" style="display:none;">No weighted sets for this exercise in the selected period.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Muscle Balance ─────────────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="tab-balance" role="tabpanel">
+        <div class="container-xl py-4">
+          <div class="row g-4">
+            <div class="col-12 col-lg-7">
+              <div class="panel">
+                <div class="panel-header"><span class="panel-title">Volume by Muscle Group</span></div>
+                <div class="panel-body">
+                  <canvas id="balance-chart" style="max-height:360px;"></canvas>
+                  <p class="text-center text-body-secondary mt-3 mb-0" id="balance-no-data" style="display:none;">No data in this period.</p>
+                </div>
+              </div>
+            </div>
+            <div class="col-12 col-lg-5">
+              <div class="panel">
+                <div class="panel-header"><span class="panel-title">Volume Breakdown</span></div>
+                <div class="panel-body">
+                  <div class="row g-2" id="balance-summary"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Training Consistency ───────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="tab-consistency" role="tabpanel">
+        <div class="container-xl py-4">
+          <div class="row g-4">
+            <div class="col-12">
+              <div class="panel">
+                <div class="panel-header"><span class="panel-title">Training Consistency</span></div>
+                <div class="panel-body">
+                  <div class="row g-2 mb-4">
+                    <div class="col-6 col-sm-3">
+                      <div class="p-3 rounded-3 bg-body-secondary text-center">
+                        <div class="stat-label">Current Streak</div>
+                        <div id="consistency-streak" class="fw-bold fs-4">-</div>
+                        <div class="stat-label">days</div>
+                      </div>
+                    </div>
+                    <div class="col-6 col-sm-3">
+                      <div class="p-3 rounded-3 bg-body-secondary text-center">
+                        <div class="stat-label">Longest Streak</div>
+                        <div id="consistency-longest" class="fw-bold fs-4">-</div>
+                        <div class="stat-label">days</div>
+                      </div>
+                    </div>
+                    <div class="col-6 col-sm-3">
+                      <div class="p-3 rounded-3 bg-body-secondary text-center">
+                        <div class="stat-label">Total Days</div>
+                        <div id="consistency-total" class="fw-bold fs-4">-</div>
+                        <div class="stat-label">all time</div>
+                      </div>
+                    </div>
+                    <div class="col-6 col-sm-3">
+                      <div class="p-3 rounded-3 bg-body-secondary text-center">
+                        <div class="stat-label">Avg / Week</div>
+                        <div id="consistency-avg" class="fw-bold fs-4">-</div>
+                        <div class="stat-label">last year</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div id="heatmap-grid"></div>
+                  <div class="heatmap-legend mt-3 d-flex align-items-center gap-2 justify-content-end">
+                    <span class="stat-label">Less</span>
+                    <div class="heatmap-legend-cell heatmap-l0"></div>
+                    <div class="heatmap-legend-cell heatmap-l1"></div>
+                    <div class="heatmap-legend-cell heatmap-l2"></div>
+                    <div class="heatmap-legend-cell heatmap-l3"></div>
+                    <div class="heatmap-legend-cell heatmap-l4"></div>
+                    <span class="stat-label">More</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Rest & Recovery ──────────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="tab-recovery" role="tabpanel">
+        <div class="container-xl py-4">
+          <div class="row g-4">
+            <div class="col-12">
+              <div class="panel">
+                <div class="panel-header">
+                  <span class="panel-title">Rest & Recovery</span>
+                  <small class="text-body-secondary" style="font-size:0.75em;">Sorted by most overdue</small>
+                </div>
+                <div class="panel-body p-0">
+                  <div id="recovery-table"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
 
 <script>
     window.currentSets  = {{ .ExData.Sets }};
     window._allWeight   = {{ .ExData.Weight }};
     window._chartColor  = getComputedStyle(document.documentElement).getPropertyValue('--bs-primary').trim() || '#2780e3';
+    window._serverDate = {{ .ServerDate | json | safeJS }};
 
     // Init all displays with default period
     setGlobalPeriod('weekly');
@@ -152,6 +319,21 @@
     });
     document.getElementById('tab-weight-btn').addEventListener('shown.bs.tab', function() {
         generateWeightChart(filterWeightByPeriod(window._allWeight, currentPeriod), window._chartColor, 0, 'stats-body-weight');
+    });
+    document.getElementById('tab-prs-btn').addEventListener('shown.bs.tab', function() {
+        updatePRsTab(window.currentSets, window.exercises, currentPeriod);
+    });
+    document.getElementById('tab-overload-btn').addEventListener('shown.bs.tab', function() {
+        refreshOverloadTab(window.currentSets, window.exercises, currentPeriod);
+    });
+    document.getElementById('tab-balance-btn').addEventListener('shown.bs.tab', function() {
+        updateBalanceTab(window.currentSets, window.exercises, currentPeriod);
+    });
+    document.getElementById('tab-consistency-btn').addEventListener('shown.bs.tab', function() {
+        updateConsistencyTab(window.currentSets);
+    });
+    document.getElementById('tab-recovery-btn').addEventListener('shown.bs.tab', function() {
+        updateRecoveryTab(window.currentSets, window.exercises);
     });
 </script>
 

@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rwlove/PUMP/internal/models"
@@ -38,6 +39,7 @@ func statsHandler(c *gin.Context) {
 	guiData.ExData.Exs = exs
 	guiData.ExData.Sets = sets
 	guiData.ExData.Weight = weights
+	guiData.ServerDate = time.Now().Format("2006-01-02")
 
 	c.HTML(http.StatusOK, "header.html", guiData)
 	c.HTML(http.StatusOK, "stats.html", guiData)
