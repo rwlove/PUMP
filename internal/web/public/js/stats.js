@@ -217,6 +217,22 @@ function blendToWhite(hex, t) {
     return `rgb(${rr},${gg},${bb})`;
 }
 
+// Return the most recent body weight value (lbs) on or before `dateStr`,
+// or null if none is available.
+function getBodyWeightOnOrBefore(dateStr) {
+    const allW = window._allWeight;
+    if (!allW || allW.length === 0) return null;
+    // _allWeight entries have a Date string (YYYY-MM-DD) and a Weight value.
+    // Walk backwards through sorted entries to find the closest past entry.
+    const sorted = allW.slice().sort((a, b) => a.Date < b.Date ? -1 : a.Date > b.Date ? 1 : 0);
+    let best = null;
+    for (let i = 0; i < sorted.length; i++) {
+        if (sorted[i].Date <= dateStr) best = sorted[i];
+        else break;
+    }
+    return best ? parseFloat(best.Weight) : null;
+}
+
 function updateVolumeChart(sets, exercises, period, exerciseName) {
     const { start, end } = getPeriodDates(period);
     const filtered = sets.filter(s => {
@@ -225,15 +241,27 @@ function updateVolumeChart(sets, exercises, period, exerciseName) {
         return d >= start && d <= end;
     });
 
+    // Determine whether this exercise belongs to a "legs" group so we can
+    // substitute missing/zero weight with the nearest body weight entry.
+    const groupMap = {};
+    (exercises || []).forEach(ex => { groupMap[ex.Name] = (ex.Group || '').toLowerCase(); });
+    const isLegs = (groupMap[exerciseName] || '').includes('leg');
+
     // Group by date, preserving set order within each day.
-    const setsByDate = {};   // date → [{weight, reps, vol}, ...]
+    const setsByDate = {};   // date → [{weight, reps, vol, bodyWeightUsed}, ...]
 
     filtered.forEach(s => {
-        const w   = parseFloat(s.Weight);
+        let w = parseFloat(s.Weight);
+        let bodyWeightUsed = false;
+        // For leg exercises with no weight (0, NaN, blank), fall back to body weight.
+        if (isLegs && (isNaN(w) || w === 0)) {
+            const bw = getBodyWeightOnOrBefore(s.Date);
+            if (bw !== null) { w = bw; bodyWeightUsed = true; }
+        }
         const r   = parseInt(s.Reps, 10);
         const vol = (!isNaN(w) && !isNaN(r)) ? w * r : 0;
         if (!setsByDate[s.Date]) setsByDate[s.Date] = [];
-        setsByDate[s.Date].push({ weight: w, reps: r, vol });
+        setsByDate[s.Date].push({ weight: w, reps: r, vol, bodyWeightUsed });
     });
 
     const dates   = Object.keys(setsByDate).sort();
@@ -317,11 +345,12 @@ function updateVolumeChart(sets, exercises, period, exerciseName) {
                             const date    = ctx.label;
                             const daySets = setsByDate[date] || [];
                             if (i >= daySets.length) return null; // skip null entries
-                            const s   = daySets[i];
-                            const w   = isNaN(s.weight) ? '?' : s.weight;
-                            const r   = isNaN(s.reps)   ? '?' : s.reps;
-                            const vol = s.vol.toLocaleString(undefined, { maximumFractionDigits: 1 });
-                            return `Set ${i + 1}: ${w}×${r} = ${vol} lbs`;
+                            const s    = daySets[i];
+                            const w    = isNaN(s.weight) ? '?' : s.weight;
+                            const r    = isNaN(s.reps)   ? '?' : s.reps;
+                            const vol  = s.vol.toLocaleString(undefined, { maximumFractionDigits: 1 });
+                            const note = s.bodyWeightUsed ? ' (BW)' : '';
+                            return `Set ${i + 1}: ${w}×${r}${note} = ${vol} lbs`;
                         },
                         // Footer: total volume for the day
                         footer(items) {
