@@ -2,15 +2,15 @@
   <!-- dark rounded background -->
   <rect width="64" height="64" rx="10" fill="#222"/>
   <!-- plate left outer -->
-  <rect x="2" y="13" width="8" height="28" rx="2" fill="#666666"/>
+  <rect x="8" y="13" width="8" height="28" rx="2" fill="#666666"/>
   <!-- plate left inner -->
-  <rect x="10" y="18" width="5" height="18" rx="1.5" fill="#888888"/>
+  <rect x="16" y="18" width="5" height="18" rx="1.5" fill="#888888"/>
   <!-- bar (gentle upward arch) -->
-  <path d="M 15,24 Q 32,17 49,24 L 49,30 Q 32,23 15,30 Z" fill="#777777"/>
+  <path d="M 21,24 Q 32,17 43,24 L 43,30 Q 32,23 21,30 Z" fill="#777777"/>
   <!-- plate right inner -->
-  <rect x="49" y="18" width="5" height="18" rx="1.5" fill="#888888"/>
+  <rect x="43" y="18" width="5" height="18" rx="1.5" fill="#888888"/>
   <!-- plate right outer -->
-  <rect x="54" y="13" width="8" height="28" rx="2" fill="#666666"/>
+  <rect x="48" y="13" width="8" height="28" rx="2" fill="#666666"/>
   <!-- PUMP lettering: outer P's raised like the logo -->
   <text x="32" y="56"
         font-family="system-ui, -apple-system, Arial, sans-serif"
