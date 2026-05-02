@@ -14,7 +14,7 @@
   <!-- PUMP lettering: outer P's raised like the logo -->
   <text x="32" y="56"
         font-family="system-ui, -apple-system, Arial, sans-serif"
-        font-weight="900" font-size="14" letter-spacing="2"
+        font-weight="900" font-size="15" letter-spacing="2"
         fill="white" text-anchor="middle">
     <tspan dy="-2">P</tspan><tspan dy="2">UM</tspan><tspan dy="-2">P</tspan>
   </text>
