@@ -1,0 +1,21 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- dark rounded background -->
+  <rect width="64" height="64" rx="10" fill="#222"/>
+  <!-- plate left outer -->
+  <rect x="2" y="13" width="8" height="28" rx="2" fill="#666666"/>
+  <!-- plate left inner -->
+  <rect x="10" y="18" width="5" height="18" rx="1.5" fill="#888888"/>
+  <!-- bar (gentle upward arch) -->
+  <path d="M 15,24 Q 32,17 49,24 L 49,30 Q 32,23 15,30 Z" fill="#777777"/>
+  <!-- plate right inner -->
+  <rect x="49" y="18" width="5" height="18" rx="1.5" fill="#888888"/>
+  <!-- plate right outer -->
+  <rect x="54" y="13" width="8" height="28" rx="2" fill="#666666"/>
+  <!-- PUMP lettering: outer P's raised like the logo -->
+  <text x="32" y="56"
+        font-family="system-ui, -apple-system, Arial, sans-serif"
+        font-weight="600" font-size="14" letter-spacing="2"
+        fill="white" text-anchor="middle">
+    <tspan dy="-2">P</tspan><tspan dy="2">UM</tspan><tspan dy="-2">P</tspan>
+  </text>
+</svg>

@@ -1,5 +1,23 @@
 # PUMP — Claude Code Instructions
 
+## Logo changes
+
+The logo lives in two canonical locations:
+
+- `internal/web/public/logo.svg` — served by the web UI at `/fs/public/logo.svg`
+- `assets/logo.svg` — used by the README
+
+Whenever the logo SVG is changed, **all four of the following must be updated in the same commit**:
+
+1. **`internal/web/public/logo.svg`** and **`assets/logo.svg`** — keep them identical.
+2. **`internal/web/public/favicon.svg`** — rebuild as a compact square (64×64 viewBox) version
+   of the new logo: same shapes, same colors, dark rounded background, "PUMP" text at the
+   bottom with the raised-P style. Update `favicon.png` too if tooling is available.
+3. **`README.md`** — the `<img src="assets/logo.svg">` tag already references the file; verify
+   it still renders correctly after any viewBox or size change.
+4. **Android** — replace `android/app/src/main/res/drawable/logo.svg` (or equivalent) with the
+   new logo and rebuild the app icon / splash assets as needed.
+
 ## Before applying any new version tag
 
 Complete all steps in order before running `git tag`:
