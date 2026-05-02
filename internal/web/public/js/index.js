@@ -104,7 +104,7 @@ function addExercise(name, weight, reps, color, fromPicker) {
         ${setBadge}
         <div class="entry-controls">
             <div class="entry-field">
-                <span class="entry-label">kg</span>
+                <span class="entry-label">lbs</span>
                 <input type="number" class="form-control entry-num" name="weight"
                     value="${safeWeight}" min="0" step="any" placeholder="—">
             </div>
