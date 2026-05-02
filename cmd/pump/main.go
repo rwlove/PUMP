@@ -3,6 +3,7 @@ package main
 import (
 	"log/slog"
 	"os"
+	"strings"
 	_ "time/tzdata"
 
 	"github.com/gin-gonic/gin"
@@ -78,8 +79,19 @@ func main() {
 	r.Use(logger.GinMiddleware())
 
 	if apiKey != "" {
-		r.Use(api.APIKeyMiddleware(apiKey))
-		slog.Info("API key authentication enabled")
+		// Scope API key enforcement to /api/ routes only.
+		// Web UI routes (/, /set/, /weight/, etc.) are served by the same
+		// process but are browser-facing and must remain accessible without
+		// a key — the browser never sends X-Api-Key.
+		mw := api.APIKeyMiddleware(apiKey)
+		r.Use(func(c *gin.Context) {
+			if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+				mw(c)
+			} else {
+				c.Next()
+			}
+		})
+		slog.Info("API key authentication enabled (applies to /api/ routes)")
 	}
 
 	cfg.NodePath = nodePath

@@ -10,7 +10,9 @@ import (
 // GinMiddleware returns a Gin handler that logs every request.
 //
 //   - DEBUG level: all requests (method, path, query, status, latency, client IP, bytes)
-//   - INFO  level: only 4xx/5xx responses
+//   - INFO  level: 4xx/5xx responses on any route; all /api/ responses
+//   - WARN  level: 4xx responses
+//   - ERROR level: 5xx responses
 //
 // Use this instead of gin.Default()'s built-in logger.
 func GinMiddleware() gin.HandlerFunc {
@@ -31,6 +33,7 @@ func GinMiddleware() gin.HandlerFunc {
 		clientIP := c.ClientIP()
 		method := c.Request.Method
 		errMsg := c.Errors.ByType(gin.ErrorTypePrivate).String()
+		isAPI := len(path) >= 5 && path[:5] == "/api/"
 
 		attrs := []any{
 			slog.String("method", method),
@@ -46,14 +49,21 @@ func GinMiddleware() gin.HandlerFunc {
 		if errMsg != "" {
 			attrs = append(attrs, slog.String("error", errMsg))
 		}
+		if isAPI {
+			if ua := c.Request.Header.Get("User-Agent"); ua != "" {
+				attrs = append(attrs, slog.String("ua", ua))
+			}
+		}
 
 		switch {
 		case status >= 500:
 			slog.Error("http", attrs...)
 		case status >= 400:
 			slog.Warn("http", attrs...)
-		case debug:
-			slog.Debug("http", attrs...)
+		case isAPI || debug:
+			// Always log successful API calls at Info so the server log
+			// shows every request the Android app (or any API client) makes.
+			slog.Info("http", attrs...)
 		}
 	}
 }
