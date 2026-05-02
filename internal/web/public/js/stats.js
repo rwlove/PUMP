@@ -260,7 +260,7 @@ function updateVolumeChart(sets, exercises, period, exerciseName) {
                     beginAtZero: true,
                     grid: { display: false },
                     ticks: {
-                        callback(v) { return v.toLocaleString() + ' kg'; }
+                        callback(v) { return v.toLocaleString() + ' lbs'; }
                     }
                 }
             },
@@ -268,14 +268,14 @@ function updateVolumeChart(sets, exercises, period, exerciseName) {
                 legend: { display: false },
                 tooltip: {
                     callbacks: {
-                        // Show math breakdown: e.g. "80×10 + 75×8 + 75×8 = 1,400 kg"
+                        // Show math breakdown: e.g. "80×10 + 75×8 + 75×8 = 1,400 lbs"
                         label(ctx) {
                             const date    = ctx.label;
                             const details = detailByDate[date] || [];
                             const total   = ctx.raw;
 
                             if (details.length === 0) {
-                                return `Volume: ${total.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg`;
+                                return `Volume: ${total.toLocaleString(undefined, { maximumFractionDigits: 1 })} lbs`;
                             }
 
                             const math = details
@@ -287,7 +287,7 @@ function updateVolumeChart(sets, exercises, period, exerciseName) {
                                 .join(' + ');
 
                             const totalFmt = total.toLocaleString(undefined, { maximumFractionDigits: 1 });
-                            return `${math} = ${totalFmt} kg`;
+                            return `${math} = ${totalFmt} lbs`;
                         }
                     }
                 }
