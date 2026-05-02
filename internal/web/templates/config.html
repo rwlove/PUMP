@@ -11,27 +11,11 @@
         <table class="table table-borderless">
             <form action="/config/" method="post">
                 <tr>
-                    <td>Theme</td>
-                    <td><select name="theme" id="themeSelect" class="form-select" onchange="previewTheme(this.value)">
-                        <option selected>{{ .Config.Theme }}</option>
-                        {{ range .Themes }}
-                            <option value="{{ . }}">{{ . }}</option>
-                        {{ end }}
-                    </select></td>
-                </tr>
-                <tr>
                     <td>Color mode</td>
                     <td><select name="color" class="form-select">
-                        <option selected>{{ .Config.Color }}</option>
-                        <option value="light">light</option>
-                        <option value="dark">dark</option>
+                        <option value="dark"{{ if eq .Config.Color "dark" }} selected{{ end }}>Dark</option>
+                        <option value="light"{{ if eq .Config.Color "light" }} selected{{ end }}>Light</option>
                     </select></td>
-                </tr>
-                <tr>
-                    <td>HeatMap Color</td>
-                    <td>
-                        <input name="heatcolor" value="{{ .Config.HeatColor }}" type="color" class="form-control form-control-color">
-                    </td>
                 </tr>
                 <tr>
                     <td>Page Step<button type="button" class="btn tip-button" mytitle="How many items to show on one page (for Weight and Stats)">
@@ -85,17 +69,6 @@
         </div>
     </div>
     </div>
-
-<script>
-var _themeLink = document.getElementById('bootstrap-theme-link');
-
-function previewTheme(theme) {
-    if (!_themeLink) return;
-    var current = _themeLink.href;
-    // Replace the theme segment in the URL (works for both CDN and node paths)
-    _themeLink.href = current.replace(/\/dist\/[^/]+\/bootstrap/, '/dist/' + theme + '/bootstrap');
-}
-</script>
 
 {{ template "footer.html" }}
 {{ end }}

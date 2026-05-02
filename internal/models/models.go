@@ -8,12 +8,10 @@ import (
 type Conf struct {
 	Host          string
 	Port          string
-	Theme         string
 	Color         string
 	Icon          string
 	ConfPath      string
 	NodePath      string
-	HeatColor     string
 	PageStep      int
 	FrequencyDays int  // days to look back when sorting exercises by usage frequency
 	DisplayDays   int  // days of history shown on main page (7/30/90/365)
@@ -74,7 +72,6 @@ type BodyWeight struct {
 // GuiData - web gui data
 type GuiData struct {
 	Config       Conf
-	Themes       []string
 	ExData       AllExData
 	GroupMap     map[string]string
 	OneEx        Exercise

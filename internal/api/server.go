@@ -30,7 +30,6 @@ func RegisterRoutes(r *gin.Engine, s store.Store, cfg models.Conf) {
 func SetConfig(cfg models.Conf) {
 	appConfig = cfg
 	slog.Debug("api appConfig updated",
-		slog.String("theme", cfg.Theme),
 		slog.String("color", cfg.Color),
 	)
 }
@@ -263,16 +262,12 @@ func putConfig(c *gin.Context) {
 		return
 	}
 	slog.Info("config updated",
-		slog.String("theme", cfg.Theme),
 		slog.String("color", cfg.Color),
-		slog.String("heatcolor", cfg.HeatColor),
 		slog.Int("pagestep", cfg.PageStep),
 	)
 	appConfig.Host = cfg.Host
 	appConfig.Port = cfg.Port
-	appConfig.Theme = cfg.Theme
 	appConfig.Color = cfg.Color
-	appConfig.HeatColor = cfg.HeatColor
 	appConfig.PageStep = cfg.PageStep
 	appConfig.FrequencyDays = cfg.FrequencyDays
 	appConfig.DisplayDays = cfg.DisplayDays

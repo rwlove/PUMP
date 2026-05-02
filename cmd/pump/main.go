@@ -42,9 +42,7 @@ func main() {
 	slog.Info("PUMP monolith starting",
 		slog.String("host", host),
 		slog.String("port", port),
-		slog.String("theme", cfg.Theme),
 		slog.String("color", cfg.Color),
-		slog.String("heatcolor", cfg.HeatColor),
 		slog.Int("pagestep", cfg.PageStep),
 		slog.Int("frequency_days", cfg.FrequencyDays),
 		slog.Int("display_days", cfg.DisplayDays),
@@ -87,7 +85,6 @@ func main() {
 	web.RegisterRoutes(r, pgStore, cfg, func(newCfg models.Conf) {
 		api.SetConfig(newCfg)
 		slog.Info("config updated via web UI",
-			slog.String("theme", newCfg.Theme),
 			slog.String("color", newCfg.Color),
 		)
 	})
