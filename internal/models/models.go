@@ -15,8 +15,9 @@ type Conf struct {
 	NodePath      string
 	HeatColor     string
 	PageStep      int
-	FrequencyDays int // days to look back when sorting exercises by usage frequency
-	DisplayDays   int // days of history shown on main page (7/30/90/365)
+	FrequencyDays int  // days to look back when sorting exercises by usage frequency
+	DisplayDays   int  // days of history shown on main page (7/30/90/365)
+	AutoFill      bool // pre-fill weight/reps from last performance of that exercise
 }
 
 // Exercise - one exercise

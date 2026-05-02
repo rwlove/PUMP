@@ -437,6 +437,20 @@
   white-space: nowrap;
 }
 
+/* Set number badge — shown only when the same exercise appears more than once */
+.set-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--bs-secondary-color);
+  background: var(--bs-secondary-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 10px;
+  padding: 1px 6px;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .entry-controls {
   display: flex;
   align-items: center;
@@ -585,6 +599,36 @@
   .pwa-only {
     display: block !important;
   }
+}
+
+/* ─── Volume exercise buttons (Weight Moved tab) ────────────────────────── */
+
+.volume-ex-btn {
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-left: 3px solid var(--ex-color, #6c757d);
+  border-radius: 8px;
+  padding: 5px 14px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--bs-body-color);
+  white-space: nowrap;
+  transition: 0.15s ease;
+  line-height: 1.4;
+}
+
+.volume-ex-btn:hover {
+  background: var(--bs-secondary-bg);
+  border-color: var(--ex-color, #6c757d);
+}
+
+.volume-ex-btn.active {
+  background: var(--bs-primary-bg-subtle);
+  border-color: var(--bs-primary);
+  border-left-color: var(--ex-color, var(--bs-primary));
+  color: var(--bs-primary);
+  font-weight: 600;
 }
 
 /* ─── Responsive tweaks ──────────────────────────────────────────────────── */

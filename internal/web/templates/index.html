@@ -67,7 +67,7 @@
           <i class="bi bi-pencil me-1"></i>Edit exercise
         </a>
         <button type="button" class="btn btn-sm btn-primary rounded-3" data-bs-dismiss="modal"
-          onclick='addExercise("{{ .Name }}", "{{ .Weight }}", "{{ .Reps }}", "{{ .Color }}")'>
+          onclick='addExercise("{{ .Name }}", "{{ .Weight }}", "{{ .Reps }}", "{{ .Color }}", true)'>
           <i class="bi bi-plus me-1"></i>Add to today
         </button>
       </div>
@@ -150,7 +150,7 @@
             <div class="exercise-item" data-name="{{ .Name }}" data-group="{{ .Group }}" style="display:none;">
               <div class="ex-color-dot" style="background-color:{{ .Color }};"></div>
               <button class="ex-name-btn"
-                onclick='addExercise("{{ .Name }}", "{{ .Weight }}", "{{ .Reps }}", "{{ .Color }}")'
+                onclick='addExercise("{{ .Name }}", "{{ .Weight }}", "{{ .Reps }}", "{{ .Color }}", true)'
                 title="Add to today">{{ .Name }}</button>
               <div class="ex-icon-group">
                 <button class="ex-icon-btn" title="Details"
@@ -161,7 +161,7 @@
                   <i class="bi bi-pencil"></i>
                 </a>
                 <button class="ex-icon-btn ex-plus-btn"
-                  onclick='addExercise("{{ .Name }}", "{{ .Weight }}", "{{ .Reps }}", "{{ .Color }}")'
+                  onclick='addExercise("{{ .Name }}", "{{ .Weight }}", "{{ .Reps }}", "{{ .Color }}", true)'
                   title="Add">
                   <i class="bi bi-plus-lg"></i>
                 </button>
@@ -204,8 +204,9 @@
 </div>
 
 <script>
-  window._allSets = {{ .ExData.Sets }};
-  window._allExs  = {{ .ExData.Exs }};
+  window._allSets  = {{ .ExData.Sets }};
+  window._allExs   = {{ .ExData.Exs }};
+  window._autoFill = {{ .Config.AutoFill }};
   setFormDate(window._allSets);
   renderWeekStreak(window._allSets);
 </script>

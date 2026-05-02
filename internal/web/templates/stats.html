@@ -13,7 +13,7 @@
         <ul class="nav page-tabs" id="statsTabs" role="tablist">
           <li class="nav-item" role="presentation">
             <button class="page-tab-btn active" data-bs-toggle="tab" data-bs-target="#tab-overview" type="button" role="tab">
-              <i class="bi bi-grid-1x2 me-2"></i>Overview
+              <i class="bi bi-pie-chart me-2"></i>Exercise Distribution
             </button>
           </li>
           <li class="nav-item" role="presentation">
@@ -34,6 +34,8 @@
             data-period="monthly" onclick="setGlobalPeriod('monthly')">Month</button>
           <button type="button" class="btn btn-sm btn-outline-secondary"
             data-period="annual" onclick="setGlobalPeriod('annual')">Year</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary"
+            data-period="alltime" onclick="setGlobalPeriod('alltime')">All time</button>
         </div>
       </div>
     </div>
@@ -101,13 +103,12 @@
           <div class="row g-4">
             <div class="col-12">
               <div class="panel">
-                <div class="panel-header flex-wrap gap-2">
+                <div class="panel-header">
                   <span class="panel-title">Weight Moved Per Day</span>
-                  <select class="form-select form-select-sm" id="volume-ex-select" style="max-width:220px;" onchange="refreshVolumeChart()">
-                    {{ range $gr := .GroupMap }}
-                    <option value="{{ $gr }}">{{ $gr }}</option>
-                    {{ end }}
-                  </select>
+                </div>
+                <div class="px-3 pt-3 pb-1">
+                  <div id="volume-ex-buttons" class="d-flex flex-wrap gap-2"></div>
+                  <p class="text-center text-body-secondary mt-3 mb-0" id="volume-no-exercises" style="display:none;">No exercises performed in this period.</p>
                 </div>
                 <div class="panel-body">
                   <canvas id="volume-chart" style="max-height:320px;"></canvas>

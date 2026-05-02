@@ -19,6 +19,7 @@ func GetFromEnv() models.Conf {
 	v.SetDefault("PAGESTEP", 10)
 	v.SetDefault("FREQUENCY_DAYS", 30)
 	v.SetDefault("DISPLAY_DAYS", 30)
+	v.SetDefault("AUTOFILL", true)
 
 	v.AutomaticEnv()
 
@@ -31,6 +32,7 @@ func GetFromEnv() models.Conf {
 	config.PageStep = v.GetInt("PAGESTEP")
 	config.FrequencyDays = v.GetInt("FREQUENCY_DAYS")
 	config.DisplayDays = v.GetInt("DISPLAY_DAYS")
+	config.AutoFill = v.GetBool("AUTOFILL")
 
 	return config
 }
@@ -54,6 +56,7 @@ func Write(config models.Conf) {
 	v.Set("pagestep", config.PageStep)
 	v.Set("frequency_days", config.FrequencyDays)
 	v.Set("display_days", config.DisplayDays)
+	v.Set("autofill", config.AutoFill)
 
 	if err := v.WriteConfig(); err != nil {
 		// Best-effort — don't crash when running in env-var-only mode

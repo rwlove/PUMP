@@ -28,7 +28,47 @@ function scheduleAutosave() {
     _saveTimer = setTimeout(saveWorkout, 600);
 }
 
-function addExercise(name, weight, reps, color) {
+// Return the weight/reps from the setPosition-th (1-indexed) occurrence of
+// `name` on the most recent past date it was performed before `currentDate`.
+// Falls back to the last occurrence on that date if setPosition exceeds the count.
+function getAutoFillData(name, setPosition, currentDate) {
+    var sets = window._allSets;
+    if (!sets || sets.length === 0) return null;
+
+    // Collect past dates that have this exercise, grouping sets per date in order.
+    var byDate = {};
+    for (var i = 0; i < sets.length; i++) {
+        var s = sets[i];
+        if (s.Name !== name) continue;
+        if (s.Date >= currentDate) continue; // only strictly past dates
+        if (!byDate[s.Date]) byDate[s.Date] = [];
+        byDate[s.Date].push(s);
+    }
+
+    var dates = Object.keys(byDate).sort();
+    if (dates.length === 0) return null;
+
+    var lastDate = dates[dates.length - 1];
+    var daySets  = byDate[lastDate];
+
+    // Use the k-th set (clamp to last if not enough sets that day)
+    var idx = Math.min(setPosition - 1, daySets.length - 1);
+    return daySets[idx];
+}
+
+// Count how many entries for `name` already exist in #todayEx.
+function countExistingEntries(name) {
+    var inputs = document.querySelectorAll('#todayEx input[data-exname]');
+    var count  = 0;
+    for (var i = 0; i < inputs.length; i++) {
+        if (inputs[i].getAttribute('data-exname') === name) count++;
+    }
+    return count;
+}
+
+// addExercise — builds one workout entry row.
+// fromPicker: when true, auto-fill logic is applied (if enabled).
+function addExercise(name, weight, reps, color, fromPicker) {
     id++;
     var container = document.getElementById("todayEx");
     var entry = document.createElement('div');
@@ -37,13 +77,31 @@ function addExercise(name, weight, reps, color) {
 
     var safeColor = color || '#6c757d';
 
+    // Determine which set number this will be (1-indexed).
+    var setNum = countExistingEntries(name) + 1;
+
+    // Auto-fill: override default weight/reps with historical data when
+    // the user is adding from the picker and the feature is enabled.
+    if (fromPicker && window._autoFill && today) {
+        var filled = getAutoFillData(name, setNum, today);
+        if (filled) {
+            weight = filled.Weight;
+            reps   = filled.Reps;
+        }
+    }
+
     var safeWeight = (weight !== undefined && weight !== '' && weight !== '0') ? weight : '';
     var safeReps   = (reps   !== undefined && reps   !== '' && reps   !== '0') ? reps   : '';
 
+    // Small set-number badge — always rendered so the DOM is stable.
+    // CSS hides it when only one set exists for that exercise.
+    var setBadge = '<span class="set-badge">S' + setNum + '</span>';
+
     entry.innerHTML = `
         <div class="entry-color-strip" style="background-color:${safeColor};"></div>
-        <input type="hidden" name="name" value="${name}">
+        <input type="hidden" name="name" value="${name}" data-exname="${name}">
         <span class="entry-name" title="${name}">${name}</span>
+        ${setBadge}
         <div class="entry-controls">
             <div class="entry-field">
                 <span class="entry-label">kg</span>
@@ -76,16 +134,57 @@ function addExercise(name, weight, reps, color) {
         scheduleAutosave();
     });
 
-    // Wire delete button → autosave
+    // Wire delete button → autosave + re-badge
     entry.querySelector('.entry-del-btn').addEventListener('click', function() {
         entry.remove();
         updateEmptyState();
+        refreshSetBadges();
         scheduleAutosave();
     });
 
     container.appendChild(entry);
+    refreshSetBadges();
     updateEmptyState();
     scheduleAutosave();
+}
+
+// Renumber set badges after any structural change (delete, load).
+// A badge is only visible when there is more than one set for that exercise name.
+function refreshSetBadges() {
+    var container = document.getElementById('todayEx');
+    if (!container) return;
+
+    // Build an ordered list of [entry, name] pairs
+    var entries = container.querySelectorAll('.workout-entry');
+    var counters = {}; // name → running count (1-indexed)
+
+    entries.forEach(function(entry) {
+        var hidden = entry.querySelector('input[data-exname]');
+        if (!hidden) return;
+        var name = hidden.getAttribute('data-exname');
+        counters[name] = (counters[name] || 0) + 1;
+        var badge = entry.querySelector('.set-badge');
+        if (badge) badge.textContent = 'S' + counters[name];
+    });
+
+    // Count total occurrences per name so we know when to show/hide the badge.
+    var totals = {};
+    entries.forEach(function(entry) {
+        var hidden = entry.querySelector('input[data-exname]');
+        if (!hidden) return;
+        var name = hidden.getAttribute('data-exname');
+        totals[name] = (totals[name] || 0) + 1;
+    });
+
+    entries.forEach(function(entry) {
+        var hidden = entry.querySelector('input[data-exname]');
+        if (!hidden) return;
+        var name = hidden.getAttribute('data-exname');
+        var badge = entry.querySelector('.set-badge');
+        if (badge) {
+            badge.style.display = (totals[name] > 1) ? '' : 'none';
+        }
+    });
 }
 
 function updateEmptyState() {
@@ -104,7 +203,8 @@ function setFormContent(sets, date) {
     if (sets) {
         for (var i = 0; i < sets.length; i++) {
             if (sets[i].Date == date) {
-                addExercise(sets[i].Name, sets[i].Weight, sets[i].Reps, sets[i].WorkoutColor);
+                // fromPicker=false: loading saved data, no auto-fill override
+                addExercise(sets[i].Name, sets[i].Weight, sets[i].Reps, sets[i].WorkoutColor, false);
             }
         }
     }
@@ -143,7 +243,7 @@ function addAllGroup(exs, gr) {
     if (!exs) return;
     for (var i = 0; i < exs.length; i++) {
         if (exs[i].Group == gr) {
-            addExercise(exs[i].Name, exs[i].Weight, exs[i].Reps, exs[i].Color);
+            addExercise(exs[i].Name, exs[i].Weight, exs[i].Reps, exs[i].Color, true);
         }
     }
 }

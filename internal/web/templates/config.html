@@ -57,6 +57,17 @@
                     </select></td>
                 </tr>
                 <tr>
+                    <td>Auto-fill sets<button type="button" class="btn tip-button" mytitle="When adding an exercise, pre-fill weight and reps from the last time that exercise was performed. Set-position aware: the 2nd set added today pre-fills from the 2nd set last time.">
+                        <i class="bi bi-question-circle"></i>
+                    </button></td>
+                    <td>
+                        <div class="form-check form-switch mt-1">
+                            <input class="form-check-input" type="checkbox" name="autofill" id="autofillSwitch" role="switch"{{ if .Config.AutoFill }} checked{{ end }}>
+                            <label class="form-check-label" for="autofillSwitch">Enabled</label>
+                        </div>
+                    </td>
+                </tr>
+                <tr>
                     <td><button type="submit" class="btn btn-primary">Save</button></td>
                     <td></td>
                 </tr>
