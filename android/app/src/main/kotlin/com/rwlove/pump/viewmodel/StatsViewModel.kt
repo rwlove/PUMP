@@ -147,15 +147,16 @@ class StatsViewModel @Inject constructor(
 
     val uiState: StateFlow<StatsUiState> = combine(
         _exercises, _allSets, _bodyWeights, _selectedExercise, _selectedPeriod, _isLoading, _errorMessage
-    ) { exercises, allSets, bodyWeights, selectedExercise, selectedPeriod, isLoading, errorMessage ->
+    ) { values ->
+        @Suppress("UNCHECKED_CAST")
         StatsUiState(
-            exercises = exercises,
-            allSets = allSets,
-            bodyWeights = bodyWeights,
-            selectedExercise = selectedExercise,
-            selectedPeriod = selectedPeriod,
-            isLoading = isLoading,
-            errorMessage = errorMessage
+            exercises = values[0] as List<ExerciseDto>,
+            allSets = values[1] as List<SetDto>,
+            bodyWeights = values[2] as List<BodyWeightDto>,
+            selectedExercise = values[3] as String,
+            selectedPeriod = values[4] as StatsPeriod,
+            isLoading = values[5] as Boolean,
+            errorMessage = values[6] as String?
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), StatsUiState())
 
