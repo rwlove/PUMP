@@ -21,9 +21,29 @@ data class ExerciseStat(val name: String, val count: Int)
 
 data class VolumePoint(val date: LocalDate, val volume: Double)
 
+/** One set's data within a day, for stacked bar chart tooltip */
+data class VolumeSetDetail(
+    val setNumber: Int,
+    val weight: Double,
+    val reps: Int,
+    val volume: Double,
+    val bodyWeightUsed: Boolean
+)
+
+/** All sets for a date, for stacked bar chart */
+data class VolumeDayData(
+    val date: LocalDate,
+    val sets: List<VolumeSetDetail>
+) {
+    val totalVolume: Double get() = sets.sumOf { it.volume }
+}
+
 data class HeatmapDay(val date: LocalDate, val count: Int)
 
 data class BodyWeightPoint(val date: LocalDate, val weight: Double)
+
+/** Pie chart slice data */
+data class PieSlice(val name: String, val count: Int, val color: String)
 
 enum class StatsPeriod(val label: String) {
     WEEK("Week"),
@@ -37,7 +57,7 @@ data class StatsUiState(
     val allSets: List<SetDto> = emptyList(),
     val bodyWeights: List<BodyWeightDto> = emptyList(),
     val selectedExercise: String = "",
-    val selectedPeriod: StatsPeriod = StatsPeriod.ALL,
+    val selectedPeriod: StatsPeriod = StatsPeriod.WEEK,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
 ) {
@@ -74,13 +94,21 @@ data class StatsUiState(
             return min?.let { ExerciseStat(it.key, it.value) }
         }
 
-    /** Total number of sets in the selected period. */
-    val totalSets: Int
-        get() = setsInPeriod.size
+    val totalSets: Int get() = setsInPeriod.size
 
-    /** Number of unique dates with at least one set in the selected period. */
-    val activeDays: Int
-        get() = setsInPeriod.map { it.Date }.distinct().size
+    val activeDays: Int get() = setsInPeriod.map { it.Date }.distinct().size
+
+    /** Pie chart data: exercise distribution in period */
+    val pieData: List<PieSlice>
+        get() {
+            val counts = setsInPeriod.groupingBy { it.Name }.eachCount()
+            val colorMap = exercises.associate { it.NAME to it.COLOR }
+            return counts.entries
+                .sortedByDescending { it.value }
+                .map { (name, count) ->
+                    PieSlice(name, count, colorMap[name] ?: "#2780e3")
+                }
+        }
 
     val heatmapData: List<HeatmapDay>
         get() {
@@ -105,31 +133,82 @@ data class StatsUiState(
                 .map { it.key }
         }
 
-    val volumeData: List<VolumePoint>
+    /** Exercise color map */
+    val exerciseColorMap: Map<String, String>
+        get() = exercises.associate { it.NAME to it.COLOR }
+
+    /** Exercise group map */
+    val exerciseGroupMap: Map<String, String>
+        get() = exercises.associate { it.NAME to it.GR }
+
+    /**
+     * Stacked volume data per day for the selected exercise.
+     * Each day has a list of sets with volume details.
+     */
+    val volumeDayData: List<VolumeDayData>
         get() {
             if (selectedExercise.isEmpty()) return emptyList()
             val filtered = setsInPeriod.filter { it.Name == selectedExercise }
             val byDate = filtered.groupBy { it.Date }
+
+            // Check if exercise is in a "leg" group
+            val group = exerciseGroupMap[selectedExercise]?.lowercase() ?: ""
+            val isLegs = group.contains("leg")
+
+            // Sort body weights for lookup
+            val sortedBw = bodyWeights
+                .mapNotNull { bw ->
+                    val date = runCatching { LocalDate.parse(bw.DATE, DateTimeFormatter.ISO_LOCAL_DATE) }.getOrNull()
+                    val weight = bw.WEIGHT.toDoubleOrNull()
+                    if (date != null && weight != null) date to weight else null
+                }
+                .sortedBy { it.first }
+
             return byDate.mapNotNull { (dateStr, sets) ->
                 val date = runCatching {
                     LocalDate.parse(dateStr, DateTimeFormatter.ISO_LOCAL_DATE)
                 }.getOrNull() ?: return@mapNotNull null
-                val volume = sets.sumOf { set ->
-                    val w = set.Weight.toDoubleOrNull() ?: 0.0
-                    w * set.Reps
+
+                val setDetails = sets.mapIndexed { idx, set ->
+                    var w = set.Weight.toDoubleOrNull() ?: 0.0
+                    var bodyWeightUsed = false
+                    if (isLegs && w == 0.0) {
+                        // Find nearest body weight on or before this date
+                        val bw = sortedBw.lastOrNull { it.first <= date }?.second
+                        if (bw != null) {
+                            w = bw
+                            bodyWeightUsed = true
+                        }
+                    }
+                    val r = set.Reps
+                    VolumeSetDetail(
+                        setNumber = idx + 1,
+                        weight = w,
+                        reps = r,
+                        volume = w * r,
+                        bodyWeightUsed = bodyWeightUsed
+                    )
                 }
-                VolumePoint(date, volume)
+                VolumeDayData(date, setDetails)
             }.sortedBy { it.date }
         }
 
+    val volumeData: List<VolumePoint>
+        get() = volumeDayData.map { VolumePoint(it.date, it.totalVolume) }
+
+    /** Body weight data filtered by the selected period. */
     val bodyWeightData: List<BodyWeightPoint>
-        get() = bodyWeights.mapNotNull { bw ->
-            val date = runCatching {
-                LocalDate.parse(bw.DATE, DateTimeFormatter.ISO_LOCAL_DATE)
-            }.getOrNull() ?: return@mapNotNull null
-            val weight = bw.WEIGHT.toDoubleOrNull() ?: return@mapNotNull null
-            BodyWeightPoint(date, weight)
-        }.sortedBy { it.date }
+        get() {
+            val start = periodStart
+            return bodyWeights.mapNotNull { bw ->
+                val date = runCatching {
+                    LocalDate.parse(bw.DATE, DateTimeFormatter.ISO_LOCAL_DATE)
+                }.getOrNull() ?: return@mapNotNull null
+                if (start != null && date < start) return@mapNotNull null
+                val weight = bw.WEIGHT.toDoubleOrNull() ?: return@mapNotNull null
+                BodyWeightPoint(date, weight)
+            }.sortedBy { it.date }
+        }
 }
 
 @HiltViewModel
@@ -141,7 +220,7 @@ class StatsViewModel @Inject constructor(
     private val _allSets = MutableStateFlow<List<SetDto>>(emptyList())
     private val _bodyWeights = MutableStateFlow<List<BodyWeightDto>>(emptyList())
     private val _selectedExercise = MutableStateFlow("")
-    private val _selectedPeriod = MutableStateFlow(StatsPeriod.ALL)
+    private val _selectedPeriod = MutableStateFlow(StatsPeriod.WEEK)
     private val _isLoading = MutableStateFlow(false)
     private val _errorMessage = MutableStateFlow<String?>(null)
 

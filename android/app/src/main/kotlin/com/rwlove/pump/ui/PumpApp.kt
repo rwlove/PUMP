@@ -2,6 +2,7 @@ package com.rwlove.pump.ui
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.MonitorWeight
 import androidx.compose.material.icons.filled.QueryStats
@@ -21,6 +22,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.rwlove.pump.ui.screens.ExerciseScreen
 import com.rwlove.pump.ui.screens.SettingsScreen
 import com.rwlove.pump.ui.screens.StatsScreen
 import com.rwlove.pump.ui.screens.WeightScreen
@@ -30,6 +32,7 @@ import kotlinx.serialization.Serializable
 @Serializable object WorkoutRoute
 @Serializable object StatsRoute
 @Serializable object WeightRoute
+@Serializable object ExerciseRoute
 @Serializable object SettingsRoute
 
 data class BottomNavItem(
@@ -48,6 +51,7 @@ fun PumpApp() {
         BottomNavItem("Workout", Icons.Default.FitnessCenter, WorkoutRoute),
         BottomNavItem("Stats", Icons.Default.QueryStats, StatsRoute),
         BottomNavItem("Weight", Icons.Default.MonitorWeight, WeightRoute),
+        BottomNavItem("Exercises", Icons.Default.Edit, ExerciseRoute),
         BottomNavItem("Settings", Icons.Default.Settings, SettingsRoute)
     )
 
@@ -81,6 +85,7 @@ fun PumpApp() {
             composable<WorkoutRoute> { WorkoutScreen() }
             composable<StatsRoute> { StatsScreen() }
             composable<WeightRoute> { WeightScreen() }
+            composable<ExerciseRoute> { ExerciseScreen() }
             composable<SettingsRoute> { SettingsScreen() }
         }
     }

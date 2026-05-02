@@ -38,5 +38,6 @@ data class ConfigDto(
     val HeatColor: String = "#2780e3",
     val PageStep: Int = 10,
     val FrequencyDays: Int = 30,
-    val DisplayDays: Int = 30
+    val DisplayDays: Int = 30,
+    val AutoFill: Boolean = true
 )

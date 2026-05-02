@@ -1,6 +1,7 @@
 package com.rwlove.pump.data.repository
 
 import com.rwlove.pump.data.api.BodyWeightDto
+import com.rwlove.pump.data.api.ConfigDto
 import com.rwlove.pump.data.api.ExerciseDto
 import com.rwlove.pump.data.api.PumpApiService
 import com.rwlove.pump.data.api.SetDto
@@ -30,6 +31,20 @@ class PumpRepository @Inject constructor(
 
     suspend fun getExercises(): Result<List<ExerciseDto>> = runCatching {
         apiService.getExercises()
+    }
+
+    suspend fun createExercise(ex: ExerciseDto): Result<Unit> = runCatching {
+        val response = apiService.createExercise(ex)
+        if (!response.isSuccessful) {
+            throw Exception("Failed to create exercise: ${response.code()}")
+        }
+    }
+
+    suspend fun updateExercise(id: Int, ex: ExerciseDto): Result<Unit> = runCatching {
+        val response = apiService.updateExercise(id, ex)
+        if (!response.isSuccessful) {
+            throw Exception("Failed to update exercise: ${response.code()}")
+        }
     }
 
     suspend fun getSets(): Result<List<SetDto>> = runCatching {
@@ -65,6 +80,17 @@ class PumpRepository @Inject constructor(
         val response = apiService.deleteWeight(id)
         if (!response.isSuccessful) {
             throw Exception("Failed to delete weight entry: ${response.code()}")
+        }
+    }
+
+    suspend fun getConfig(): Result<ConfigDto> = runCatching {
+        apiService.getConfig()
+    }
+
+    suspend fun putConfig(cfg: ConfigDto): Result<Unit> = runCatching {
+        val response = apiService.putConfig(cfg)
+        if (!response.isSuccessful) {
+            throw Exception("Failed to save config: ${response.code()}")
         }
     }
 }

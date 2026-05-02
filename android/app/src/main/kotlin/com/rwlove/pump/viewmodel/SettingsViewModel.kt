@@ -2,6 +2,7 @@ package com.rwlove.pump.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rwlove.pump.data.api.ConfigDto
 import com.rwlove.pump.data.preferences.AppPreferences
 import com.rwlove.pump.data.repository.PumpRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -15,7 +16,6 @@ import javax.inject.Inject
 
 /**
  * Status of the most recent save+connectivity attempt.
- * null means no attempt has been made yet (or the result was dismissed).
  */
 sealed interface SaveStatus {
     data object Idle : SaveStatus
@@ -27,7 +27,10 @@ sealed interface SaveStatus {
 data class SettingsUiState(
     val apiUrl: String = AppPreferences.DEFAULT_API_URL,
     val apiKey: String = AppPreferences.DEFAULT_API_KEY,
-    val saveStatus: SaveStatus = SaveStatus.Idle
+    val saveStatus: SaveStatus = SaveStatus.Idle,
+    val serverConfig: ConfigDto = ConfigDto(),
+    val configLoaded: Boolean = false,
+    val configSaveStatus: SaveStatus = SaveStatus.Idle
 )
 
 @HiltViewModel
@@ -37,14 +40,42 @@ class SettingsViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val _saveStatus = MutableStateFlow<SaveStatus>(SaveStatus.Idle)
+    private val _serverConfig = MutableStateFlow(ConfigDto())
+    private val _configLoaded = MutableStateFlow(false)
+    private val _configSaveStatus = MutableStateFlow<SaveStatus>(SaveStatus.Idle)
 
     val uiState: StateFlow<SettingsUiState> = combine(
         appPreferences.apiUrl,
         appPreferences.apiKey,
-        _saveStatus
-    ) { url, key, status ->
-        SettingsUiState(apiUrl = url, apiKey = key, saveStatus = status)
+        _saveStatus,
+        combine(_serverConfig, _configLoaded, _configSaveStatus) { cfg, loaded, status ->
+            Triple(cfg, loaded, status)
+        }
+    ) { url, key, status, (cfg, loaded, cfgStatus) ->
+        SettingsUiState(
+            apiUrl = url,
+            apiKey = key,
+            saveStatus = status,
+            serverConfig = cfg,
+            configLoaded = loaded,
+            configSaveStatus = cfgStatus
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsUiState())
+
+    init {
+        loadConfig()
+    }
+
+    private fun loadConfig() {
+        viewModelScope.launch {
+            repository.getConfig()
+                .onSuccess {
+                    _serverConfig.value = it
+                    _configLoaded.value = true
+                }
+                .onFailure { /* config endpoint may not be reachable yet */ }
+        }
+    }
 
     fun saveSettings(url: String, key: String) {
         viewModelScope.launch {
@@ -58,10 +89,11 @@ class SettingsViewModel @Inject constructor(
             repository.testConnection()
                 .onSuccess {
                     _saveStatus.value = SaveStatus.Success
+                    // Also load config after successful connection
+                    loadConfig()
                 }
                 .onFailure { error ->
                     val msg = error.message ?: "Unknown error"
-                    // Classify common network exceptions for user-friendly messages.
                     val friendly = when {
                         msg.contains("ECONNREFUSED", ignoreCase = true) ||
                         msg.contains("Connection refused", ignoreCase = true) ->
@@ -72,7 +104,7 @@ class SettingsViewModel @Inject constructor(
                         msg.contains("timeout", ignoreCase = true) ->
                             "Could not reach server: connection timed out"
                         msg.contains("401") || msg.contains("Invalid API key") ->
-                            "Invalid API key — check your key and try again"
+                            "Invalid API key -- check your key and try again"
                         else -> "Could not reach server: $msg"
                     }
                     _saveStatus.value = SaveStatus.Failure(friendly)
@@ -80,7 +112,25 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun saveConfig(config: ConfigDto) {
+        viewModelScope.launch {
+            _configSaveStatus.value = SaveStatus.Testing
+            repository.putConfig(config)
+                .onSuccess {
+                    _serverConfig.value = config
+                    _configSaveStatus.value = SaveStatus.Success
+                }
+                .onFailure {
+                    _configSaveStatus.value = SaveStatus.Failure(it.message ?: "Failed to save config")
+                }
+        }
+    }
+
     fun clearSaveStatus() {
         _saveStatus.value = SaveStatus.Idle
+    }
+
+    fun clearConfigSaveStatus() {
+        _configSaveStatus.value = SaveStatus.Idle
     }
 }
