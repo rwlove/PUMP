@@ -121,7 +121,9 @@ async def _amain() -> None:
             on_set_failed=healthd.record_set_failed,
         )
 
-        health_task = asyncio.create_task(healthd.serve(port=HEALTHD_PORT))
+        health_task = asyncio.create_task(
+            healthd.serve(port=HEALTHD_PORT, prototype_dir=PROTOTYPE_DIR),
+        )
         healthd.mark_ready()
         try:
             await runner.run(pose_source.poses())

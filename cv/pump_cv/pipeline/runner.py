@@ -173,8 +173,18 @@ class PipelineRunner:
             rep_count = recounted
 
         # Estimate weight from the most recent frame, if any.
+        # Voltra (smart cable trainer) is opaque to plate detection — its
+        # resistance is electronic, not visible. Until we reverse-engineer
+        # its BLE protocol, any exercise whose name contains "Voltra" is
+        # written pending with weight=0 so the athlete enters the
+        # resistance manually on confirmation.
         weight_lb, weight_conf = (0.0, 0.5)
-        if self._latest_frame is not None:
+        is_voltra = "voltra" in exercise_name.lower()
+        if is_voltra:
+            weight_lb, weight_conf = (0.0, 0.0)
+            logger.info("voltra opaque-load: deferring weight to athlete confirmation",
+                        exercise=exercise_name)
+        elif self._latest_frame is not None:
             try:
                 weight_lb, weight_conf = estimate_barbell_load(
                     self._latest_frame, bar_weight_lb=self._bar_weight,
@@ -183,12 +193,16 @@ class PipelineRunner:
                 logger.warning("weight estimate failed", error=str(e))
 
         # A pending set is one where any sub-detector is below threshold
-        # or the rep count looks suspiciously low.
+        # or the rep count looks suspiciously low. Voltra is always
+        # pending because we need the athlete to type in the resistance.
         confidence = min(classifier_conf, weight_conf)
         pending = (
-            confidence < self._confidence_threshold
+            is_voltra
+            or confidence < self._confidence_threshold
             or rep_count < 3
         )
+
+        note = "Voltra resistance — please confirm." if is_voltra else ""
 
         payload = {
             "Date": _today(),
@@ -198,6 +212,7 @@ class PipelineRunner:
             "Source": "cv",
             "Confidence": round(confidence, 3),
             "Pending": pending,
+            "Note": note,
         }
         logger.info("set ended → POST /api/sets",
                     exercise=exercise_name, reps=int(rep_count),

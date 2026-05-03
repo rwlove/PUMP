@@ -63,18 +63,118 @@
                     <img src="{{ .OneEx.Image }}" style="max-width: 100%;max-height: 100%;"></img>
                 </div>
             </div>
-            {{ if .Config.CVAutoLog }}
+            {{ if and .Config.CVAutoLog .OneEx.ID }}
             <div class="card border-info">
                 <div class="card-header">CV reference clip</div>
                 <div class="card-body">
                     <p class="small text-body-secondary mb-2">Improve auto-detection of <strong>{{ .OneEx.Name }}</strong> by recording a short side-on clip of yourself doing 3–5 reps.</p>
-                    <p class="small text-body-secondary mb-2">Until the in-browser recorder ships, transfer the file to the <code>pump-cv</code> volume and run:</p>
-                    <pre class="small bg-body-tertiary p-2 rounded"><code>python -m pump_cv.scripts.add_reference \
-    --video /path/to/clip.mp4 \
-    --exercise-name "{{ .OneEx.Name }}" \
-    --store /data/pump-cv/prototypes</code></pre>
+                    <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#cvReferenceModal">
+                        <i class="bi bi-record-circle"></i> Record reference clip
+                    </button>
+                    <p class="small text-body-secondary mt-2 mb-0">A CLI alternative is available — run <code>python -m pump_cv.scripts.add_reference --video /path/clip.mp4 --exercise-name "{{ .OneEx.Name }}" --store /data/pump-cv/prototypes</code> on the pump-cv host.</p>
                 </div>
             </div>
+
+            <!-- Modal: in-browser MediaRecorder upload -->
+            <div class="modal fade" id="cvReferenceModal" tabindex="-1" aria-hidden="true">
+              <div class="modal-dialog modal-lg modal-dialog-centered">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title">Record reference: {{ .OneEx.Name }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body">
+                    <video id="refPreview" autoplay muted playsinline class="w-100 rounded mb-2 bg-body-tertiary" style="max-height:360px;"></video>
+                    <div class="d-flex gap-2 mb-2">
+                      <button type="button" class="btn btn-danger btn-sm" id="refStartBtn"><i class="bi bi-record-circle"></i> Start</button>
+                      <button type="button" class="btn btn-secondary btn-sm" id="refStopBtn" disabled><i class="bi bi-stop-circle"></i> Stop</button>
+                      <button type="button" class="btn btn-primary btn-sm ms-auto" id="refUploadBtn" disabled><i class="bi bi-cloud-arrow-up"></i> Upload</button>
+                    </div>
+                    <div id="refStatus" class="small text-body-secondary"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <script>
+            (function() {
+              var exId = {{ .OneEx.ID }};
+              var stream, recorder, chunks = [], blob;
+              var startBtn  = document.getElementById('refStartBtn');
+              var stopBtn   = document.getElementById('refStopBtn');
+              var uploadBtn = document.getElementById('refUploadBtn');
+              var preview   = document.getElementById('refPreview');
+              var status    = document.getElementById('refStatus');
+
+              function setStatus(msg, kind) {
+                status.textContent = msg;
+                status.className = 'small ' + (kind === 'err' ? 'text-danger'
+                                              : kind === 'ok' ? 'text-success'
+                                              : 'text-body-secondary');
+              }
+
+              async function ensureStream() {
+                if (stream) return;
+                try {
+                  stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+                    audio: false,
+                  });
+                  preview.srcObject = stream;
+                } catch (e) {
+                  setStatus('Could not open camera: ' + e.message, 'err');
+                  throw e;
+                }
+              }
+
+              startBtn.addEventListener('click', async function() {
+                try {
+                  await ensureStream();
+                  chunks = []; blob = null; uploadBtn.disabled = true;
+                  recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
+                  recorder.ondataavailable = function(e) { if (e.data.size) chunks.push(e.data); };
+                  recorder.onstop = function() {
+                    blob = new Blob(chunks, { type: 'video/webm' });
+                    uploadBtn.disabled = false;
+                    setStatus('Recorded ' + (blob.size / 1024).toFixed(0) + ' KB; ready to upload.', 'ok');
+                  };
+                  recorder.start();
+                  startBtn.disabled = true;
+                  stopBtn.disabled  = false;
+                  setStatus('Recording…');
+                } catch (e) { /* status already set */ }
+              });
+
+              stopBtn.addEventListener('click', function() {
+                if (recorder && recorder.state !== 'inactive') recorder.stop();
+                startBtn.disabled = false;
+                stopBtn.disabled  = true;
+              });
+
+              uploadBtn.addEventListener('click', async function() {
+                if (!blob) return;
+                uploadBtn.disabled = true;
+                setStatus('Uploading…');
+                var fd = new FormData();
+                fd.append('clip', blob, 'reference.webm');
+                try {
+                  var r = await fetch('/exercise/' + exId + '/reference', {
+                    method: 'POST', body: fd,
+                  });
+                  if (!r.ok) {
+                    var err = await r.text();
+                    setStatus('Upload failed (' + r.status + '): ' + err, 'err');
+                    uploadBtn.disabled = false;
+                    return;
+                  }
+                  setStatus('Uploaded and processed by pump-cv.', 'ok');
+                } catch (e) {
+                  setStatus('Upload error: ' + e.message, 'err');
+                  uploadBtn.disabled = false;
+                }
+              });
+            })();
+            </script>
             {{ end }}
         </div>
     </div>

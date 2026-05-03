@@ -35,12 +35,18 @@ class YOLOPoseSource:
         model: str = "yolov8m-pose.pt",
         image_size: int = 640,
         device: str = "cuda:0",
+        retry_on_failure: bool = True,
+        retry_initial_seconds: float = 1.0,
+        retry_max_seconds: float = 30.0,
     ):
         self._source = source
         self._camera = camera_name or source
         self._model_name = model
         self._image_size = image_size
         self._device = device
+        self._retry = retry_on_failure
+        self._retry_initial = retry_initial_seconds
+        self._retry_max = retry_max_seconds
         self._model = None
 
     def _ensure_model(self) -> None:
@@ -52,15 +58,43 @@ class YOLOPoseSource:
             logger.info("yolo: model loaded", model=self._model_name, device=self._device)
 
     async def poses(self) -> AsyncIterator[FrameAndPoses]:
+        """Yield (frame, poses) forever.
+
+        For a finite source (a video file) we exit on EOF — there is
+        nothing to reconnect to. For a live source (RTSP) and any other
+        non-file source we retry indefinitely with capped exponential
+        backoff: a brief disconnect just costs a few dropped frames.
+        """
         self._ensure_model()
+        is_file = Path(self._source).is_file()
+
+        backoff = self._retry_initial
+        while True:
+            try:
+                async for item in self._stream_one_capture():
+                    yield item
+                    backoff = self._retry_initial   # any success resets backoff
+            except Exception as e:
+                logger.warning("yolo: capture loop crashed",
+                               source=self._source, error=str(e))
+
+            if is_file or not self._retry:
+                return
+
+            logger.warning("yolo: source disconnected, retrying",
+                           source=self._source, backoff_s=backoff)
+            await asyncio.sleep(backoff)
+            backoff = min(self._retry_max, backoff * 2)
+
+    async def _stream_one_capture(self) -> AsyncIterator[FrameAndPoses]:
+        """One open-read-close cycle. Exits on EOF or read failure; the
+        outer poses() handles reconnection."""
         cap = cv2.VideoCapture(self._source)
         if not cap.isOpened():
             raise RuntimeError(f"yolo: cannot open source {self._source}")
 
         fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
         frame_period = 1.0 / fps
-        # If the source is a video file, use frame index for timestamps so
-        # tests are deterministic. For RTSP, prefer wall clock.
         is_file = Path(self._source).is_file()
         frame_idx = 0
 
@@ -68,7 +102,7 @@ class YOLOPoseSource:
             while True:
                 ok, frame = await asyncio.to_thread(cap.read)
                 if not ok or frame is None:
-                    break
+                    return
 
                 ts = frame_idx * frame_period if is_file else time.time()
                 frame_idx += 1

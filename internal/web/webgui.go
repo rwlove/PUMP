@@ -66,6 +66,7 @@ func RegisterRoutes(r *gin.Engine, s store.Store, cfg models.Conf, onConfigSave 
 
 	r.POST("/config/", saveConfigHandler)
 	r.POST("/exercise/", saveExerciseHandler)
+	r.POST("/exercise/:id/reference", uploadReferenceClipHandler)
 	r.POST("/exdel/", deleteExerciseHandler)
 	r.POST("/set/", setHandler)
 	r.POST("/weight/", addWeightHandler)
@@ -105,6 +106,7 @@ func startRouter(s store.Store, ac *store.APIClient, address string) {
 
 	router.POST("/config/", saveConfigHandler)
 	router.POST("/exercise/", saveExerciseHandler)
+	router.POST("/exercise/:id/reference", uploadReferenceClipHandler)
 	router.POST("/exdel/", deleteExerciseHandler)
 	router.POST("/set/", setHandler)
 	router.POST("/weight/", addWeightHandler)

@@ -1,8 +1,13 @@
 package web
 
 import (
+	"bytes"
+	"fmt"
+	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -85,6 +90,98 @@ func saveExerciseHandler(c *gin.Context) {
 	}
 
 	c.Redirect(http.StatusFound, "/")
+}
+
+// uploadReferenceClipHandler accepts a video clip uploaded from the
+// exercise edit page and forwards it to pump-cv for prototype
+// extraction. The exercise name is looked up server-side from the path
+// :id so the browser doesn't have to send it (and can't lie about it).
+//
+// PUMP_CV_URL must be set; if not, this returns 503. CVAutoLog must be
+// on; if not, returns 412 — a polite "you have to flip the toggle in
+// settings first."
+func uploadReferenceClipHandler(c *gin.Context) {
+	if !appConfig.CVAutoLog {
+		c.JSON(http.StatusPreconditionFailed,
+			gin.H{"error": "CV auto-log is disabled"})
+		return
+	}
+	cvURL := os.Getenv("PUMP_CV_URL")
+	if cvURL == "" {
+		c.JSON(http.StatusServiceUnavailable,
+			gin.H{"error": "PUMP_CV_URL is not configured"})
+		return
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
+	exs, err := dataStore.SelectEx()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	var exerciseName string
+	for _, e := range exs {
+		if e.ID == id {
+			exerciseName = e.Name
+			break
+		}
+	}
+	if exerciseName == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "exercise not found"})
+		return
+	}
+
+	clip, header, err := c.Request.FormFile("clip")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing clip file"})
+		return
+	}
+	defer clip.Close()
+
+	// Re-stream the upload as multipart to pump-cv with the exercise
+	// name added. Using bytes.Buffer over io.Pipe to keep error handling
+	// simple; reference clips are short (a few MB).
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	if err := w.WriteField("exercise_name", exerciseName); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	part, err := w.CreateFormFile("clip", header.Filename)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := io.Copy(part, clip); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	w.Close()
+
+	url := fmt.Sprintf("%s/api/v1/reference", cvURL)
+	req, err := http.NewRequestWithContext(c.Request.Context(), "POST", url, &body)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		slog.Error("uploadReferenceClipHandler: pump-cv unreachable",
+			slog.String("url", url), slog.Any("error", err))
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), respBody)
 }
 
 func deleteExerciseHandler(c *gin.Context) {
