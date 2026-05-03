@@ -87,9 +87,9 @@ Append to `pgMigrations` in `internal/db/postgres.go`:
 
 ```sql
 ALTER TABLE sets
-  ADD COLUMN IF NOT EXISTS source     TEXT    NOT NULL DEFAULT 'manual',
-  ADD COLUMN IF NOT EXISTS confidence REAL    NOT NULL DEFAULT 1.0,
-  ADD COLUMN IF NOT EXISTS pending    BOOLEAN NOT NULL DEFAULT FALSE;
+  ADD COLUMN IF NOT EXISTS source     TEXT             NOT NULL DEFAULT 'manual',
+  ADD COLUMN IF NOT EXISTS confidence DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+  ADD COLUMN IF NOT EXISTS pending    BOOLEAN          NOT NULL DEFAULT FALSE;
 ```
 
 Idempotent and backfills existing rows as `manual`, confidence 1.0,

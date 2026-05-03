@@ -78,6 +78,13 @@ ALTER TABLE sets
     ADD COLUMN IF NOT EXISTS pending    BOOLEAN NOT NULL DEFAULT FALSE;
 `,
 	},
+	{
+		Version:     5,
+		Description: "widen sets.confidence from REAL to DOUBLE PRECISION",
+		SQL: `
+ALTER TABLE sets ALTER COLUMN confidence TYPE DOUBLE PRECISION;
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any
