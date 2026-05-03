@@ -2,30 +2,106 @@ var id = 0;
 var today = null;
 var _saveTimer = null;
 
+function saveStatus(state, text) {
+    var s = document.getElementById('saveStatus');
+    if (!s) return;
+    s.className = 'save-status' + (state ? ' ' + state : '');
+    s.textContent = text || '';
+    if (state === 'saved') {
+        setTimeout(function() {
+            if (s.className === 'save-status saved') {
+                s.className = 'save-status'; s.textContent = '';
+            }
+        }, 2000);
+    }
+}
+
 function saveWorkout() {
+    if (window._cvAutoLog) {
+        saveWorkoutPerSet();
+    } else {
+        saveWorkoutBulk();
+    }
+}
+
+function saveWorkoutBulk() {
     var form = document.forms['sets'];
     if (!form) return;
-    var status = document.getElementById('saveStatus');
-    if (status) { status.className = 'save-status saving'; status.textContent = 'Saving…'; }
-    var data = new FormData(form);
-    fetch('/set/', { method: 'POST', body: data })
+    saveStatus('saving', 'Saving…');
+    fetch('/set/', { method: 'POST', body: new FormData(form) })
         .then(function(r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
-            if (status) { status.className = 'save-status saved'; status.textContent = 'Saved'; }
-            setTimeout(function() {
-                if (status && status.className === 'save-status saved') {
-                    status.className = 'save-status'; status.textContent = '';
-                }
-            }, 2000);
+            saveStatus('saved', 'Saved');
         })
-        .catch(function() {
-            if (status) { status.className = 'save-status error'; status.textContent = 'Error saving'; }
-        });
+        .catch(function() { saveStatus('error', 'Error saving'); });
+}
+
+// Read the current field values from a workout entry.
+function entryToSet(entry) {
+    var name   = entry.querySelector('input[name="name"]').value;
+    var weight = entry.querySelector('input[name="weight"]').value;
+    var reps   = entry.querySelector('input[name="reps"]').value;
+    var color  = entry.querySelector('input[name="workout_color"]').value;
+    var note   = entry.querySelector('input[name="note"]').value;
+    var dateInput = document.getElementById('formDate');
+    return {
+        Date: dateInput ? dateInput.value : (today || ''),
+        Name: name,
+        Color: color,
+        WorkoutColor: color,
+        Weight: weight || '0',
+        Reps: parseInt(reps, 10) || 0,
+        Note: note,
+        Source: entry.dataset.source || 'manual',
+    };
+}
+
+function saveWorkoutPerSet() {
+    var dirty = document.querySelectorAll('.workout-entry[data-dirty="true"]');
+    if (dirty.length === 0) return;
+    saveStatus('saving', 'Saving…');
+    var promises = [];
+    dirty.forEach(function(entry) {
+        var sid = entry.dataset.setId;
+        var body = entryToSet(entry);
+        var p;
+        if (sid) {
+            p = fetch('/api/sets/' + sid, {
+                method: 'PATCH',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    Name: body.Name,
+                    Weight: body.Weight,
+                    Reps: body.Reps,
+                    Note: body.Note,
+                }),
+            });
+        } else {
+            p = fetch('/api/sets', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body),
+            }).then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            }).then(function(out) {
+                entry.dataset.setId = out.id;
+            });
+        }
+        promises.push(p.then(function() { entry.dataset.dirty = 'false'; }));
+    });
+    Promise.all(promises)
+        .then(function() { saveStatus('saved', 'Saved'); })
+        .catch(function() { saveStatus('error', 'Error saving'); });
 }
 
 function scheduleAutosave() {
     clearTimeout(_saveTimer);
     _saveTimer = setTimeout(saveWorkout, 600);
+}
+
+function markDirty(entry) {
+    if (entry) entry.dataset.dirty = 'true';
 }
 
 // Return the weight/reps from the setPosition-th (1-indexed) occurrence of
@@ -69,12 +145,19 @@ function countExistingEntries(name) {
 // addExercise — builds one workout entry row.
 // fromPicker: when true, auto-fill logic is applied (if enabled).
 // note: existing note text for this set (used when reloading saved data).
-function addExercise(name, weight, reps, color, fromPicker, note) {
+// meta:  optional {id, source, pending, confidence} — set when loading a
+//        saved entry or when an SSE add event delivers a CV detection.
+function addExercise(name, weight, reps, color, fromPicker, note, meta) {
     id++;
+    meta = meta || {};
     var container = document.getElementById("todayEx");
     var entry = document.createElement('div');
     entry.className = 'workout-entry';
     entry.id = 'entry-' + id;
+    if (meta.id)         entry.dataset.setId = meta.id;
+    if (meta.source)     entry.dataset.source = meta.source;
+    if (meta.pending)    entry.dataset.pending = 'true';
+    if (meta.confidence !== undefined) entry.dataset.confidence = meta.confidence;
 
     var safeColor = color || '#6c757d';
 
@@ -110,15 +193,38 @@ function addExercise(name, weight, reps, color, fromPicker, note) {
            </button>`
         : '';
 
+    var sourceBadge = meta.source === 'cv'
+        ? `<i class="bi bi-camera-video entry-source-badge" title="Detected by CV"></i>`
+        : '';
+
+    var actionButtons = meta.pending
+        ? `<button type="button" class="entry-confirm-btn" title="Confirm set">
+               <i class="bi bi-check-lg"></i>
+           </button>
+           <button type="button" class="entry-reject-btn" title="Reject — delete this set">
+               <i class="bi bi-x-lg"></i>
+           </button>`
+        : `<button type="button" class="entry-del-btn" title="Remove">
+               <i class="bi bi-x-lg"></i>
+           </button>`;
+
+    var pendingBanner = meta.pending
+        ? `<div class="entry-pending-banner">
+               Pending — ${typeof meta.confidence === 'number' ? Math.round(meta.confidence * 100) + '% confidence' : 'low confidence'}. Edit values then confirm.
+           </div>`
+        : '';
+
     entry.innerHTML = `
         <div class="entry-main">
             <div class="entry-color-strip" style="background-color:${safeColor};"></div>
             <div class="entry-body">
                 <div class="entry-header">
                     <input type="hidden" name="name" value="${name}" data-exname="${name}">
+                    ${sourceBadge}
                     <span class="entry-name" title="${name}">${name}</span>
                     ${setBadge}
                 </div>
+                ${pendingBanner}
                 <div class="entry-controls">
                     <div class="entry-field">
                         <span class="entry-label">lbs</span>
@@ -134,9 +240,7 @@ function addExercise(name, weight, reps, color, fromPicker, note) {
                     <input type="hidden" class="entry-note-input" name="note" value="">
                     ${priorNoteIndicator}
                     ${micBtn}
-                    <button type="button" class="entry-del-btn" title="Remove">
-                        <i class="bi bi-x-lg"></i>
-                    </button>
+                    ${actionButtons}
                 </div>
             </div>
         </div>
@@ -164,9 +268,12 @@ function addExercise(name, weight, reps, color, fromPicker, note) {
         });
     }
 
-    // Wire up weight/reps inputs → autosave
+    // Wire up weight/reps inputs → autosave (and mark dirty for per-set save)
     entry.querySelectorAll('.entry-num').forEach(function(inp) {
-        inp.addEventListener('change', scheduleAutosave);
+        inp.addEventListener('change', function() {
+            markDirty(entry);
+            scheduleAutosave();
+        });
     });
 
     // Mic dictation
@@ -181,21 +288,72 @@ function addExercise(name, weight, reps, color, fromPicker, note) {
     entry.querySelector('.entry-note-clear').addEventListener('click', function() {
         noteInput.value = '';
         renderNote(entry, '');
+        markDirty(entry);
         scheduleAutosave();
     });
 
-    // Delete entry
-    entry.querySelector('.entry-del-btn').addEventListener('click', function() {
-        entry.remove();
-        updateEmptyState();
-        refreshSetBadges();
-        scheduleAutosave();
-    });
+    // Delete entry — locally always; if cv-mode and the row has a server id,
+    // also send DELETE to the API so it actually goes away.
+    var delBtn = entry.querySelector('.entry-del-btn');
+    if (delBtn) {
+        delBtn.addEventListener('click', function() {
+            removeEntry(entry, /*viaApi*/ window._cvAutoLog);
+        });
+    }
+
+    // Pending: confirm and reject buttons.
+    var confirmBtn = entry.querySelector('.entry-confirm-btn');
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', function() {
+            confirmEntry(entry);
+        });
+    }
+    var rejectBtn = entry.querySelector('.entry-reject-btn');
+    if (rejectBtn) {
+        rejectBtn.addEventListener('click', function() {
+            removeEntry(entry, /*viaApi*/ true);
+        });
+    }
 
     container.appendChild(entry);
     refreshSetBadges();
     updateEmptyState();
+    // Mark new (no server id yet) entries dirty so the next autosave POSTs them.
+    if (!meta.id) markDirty(entry);
     scheduleAutosave();
+}
+
+// removeEntry pulls an entry out of the DOM. When viaApi is true and the
+// entry has a server id, also fires DELETE /api/sets/:id (don't wait).
+function removeEntry(entry, viaApi) {
+    if (viaApi && entry.dataset.setId) {
+        fetch('/api/sets/' + entry.dataset.setId, {method: 'DELETE'});
+    }
+    entry.remove();
+    updateEmptyState();
+    refreshSetBadges();
+    if (!viaApi) scheduleAutosave();
+}
+
+// confirmEntry collects current values and POSTs them to the confirm endpoint.
+// Server clears `pending` and applies any edits in one shot.
+function confirmEntry(entry) {
+    var sid = entry.dataset.setId;
+    if (!sid) return;
+    var body = entryToSet(entry);
+    fetch('/api/sets/' + sid + '/confirm', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            Name: body.Name,
+            Weight: body.Weight,
+            Reps: body.Reps,
+            Note: body.Note,
+        }),
+    }).then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        // SSE update event will refresh the entry visually.
+    }).catch(function() { saveStatus('error', 'Confirm failed'); });
 }
 
 // renderNote shows or hides the note row based on whether text is present.
@@ -325,10 +483,101 @@ function setFormContent(sets, date) {
         for (var i = 0; i < sets.length; i++) {
             if (sets[i].Date == date) {
                 // fromPicker=false: loading saved data, no auto-fill override
-                addExercise(sets[i].Name, sets[i].Weight, sets[i].Reps, sets[i].WorkoutColor, false, sets[i].Note);
+                addExercise(sets[i].Name, sets[i].Weight, sets[i].Reps, sets[i].WorkoutColor, false, sets[i].Note, {
+                    id:         sets[i].ID,
+                    source:     sets[i].Source,
+                    pending:    sets[i].Pending,
+                    confidence: sets[i].Confidence,
+                });
             }
         }
     }
+}
+
+// findEntryByServerId returns the DOM entry for a given server-side set id.
+function findEntryByServerId(sid) {
+    return document.querySelector('.workout-entry[data-set-id="' + sid + '"]');
+}
+
+// Whether any input inside the entry currently has focus. SSE updates are
+// skipped on focused entries so the user's typing isn't clobbered.
+function entryHasFocus(entry) {
+    return entry.contains(document.activeElement);
+}
+
+// openSetsStream subscribes to SSE for set lifecycle events. Only called when
+// CVAutoLog is on. Events for other dates are ignored. Events that match a
+// row already in the DOM (own writes echoed back) are deduplicated by id.
+function openSetsStream() {
+    var es = new EventSource('/api/sets/stream');
+
+    es.addEventListener('add', function(ev) {
+        var e = JSON.parse(ev.data);
+        if (!e.set || e.date !== today) return;
+        if (findEntryByServerId(e.id)) return; // already present (our own write echoed back)
+        addExercise(
+            e.set.Name, e.set.Weight, e.set.Reps, e.set.WorkoutColor,
+            false, e.set.Note,
+            {id: e.id, source: e.set.Source, pending: e.set.Pending, confidence: e.set.Confidence}
+        );
+    });
+
+    es.addEventListener('update', function(ev) {
+        var e = JSON.parse(ev.data);
+        if (!e.set || e.date !== today) return;
+        var entry = findEntryByServerId(e.id);
+        if (!entry) return;
+        if (entryHasFocus(entry)) return; // user is editing — don't clobber
+        // Refresh the visible fields and pending state. Easier than diffing:
+        // mutate inputs and toggle the pending banner / buttons.
+        var w = entry.querySelector('input[name="weight"]');
+        var r = entry.querySelector('input[name="reps"]');
+        var n = entry.querySelector('.entry-note-input');
+        if (w) w.value = e.set.Weight;
+        if (r) r.value = e.set.Reps;
+        if (n) { n.value = e.set.Note || ''; renderNote(entry, n.value); }
+        var wasPending = entry.dataset.pending === 'true';
+        var isPending  = !!e.set.Pending;
+        if (wasPending !== isPending) {
+            // Re-render the entry by replacing it. Easier than surgically
+            // swapping confirm/reject buttons for a delete button.
+            var inserted = entry.previousElementSibling;
+            entry.remove();
+            // Reinsert in place by using addExercise's append-to-bottom and
+            // then moving back. Single-user gym: ordering is forgivable here.
+            addExercise(
+                e.set.Name, e.set.Weight, e.set.Reps, e.set.WorkoutColor,
+                false, e.set.Note,
+                {id: e.id, source: e.set.Source, pending: isPending, confidence: e.set.Confidence}
+            );
+            // (Order may shift to bottom; acceptable.)
+            void inserted; // silence unused
+        }
+    });
+
+    es.addEventListener('delete', function(ev) {
+        var e = JSON.parse(ev.data);
+        var entry = findEntryByServerId(e.id);
+        if (entry) {
+            entry.remove();
+            updateEmptyState();
+            refreshSetBadges();
+        }
+    });
+
+    es.addEventListener('bulk', function(ev) {
+        var e = JSON.parse(ev.data);
+        if (e.date !== today) return;
+        // Re-fetch all sets and re-render the day.
+        fetch('/api/sets').then(function(r) { return r.json(); }).then(function(sets) {
+            window._allSets = sets || [];
+            setFormContent(window._allSets, today);
+        });
+    });
+
+    es.onerror = function() {
+        // EventSource auto-reconnects; nothing to do.
+    };
 }
 
 function setFormDate(sets) {

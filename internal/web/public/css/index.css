@@ -456,6 +456,53 @@
   background: var(--bs-danger-bg-subtle);
 }
 
+/* CV-detected entries get a small camera icon next to the name */
+.entry-source-badge {
+  color: var(--bs-info);
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+/* Pending (low-confidence) entries: greyed background, banner, ✓ / ✗ buttons */
+.workout-entry[data-pending="true"] {
+  background: var(--bs-warning-bg-subtle);
+  border-color: var(--bs-warning-border-subtle);
+}
+
+.entry-pending-banner {
+  font-size: 0.75rem;
+  color: var(--bs-warning-text-emphasis);
+  background: var(--bs-warning-bg-subtle);
+  border-left: 3px solid var(--bs-warning-border-subtle);
+  padding: 4px 8px;
+  border-radius: 6px;
+  margin-top: 2px;
+}
+
+.entry-confirm-btn,
+.entry-reject-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  line-height: 1;
+  font-size: 0.95rem;
+  transition: 0.15s ease;
+}
+
+.entry-confirm-btn { color: var(--bs-success); }
+.entry-confirm-btn:hover {
+  color: #fff;
+  background: var(--bs-success);
+}
+
+.entry-reject-btn { color: var(--bs-danger); }
+.entry-reject-btn:hover {
+  color: #fff;
+  background: var(--bs-danger);
+}
+
 .entry-mic-btn,
 .entry-prior-note-btn {
   background: none;
