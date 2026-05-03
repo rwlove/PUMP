@@ -41,6 +41,19 @@ type Set struct {
 	Weight       decimal.Decimal `db:"WEIGHT" json:"Weight"`
 	Reps         int             `db:"REPS" json:"Reps"`
 	Note         string          `db:"NOTE" json:"Note"`
+	Source       string          `db:"SOURCE" json:"Source"`         // "manual" | "cv"
+	Confidence   float64         `db:"CONFIDENCE" json:"Confidence"` // 0.0–1.0
+	Pending      bool            `db:"PENDING" json:"Pending"`
+}
+
+// SetUpdate - partial update for one set. Only non-nil fields are applied.
+type SetUpdate struct {
+	Name       *string          `json:"Name,omitempty"`
+	Weight     *decimal.Decimal `json:"Weight,omitempty"`
+	Reps       *int             `json:"Reps,omitempty"`
+	Note       *string          `json:"Note,omitempty"`
+	Confidence *float64         `json:"Confidence,omitempty"`
+	Pending    *bool            `json:"Pending,omitempty"`
 }
 
 // AllExData - all sets and exercises

@@ -68,6 +68,16 @@ ALTER TABLE sets DROP COLUMN IF EXISTS intensity;
 ALTER TABLE sets ADD COLUMN IF NOT EXISTS note TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		Version:     4,
+		Description: "add provenance columns to sets (source, confidence, pending)",
+		SQL: `
+ALTER TABLE sets
+    ADD COLUMN IF NOT EXISTS source     TEXT    NOT NULL DEFAULT 'manual',
+    ADD COLUMN IF NOT EXISTS confidence REAL    NOT NULL DEFAULT 1.0,
+    ADD COLUMN IF NOT EXISTS pending    BOOLEAN NOT NULL DEFAULT FALSE;
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any

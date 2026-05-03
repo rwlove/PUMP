@@ -132,6 +132,44 @@ func (a *APIClient) BulkReplaceSetsByDate(date string, sets []models.Set) error 
 	return checkStatus(resp)
 }
 
+func (a *APIClient) GetSet(id int) (models.Set, error) {
+	resp, err := a.do("GET", fmt.Sprintf("/api/sets/%d", id), nil)
+	if err != nil {
+		return models.Set{}, err
+	}
+	var out models.Set
+	return out, decodeJSON(resp, &out)
+}
+
+func (a *APIClient) InsertSet(set models.Set) (int, error) {
+	resp, err := a.do("POST", "/api/sets", set)
+	if err != nil {
+		return 0, err
+	}
+	var out struct {
+		ID int `json:"id"`
+	}
+	return out.ID, decodeJSON(resp, &out)
+}
+
+func (a *APIClient) UpdateSet(id int, upd models.SetUpdate) error {
+	resp, err := a.do("PATCH", fmt.Sprintf("/api/sets/%d", id), upd)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return checkStatus(resp)
+}
+
+func (a *APIClient) DeleteSet(id int) error {
+	resp, err := a.do("DELETE", fmt.Sprintf("/api/sets/%d", id), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return checkStatus(resp)
+}
+
 func (a *APIClient) SelectW() ([]models.BodyWeight, error) {
 	resp, err := a.do("GET", "/api/weight", nil)
 	if err != nil {

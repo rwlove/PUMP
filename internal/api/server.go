@@ -55,6 +55,11 @@ func registerRoutes(r *gin.Engine) {
 	// Sets
 	r.GET("/api/sets", getSets)
 	r.PUT("/api/sets/date/:date", putSetsByDate)
+	r.GET("/api/sets/:id", getSet)
+	r.POST("/api/sets", postSet)
+	r.PATCH("/api/sets/:id", patchSet)
+	r.POST("/api/sets/:id/confirm", postSetConfirm)
+	r.DELETE("/api/sets/:id", deleteSet)
 
 	// Body weight
 	r.GET("/api/weight", getWeight)
@@ -214,6 +219,99 @@ func putSetsByDate(c *gin.Context) {
 	}
 	slog.Info("sets saved", slog.String("date", date), slog.Int("count", len(sets)))
 	c.Status(http.StatusOK)
+}
+
+func getSet(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	set, err := dataStore.GetSet(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, set)
+}
+
+func postSet(c *gin.Context) {
+	var set models.Set
+	if err := c.ShouldBindJSON(&set); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	id, err := dataStore.InsertSet(set)
+	if err != nil {
+		slog.Error("postSet: InsertSet failed", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	slog.Info("set inserted",
+		slog.Int("id", id),
+		slog.String("date", set.Date),
+		slog.String("name", set.Name),
+		slog.String("source", set.Source),
+		slog.Bool("pending", set.Pending),
+	)
+	c.JSON(http.StatusCreated, gin.H{"id": id})
+}
+
+func patchSet(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	var upd models.SetUpdate
+	if err := c.ShouldBindJSON(&upd); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := dataStore.UpdateSet(id, upd); err != nil {
+		slog.Error("patchSet: UpdateSet failed", slog.Int("id", id), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	slog.Debug("set updated", slog.Int("id", id))
+	c.Status(http.StatusOK)
+}
+
+// postSetConfirm clears the pending flag and optionally applies edits from
+// the body in a single update.
+func postSetConfirm(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	var upd models.SetUpdate
+	// Body is optional — empty body is fine, just clears pending.
+	_ = c.ShouldBindJSON(&upd)
+	pendingFalse := false
+	upd.Pending = &pendingFalse
+	if err := dataStore.UpdateSet(id, upd); err != nil {
+		slog.Error("postSetConfirm: UpdateSet failed", slog.Int("id", id), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	slog.Info("set confirmed", slog.Int("id", id))
+	c.Status(http.StatusOK)
+}
+
+func deleteSet(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	if err := dataStore.DeleteSet(id); err != nil {
+		slog.Error("deleteSet: DeleteSet failed", slog.Int("id", id), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	slog.Info("set deleted", slog.Int("id", id))
+	c.Status(http.StatusNoContent)
 }
 
 // ─── weight ───────────────────────────────────────────────────────────────────

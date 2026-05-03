@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
@@ -95,11 +96,25 @@ func (s *PostgresStore) UpdateExColor(id int, color string) error {
 
 // ─── sets ─────────────────────────────────────────────────────────────────────
 
+const setColumns = `id, date::text, name, color, workout_color,
+	weight::text, reps, note, source, confidence, pending`
+
+func scanSet(row interface{ Scan(...any) error }) (models.Set, error) {
+	var set models.Set
+	var weightStr string
+	if err := row.Scan(&set.ID, &set.Date, &set.Name, &set.Color,
+		&set.WorkoutColor, &weightStr, &set.Reps, &set.Note,
+		&set.Source, &set.Confidence, &set.Pending); err != nil {
+		return set, err
+	}
+	set.Weight, _ = decimal.NewFromString(weightStr)
+	return set, nil
+}
+
 func (s *PostgresStore) SelectSet() ([]models.Set, error) {
 	slog.Debug("db: SelectSet")
 	rows, err := s.pool.Query(context.Background(),
-		`SELECT id, date::text, name, color, workout_color, weight::text, reps, note
-		 FROM sets ORDER BY id ASC`)
+		`SELECT `+setColumns+` FROM sets ORDER BY id ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -107,17 +122,103 @@ func (s *PostgresStore) SelectSet() ([]models.Set, error) {
 
 	var sets []models.Set
 	for rows.Next() {
-		var set models.Set
-		var weightStr string
-		if err := rows.Scan(&set.ID, &set.Date, &set.Name, &set.Color,
-			&set.WorkoutColor, &weightStr, &set.Reps, &set.Note); err != nil {
+		set, err := scanSet(rows)
+		if err != nil {
 			return nil, err
 		}
-		set.Weight, _ = decimal.NewFromString(weightStr)
 		sets = append(sets, set)
 	}
 	slog.Debug("db: SelectSet complete", slog.Int("rows", len(sets)))
 	return sets, rows.Err()
+}
+
+func (s *PostgresStore) GetSet(id int) (models.Set, error) {
+	slog.Debug("db: GetSet", slog.Int("id", id))
+	row := s.pool.QueryRow(context.Background(),
+		`SELECT `+setColumns+` FROM sets WHERE id = $1`, id)
+	return scanSet(row)
+}
+
+func (s *PostgresStore) InsertSet(set models.Set) (int, error) {
+	slog.Debug("db: InsertSet",
+		slog.String("date", set.Date), slog.String("name", set.Name),
+		slog.String("source", set.Source))
+
+	source := set.Source
+	if source == "" {
+		source = "manual"
+	}
+	confidence := set.Confidence
+	if confidence == 0 {
+		confidence = 1.0
+	}
+
+	var id int
+	err := s.pool.QueryRow(context.Background(),
+		`INSERT INTO sets (date, name, color, workout_color, weight, reps,
+		                   note, source, confidence, pending)
+		 VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		 RETURNING id`,
+		set.Date, set.Name, set.Color, set.WorkoutColor,
+		set.Weight.String(), set.Reps, set.Note,
+		source, confidence, set.Pending).Scan(&id)
+	if err != nil {
+		slog.Debug("db: InsertSet failed", slog.Any("error", err))
+	}
+	return id, err
+}
+
+func (s *PostgresStore) UpdateSet(id int, upd models.SetUpdate) error {
+	slog.Debug("db: UpdateSet", slog.Int("id", id))
+
+	cols := []string{}
+	args := []any{}
+	add := func(col string, val any) {
+		cols = append(cols, fmt.Sprintf("%s = $%d", col, len(args)+1))
+		args = append(args, val)
+	}
+
+	if upd.Name != nil {
+		add("name", *upd.Name)
+	}
+	if upd.Weight != nil {
+		add("weight", upd.Weight.String())
+	}
+	if upd.Reps != nil {
+		add("reps", *upd.Reps)
+	}
+	if upd.Note != nil {
+		add("note", *upd.Note)
+	}
+	if upd.Confidence != nil {
+		add("confidence", *upd.Confidence)
+	}
+	if upd.Pending != nil {
+		add("pending", *upd.Pending)
+	}
+
+	if len(cols) == 0 {
+		return nil
+	}
+
+	args = append(args, id)
+	q := fmt.Sprintf("UPDATE sets SET %s WHERE id = $%d",
+		strings.Join(cols, ", "), len(args))
+
+	_, err := s.pool.Exec(context.Background(), q, args...)
+	if err != nil {
+		slog.Debug("db: UpdateSet failed", slog.Int("id", id), slog.Any("error", err))
+	}
+	return err
+}
+
+func (s *PostgresStore) DeleteSet(id int) error {
+	slog.Debug("db: DeleteSet", slog.Int("id", id))
+	_, err := s.pool.Exec(context.Background(), "DELETE FROM sets WHERE id = $1", id)
+	if err != nil {
+		slog.Debug("db: DeleteSet failed", slog.Int("id", id), slog.Any("error", err))
+	}
+	return err
 }
 
 func (s *PostgresStore) BulkReplaceSetsByDate(date string, sets []models.Set) error {
