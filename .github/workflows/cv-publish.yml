@@ -1,0 +1,114 @@
+name: Publish pump-cv Container Image
+
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  IMAGE: ghcr.io/${{ github.repository_owner }}/pump-cv
+
+jobs:
+  build:
+    name: Build and push pump-cv
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # required for git tag comparison
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Decide: rebuild or retag ──────────────────────────────────────────
+      # The pump-cv image is heavy (CUDA + PyTorch + Ultralytics, ~4-6 GB).
+      # We don't want to rebuild it for tag bumps that only touch the Go
+      # service. Walk backward through prior tags; if we find one whose
+      # cv/ source matches the current tag's and whose image is in GHCR,
+      # just retag (manifest copy) instead of rebuilding.
+      - name: Find published image with identical source
+        id: check
+        run: |
+          CURRENT_TAG="${{ github.ref_name }}"
+
+          SOURCE_TAG=""
+          for TAG in $(git tag --sort=-version:refname | grep -v "^${CURRENT_TAG}$"); do
+
+            CHANGED=$(git diff --name-only "${TAG}..${CURRENT_TAG}" -- cv/ 2>/dev/null)
+
+            if [ -n "$CHANGED" ]; then
+              echo "${TAG}: cv/ source differs — stopping search, rebuild required."
+              break
+            fi
+
+            if docker buildx imagetools inspect "${IMAGE}:${TAG}" \
+                 > /dev/null 2>&1; then
+              echo "${TAG}: same source, image exists — will retag."
+              SOURCE_TAG="$TAG"
+              break
+            else
+              echo "${TAG}: same source but no image in GHCR — continuing."
+            fi
+          done
+
+          if [ -z "$SOURCE_TAG" ]; then
+            echo "No published image with identical source found — full build required."
+            echo "needs_rebuild=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_rebuild=false" >> "$GITHUB_OUTPUT"
+            echo "source_tag=${SOURCE_TAG}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ══ Path A: full build ════════════════════════════════════════════════
+      # Single-arch (linux/amd64) — the nvidia/cuda base image is x86-only,
+      # and the GPU sidecar would never run on ARM in any case.
+      - name: Set up Docker Buildx
+        if: steps.check.outputs.needs_rebuild == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata
+        if: steps.check.outputs.needs_rebuild == 'true'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          labels: |
+            org.opencontainers.image.description=pump-cv camera sidecar (YOLOv8 pose, rep + set detection, plate weight)
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest
+
+      - name: Build and push
+        if: steps.check.outputs.needs_rebuild == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./cv
+          file: ./cv/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=pump-cv
+          cache-to: type=gha,mode=max,scope=pump-cv
+
+      # ══ Path B: retag existing image (manifest copy only) ═════════════════
+      - name: Retag existing image
+        if: steps.check.outputs.needs_rebuild == 'false'
+        run: |
+          SOURCE="${{ steps.check.outputs.source_tag }}"
+          echo "Source : ${IMAGE}:${SOURCE}"
+          echo "New tags: ${{ github.ref_name }}, latest"
+          docker buildx imagetools create \
+            --tag "${{ env.IMAGE }}:${{ github.ref_name }}" \
+            --tag "${{ env.IMAGE }}:latest" \
+            "${{ env.IMAGE }}:${SOURCE}"
