@@ -1,9 +1,12 @@
 package api
 
 import (
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rwlove/PUMP/internal/conf"
@@ -54,6 +57,7 @@ func registerRoutes(r *gin.Engine) {
 
 	// Sets
 	r.GET("/api/sets", getSets)
+	r.GET("/api/sets/stream", getSetsStream)
 	r.PUT("/api/sets/date/:date", putSetsByDate)
 	r.GET("/api/sets/:id", getSet)
 	r.POST("/api/sets", postSet)
@@ -218,7 +222,59 @@ func putSetsByDate(c *gin.Context) {
 		return
 	}
 	slog.Info("sets saved", slog.String("date", date), slog.Int("count", len(sets)))
+	publishSetEvent(SetEvent{Type: SetEventBulk, Date: date})
 	c.Status(http.StatusOK)
+}
+
+// getSetsStream is an SSE endpoint that broadcasts add/update/delete/bulk
+// events for sets. Clients should use the standard SSE format:
+//
+//	event: add
+//	data: {"type":"add","id":42,"date":"2026-05-03","set":{...}}
+//
+// A keepalive comment is sent every 25 s to keep idle connections open
+// through proxies. Slow subscribers have events dropped silently.
+func getSetsStream(c *gin.Context) {
+	ch, unsub := setBroker.subscribe()
+	defer unsub()
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.WriteHeader(http.StatusOK)
+	if _, err := fmt.Fprint(c.Writer, ": connected\n\n"); err != nil {
+		return
+	}
+	c.Writer.Flush()
+
+	keepalive := time.NewTicker(25 * time.Second)
+	defer keepalive.Stop()
+
+	ctx := c.Request.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-keepalive.C:
+			if _, err := fmt.Fprint(c.Writer, ": keepalive\n\n"); err != nil {
+				return
+			}
+			c.Writer.Flush()
+		case ev, ok := <-ch:
+			if !ok {
+				return
+			}
+			data, err := json.Marshal(ev)
+			if err != nil {
+				continue
+			}
+			if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", ev.Type, data); err != nil {
+				return
+			}
+			c.Writer.Flush()
+		}
+	}
 }
 
 func getSet(c *gin.Context) {
@@ -254,6 +310,9 @@ func postSet(c *gin.Context) {
 		slog.String("source", set.Source),
 		slog.Bool("pending", set.Pending),
 	)
+	if stored, err := dataStore.GetSet(id); err == nil {
+		publishSetEvent(SetEvent{Type: SetEventAdd, ID: id, Date: stored.Date, Set: &stored})
+	}
 	c.JSON(http.StatusCreated, gin.H{"id": id})
 }
 
@@ -274,6 +333,9 @@ func patchSet(c *gin.Context) {
 		return
 	}
 	slog.Debug("set updated", slog.Int("id", id))
+	if stored, err := dataStore.GetSet(id); err == nil {
+		publishSetEvent(SetEvent{Type: SetEventUpdate, ID: id, Date: stored.Date, Set: &stored})
+	}
 	c.Status(http.StatusOK)
 }
 
@@ -296,6 +358,9 @@ func postSetConfirm(c *gin.Context) {
 		return
 	}
 	slog.Info("set confirmed", slog.Int("id", id))
+	if stored, err := dataStore.GetSet(id); err == nil {
+		publishSetEvent(SetEvent{Type: SetEventUpdate, ID: id, Date: stored.Date, Set: &stored})
+	}
 	c.Status(http.StatusOK)
 }
 
@@ -305,12 +370,18 @@ func deleteSet(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
+	// Look up the date before deletion so the SSE event can carry it.
+	var date string
+	if existing, err := dataStore.GetSet(id); err == nil {
+		date = existing.Date
+	}
 	if err := dataStore.DeleteSet(id); err != nil {
 		slog.Error("deleteSet: DeleteSet failed", slog.Int("id", id), slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	slog.Info("set deleted", slog.Int("id", id))
+	publishSetEvent(SetEvent{Type: SetEventDelete, ID: id, Date: date})
 	c.Status(http.StatusNoContent)
 }
 
