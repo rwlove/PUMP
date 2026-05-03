@@ -26,12 +26,15 @@ func envOr(key, def string) string {
 
 // All configuration is read from environment variables:
 //
-//	LOG_LEVEL    log verbosity: debug/info/warn/error  (default: info)
-//	PORT         listen port                           (default: 8080)
-//	HOST         listen address                        (default: 0.0.0.0)
-//	POSTGRES_DSN PostgreSQL connection string (required)
-//	API_KEY      optional X-Api-Key for API routes
-//	NODE_PATH    path to local node_modules            (default: "", use CDN)
+//	LOG_LEVEL          log verbosity: debug/info/warn/error  (default: info)
+//	PORT               listen port                           (default: 8080)
+//	HOST               listen address                        (default: 0.0.0.0)
+//	POSTGRES_DSN       PostgreSQL connection string          (required)
+//	API_KEY            optional X-Api-Key for API routes
+//	NODE_PATH          path to local node_modules            (default: "", use CDN)
+//	CVAUTOLOG          accept set writes from pump-cv        (default: false; toggleable in UI)
+//	PUSHOVER_USER_KEY  Pushover user key for notifications   (env-only, not in UI)
+//	PUSHOVER_APP_TOKEN Pushover app token for notifications  (env-only, not in UI)
 func main() {
 	logger.Init(os.Getenv("LOG_LEVEL"))
 
@@ -50,6 +53,8 @@ func main() {
 		slog.Int("frequency_days", cfg.FrequencyDays),
 		slog.Int("display_days", cfg.DisplayDays),
 		slog.Bool("api_key_set", apiKey != ""),
+		slog.Bool("cv_autolog", cfg.CVAutoLog),
+		slog.Bool("pushover_configured", cfg.PushoverConfigured()),
 	)
 
 	dsn := os.Getenv("POSTGRES_DSN")

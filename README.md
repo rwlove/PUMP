@@ -81,6 +81,9 @@ All configuration is via environment variables. No config file is required.
 | `DISPLAY_DAYS` | Days of workout history shown on the main page (7/30/90/365) | `30` |
 | `FREQUENCY_DAYS` | Look-back window (days) for sorting exercises by usage frequency | `30` |
 | `AUTOFILL` | Pre-fill weight/reps from last performance when adding a set | `true` |
+| `CVAUTOLOG` | Accept set writes from the `pump-cv` camera sidecar; toggleable in the UI | `false` |
+| `PUSHOVER_USER_KEY` | Pushover user key for low-confidence set notifications; env-only, never in UI | `""` |
+| `PUSHOVER_APP_TOKEN` | Pushover app token for low-confidence set notifications; env-only, never in UI | `""` |
 | `NODE_PATH` | Path to local `node_modules` directory; empty = use CDN for Bootstrap/Chart.js | `""` |
 | `TZ` | Timezone | `""` |
 

@@ -16,6 +16,19 @@ type Conf struct {
 	FrequencyDays int  // days to look back when sorting exercises by usage frequency
 	DisplayDays   int  // days of history shown on main page (7/30/90/365)
 	AutoFill      bool // pre-fill weight/reps from last performance of that exercise
+	CVAutoLog     bool // when true, accept set writes from the pump-cv sidecar
+
+	// Pushover credentials are read from env on startup (PUSHOVER_USER_KEY,
+	// PUSHOVER_APP_TOKEN) and never serialised through the JSON API or
+	// persisted to the on-disk config file. The web UI shows only a
+	// "configured / not configured" indicator.
+	PushoverUserKey  string `json:"-" yaml:"-"`
+	PushoverAppToken string `json:"-" yaml:"-"`
+}
+
+// PushoverConfigured reports whether both Pushover env vars are set.
+func (c Conf) PushoverConfigured() bool {
+	return c.PushoverUserKey != "" && c.PushoverAppToken != ""
 }
 
 // Exercise - one exercise

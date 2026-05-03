@@ -1,6 +1,8 @@
 package conf
 
 import (
+	"os"
+
 	"github.com/spf13/viper"
 
 	"github.com/rwlove/PUMP/internal/models"
@@ -18,6 +20,7 @@ func GetFromEnv() models.Conf {
 	v.SetDefault("FREQUENCY_DAYS", 30)
 	v.SetDefault("DISPLAY_DAYS", 30)
 	v.SetDefault("AUTOFILL", true)
+	v.SetDefault("CVAUTOLOG", false)
 
 	v.AutomaticEnv()
 
@@ -29,6 +32,12 @@ func GetFromEnv() models.Conf {
 	config.FrequencyDays = v.GetInt("FREQUENCY_DAYS")
 	config.DisplayDays = v.GetInt("DISPLAY_DAYS")
 	config.AutoFill = v.GetBool("AUTOFILL")
+	config.CVAutoLog = v.GetBool("CVAUTOLOG")
+
+	// Pushover credentials are read from env directly so they don't pass
+	// through Viper's case-folding and never land in any persisted config.
+	config.PushoverUserKey = os.Getenv("PUSHOVER_USER_KEY")
+	config.PushoverAppToken = os.Getenv("PUSHOVER_APP_TOKEN")
 
 	return config
 }
@@ -51,6 +60,8 @@ func Write(config models.Conf) {
 	v.Set("frequency_days", config.FrequencyDays)
 	v.Set("display_days", config.DisplayDays)
 	v.Set("autofill", config.AutoFill)
+	v.Set("cvautolog", config.CVAutoLog)
+	// Pushover credentials are deliberately not persisted — env-only.
 
 	if err := v.WriteConfig(); err != nil {
 		// Best-effort — don't crash when running in env-var-only mode

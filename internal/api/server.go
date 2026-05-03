@@ -446,6 +446,7 @@ func putConfig(c *gin.Context) {
 	slog.Info("config updated",
 		slog.String("color", cfg.Color),
 		slog.Int("pagestep", cfg.PageStep),
+		slog.Bool("cv_autolog", cfg.CVAutoLog),
 	)
 	appConfig.Host = cfg.Host
 	appConfig.Port = cfg.Port
@@ -454,6 +455,8 @@ func putConfig(c *gin.Context) {
 	appConfig.FrequencyDays = cfg.FrequencyDays
 	appConfig.DisplayDays = cfg.DisplayDays
 	appConfig.AutoFill = cfg.AutoFill
+	appConfig.CVAutoLog = cfg.CVAutoLog
+	// Pushover creds are env-only — never accepted from the API body.
 	conf.Write(appConfig)
 	c.Status(http.StatusOK)
 }

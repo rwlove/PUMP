@@ -27,6 +27,7 @@ func saveConfigHandler(c *gin.Context) {
 	appConfig.FrequencyDays, _ = strconv.Atoi(c.PostForm("frequencydays"))
 	appConfig.DisplayDays, _ = strconv.Atoi(c.PostForm("displaydays"))
 	appConfig.AutoFill = c.PostForm("autofill") == "on"
+	appConfig.CVAutoLog = c.PostForm("cvautolog") == "on"
 
 	if apiClient != nil {
 		// Split-frontend: persist config via API
