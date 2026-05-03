@@ -29,7 +29,7 @@ def _collect_poses(source: MockPoseSource) -> list:
 
     async def _run():
         out = []
-        async for poses in source.poses():
+        async for _frame, poses in source.poses():
             if poses:
                 out.append(poses[0])
         return out

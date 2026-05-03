@@ -21,7 +21,9 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, TypeAlias
+
+import numpy as np
 
 
 # Named indices into Pose.keypoints
@@ -64,12 +66,17 @@ class Pose:
     camera: str = ""
 
 
-class PoseSource(Protocol):
-    """A pose source yields lists-of-poses (one per frame) over time.
+FrameAndPoses: TypeAlias = tuple["np.ndarray | None", list[Pose]]
 
-    A single yielded item is the set of all people detected in one frame
-    of one camera. Multi-cam pipelines run one PoseSource per camera and
-    interleave/triangulate downstream.
+
+class PoseSource(Protocol):
+    """A pose source yields (frame, poses) tuples over time.
+
+    Each tuple is one frame of one camera plus all people detected in
+    that frame. The frame is the raw BGR ndarray (used by downstream
+    weight detection) or None when the source can't supply pixels (e.g.
+    the synthetic mock). Multi-cam pipelines run one PoseSource per
+    camera and interleave/triangulate downstream.
     """
 
-    async def poses(self) -> AsyncIterator[list[Pose]]: ...
+    async def poses(self) -> AsyncIterator[FrameAndPoses]: ...

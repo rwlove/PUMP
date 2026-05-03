@@ -57,12 +57,25 @@
         </div>
         </div>
         <div class="col-md">
-            <div class="card border-primary">
+            <div class="card border-primary mb-3">
                 <div class="card-header">Image</div>
                 <div class="card-body">
                     <img src="{{ .OneEx.Image }}" style="max-width: 100%;max-height: 100%;"></img>
                 </div>
             </div>
+            {{ if .Config.CVAutoLog }}
+            <div class="card border-info">
+                <div class="card-header">CV reference clip</div>
+                <div class="card-body">
+                    <p class="small text-body-secondary mb-2">Improve auto-detection of <strong>{{ .OneEx.Name }}</strong> by recording a short side-on clip of yourself doing 3–5 reps.</p>
+                    <p class="small text-body-secondary mb-2">Until the in-browser recorder ships, transfer the file to the <code>pump-cv</code> volume and run:</p>
+                    <pre class="small bg-body-tertiary p-2 rounded"><code>python -m pump_cv.scripts.add_reference \
+    --video /path/to/clip.mp4 \
+    --exercise-name "{{ .OneEx.Name }}" \
+    --store /data/pump-cv/prototypes</code></pre>
+                </div>
+            </div>
+            {{ end }}
         </div>
     </div>
     </div>

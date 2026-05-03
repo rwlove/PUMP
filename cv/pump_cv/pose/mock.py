@@ -11,7 +11,7 @@ from __future__ import annotations
 import math
 from collections.abc import AsyncIterator, Sequence
 
-from .types import Keypoint, Pose
+from .types import FrameAndPoses, Keypoint, Pose
 
 
 # Skeleton topology used to back-compute (x, y) keypoint positions from
@@ -88,7 +88,7 @@ class MockPoseSource:
         self._rep_period = rep_period_s
         self._camera = camera
 
-    async def poses(self) -> AsyncIterator[list[Pose]]:
+    async def poses(self) -> AsyncIterator[FrameAndPoses]:
         ts = 0.0
         dt = 1.0 / self._fps
         for kind, duration in self._schedule:
@@ -102,11 +102,14 @@ class MockPoseSource:
                     angle = 180.0
                 kps = _squat_keypoints(angle)
                 bbox = (200.0, 30.0, 440.0, 620.0)
-                yield [Pose(
+                pose = Pose(
                     timestamp=ts,
                     bbox=bbox,
                     score=0.99,
                     keypoints=kps,
                     camera=self._camera,
-                )]
+                )
+                # Mock has no real frame; downstream code must skip
+                # frame-dependent steps (weight detection) when None.
+                yield None, [pose]
                 ts += dt

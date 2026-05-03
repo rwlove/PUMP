@@ -16,7 +16,7 @@ from pathlib import Path
 import cv2
 
 from .. import log
-from .types import Keypoint, Pose
+from .types import FrameAndPoses, Keypoint, Pose
 
 logger = log.get(__name__)
 
@@ -51,7 +51,7 @@ class YOLOPoseSource:
             # YOLO autodetects device on .predict; we set it per call.
             logger.info("yolo: model loaded", model=self._model_name, device=self._device)
 
-    async def poses(self) -> AsyncIterator[list[Pose]]:
+    async def poses(self) -> AsyncIterator[FrameAndPoses]:
         self._ensure_model()
         cap = cv2.VideoCapture(self._source)
         if not cap.isOpened():
@@ -80,7 +80,7 @@ class YOLOPoseSource:
                     device=self._device,
                     verbose=False,
                 )
-                yield self._results_to_poses(results, ts)
+                yield frame, self._results_to_poses(results, ts)
         finally:
             cap.release()
 

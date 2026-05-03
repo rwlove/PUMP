@@ -1,16 +1,34 @@
 """Pipeline runner.
 
 Wires a single PoseSource → athlete picker → rep counter → set FSM →
-PUMP API. Phase 1 keeps it deliberately small:
+classifier → weight detector → PUMP API.
 
-  - one camera (multi-cam fusion is a later slice)
-  - one hardcoded exercise (the one the operator told us about) — phase 2
-    introduces real classification
+How a set's lifecycle works in this runner:
 
-Each completed set becomes one POST /api/sets call. While reps are
-happening the runner emits no API traffic; the set is committed only
-when the set-boundary FSM closes the set. This avoids creating-then-
-patching a row across many reps.
+  1. Each frame: pick the athlete, push the configured joint angle into
+     the rep counter, and append the pose + most recent BGR frame to
+     in-memory buffers.
+  2. Set FSM tracks reps and decides when a set has closed (quiet
+     window after the last rep).
+  3. On set close, classify the captured pose buffer against any loaded
+     prototypes; the winning name overrides the default exercise. Then
+     run the plate-color detector on the latest captured frame to
+     estimate the loaded weight. Both gracefully degrade: no
+     prototypes → keep the default name; no frame → weight = 0.
+  4. POST /api/sets with the resulting (name, weight, reps,
+     confidence, pending) payload.
+
+Design choices worth noting:
+
+  - The rep counter runs on a single hardcoded "primary joint" (the one
+     specified in the default ExerciseSpec) so the FSM has something to
+     drive set boundaries with. If the classifier identifies a
+     different exercise, the new exercise's joint mapping is looked up
+     and reps are recomputed from the buffered pose history.
+  - Pending vs confident: a set is `pending=true` when EITHER the
+     classifier confidence is below threshold OR the weight detector
+     confidence is below threshold OR the rep count is suspiciously low
+     (< 3). The athlete confirms via the PUMP UI (Phase 0 work).
 """
 
 from __future__ import annotations
@@ -19,12 +37,20 @@ import datetime as dt
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
+import numpy as np
+
 from .. import log
+from ..classify import (
+    ExercisePrototype,
+    classify_window,
+    pose_sequence_to_features,
+)
 from ..fsm import RepCounter, SetBoundary, keypoint_angle
 from ..fsm.set_boundary import RepObservedEvent, SetEndedEvent, SetStartedEvent
-from ..pose.types import Pose
+from ..pose.types import FrameAndPoses, Pose
 from ..pump_client import PumpClient
 from ..tracking import pick_athlete
+from ..weight import estimate_barbell_load
 
 logger = log.get(__name__)
 
@@ -49,7 +75,10 @@ class PipelineRunner:
     def __init__(
         self,
         pump: PumpClient,
-        exercise: ExerciseSpec,
+        default_exercise: ExerciseSpec,
+        prototypes: list[ExercisePrototype] | None = None,
+        exercise_lookup=None,  # callable: name → ExerciseSpec | None
+        bar_weight_lb: float = 45.0,
         rep_amplitude_deg: float = 25.0,
         rep_min_period_s: float = 0.6,
         rep_smoothing_window: int = 9,
@@ -57,7 +86,10 @@ class PipelineRunner:
         confidence_threshold: float = 0.75,
     ):
         self._pump = pump
-        self._exercise = exercise
+        self._default_exercise = default_exercise
+        self._prototypes = prototypes or []
+        self._exercise_lookup = exercise_lookup
+        self._bar_weight = bar_weight_lb
         self._counter = RepCounter(
             min_amplitude_deg=rep_amplitude_deg,
             min_period_s=rep_min_period_s,
@@ -66,20 +98,32 @@ class PipelineRunner:
         self._fsm = SetBoundary(quiet_seconds=set_quiet_seconds)
         self._confidence_threshold = confidence_threshold
 
-    async def run(self, pose_stream: AsyncIterator[list[Pose]]) -> None:
-        """Consume the pose stream until it ends."""
-        async for poses in pose_stream:
+        # Per-set buffers used by the classifier and weight detector.
+        self._rep_params = (rep_amplitude_deg, rep_min_period_s, rep_smoothing_window)
+        self._pose_buffer: list[Pose] = []
+        self._latest_frame: np.ndarray | None = None
+
+    async def run(self, pose_stream: AsyncIterator[FrameAndPoses]) -> None:
+        async for frame, poses in pose_stream:
+            if frame is not None:
+                self._latest_frame = frame
+
             athlete = pick_athlete(poses)
             now = poses[0].timestamp if poses else 0.0
             if athlete is not None:
-                angle = keypoint_angle(
+                # Drive the rep counter with the default exercise's joint.
+                # The classifier will (post-hoc) override the exercise name
+                # at set close; reps are recomputed from the buffer if the
+                # classifier picks a different joint mapping.
+                ang = keypoint_angle(
                     athlete,
-                    self._exercise.a_idx,
-                    self._exercise.b_idx,
-                    self._exercise.c_idx,
+                    self._default_exercise.a_idx,
+                    self._default_exercise.b_idx,
+                    self._default_exercise.c_idx,
                 )
-                if angle is not None:
-                    self._counter.push(angle, athlete.timestamp)
+                if ang is not None:
+                    self._counter.push(ang, athlete.timestamp)
+                self._pose_buffer.append(athlete)
 
             for ev in self._fsm.tick(self._counter.count, now):
                 await self._handle_event(ev)
@@ -87,36 +131,88 @@ class PipelineRunner:
     async def _handle_event(self, ev) -> None:
         match ev:
             case SetStartedEvent():
-                logger.info("set started",
-                            exercise=self._exercise.name, ts=ev.timestamp)
+                logger.info("set started", default_exercise=self._default_exercise.name, ts=ev.timestamp)
             case RepObservedEvent():
                 logger.debug("rep", n=ev.rep_index_in_set)
             case SetEndedEvent():
-                # Compute a self-confidence: longer sets and crisp peak
-                # detection imply higher confidence. For now we treat any
-                # set with >= 3 reps as confident, fewer as pending.
-                confident = ev.rep_count >= 3
-                pending = not confident
-                payload = {
-                    "Date": _today(),
-                    "Name": self._exercise.name,
-                    "Weight": "0",   # phase 1: weight detection is a separate slice
-                    "Reps": ev.rep_count,
-                    "Source": "cv",
-                    "Confidence": 0.95 if confident else 0.55,
-                    "Pending": pending,
-                }
-                logger.info("set ended → POST /api/sets",
-                            exercise=self._exercise.name,
-                            reps=ev.rep_count,
-                            pending=pending)
-                try:
-                    set_id = await self._pump.post_set(payload)
-                    logger.info("set written", id=set_id)
-                except Exception as e:
-                    logger.error("set write failed", error=str(e))
-                # Reset the rep counter so the next set starts at zero.
-                self._counter.reset()
+                await self._commit_set(ev)
+
+    async def _commit_set(self, ev: SetEndedEvent) -> None:
+        # Classify the captured pose window.
+        exercise_name = self._default_exercise.name
+        classifier_conf = 1.0
+        if self._prototypes and self._pose_buffer:
+            feats = pose_sequence_to_features(self._pose_buffer)
+            result = classify_window(feats, self._prototypes)
+            if result is not None:
+                exercise_name = result.name
+                classifier_conf = result.confidence
+                logger.info("classified", name=result.name, confidence=result.confidence)
+
+        # Recompute reps if the classified exercise uses a different joint.
+        rep_count = ev.rep_count
+        spec = self._exercise_lookup(exercise_name) if self._exercise_lookup else None
+        if spec is not None and (
+            spec.a_idx != self._default_exercise.a_idx
+            or spec.b_idx != self._default_exercise.b_idx
+            or spec.c_idx != self._default_exercise.c_idx
+        ):
+            recounted = self._recount_reps(spec)
+            logger.info("rep count recomputed for new joint mapping",
+                        from_=ev.rep_count, to=recounted, exercise=exercise_name)
+            rep_count = recounted
+
+        # Estimate weight from the most recent frame, if any.
+        weight_lb, weight_conf = (0.0, 0.5)
+        if self._latest_frame is not None:
+            try:
+                weight_lb, weight_conf = estimate_barbell_load(
+                    self._latest_frame, bar_weight_lb=self._bar_weight,
+                )
+            except Exception as e:
+                logger.warning("weight estimate failed", error=str(e))
+
+        # A pending set is one where any sub-detector is below threshold
+        # or the rep count looks suspiciously low.
+        confidence = min(classifier_conf, weight_conf)
+        pending = (
+            confidence < self._confidence_threshold
+            or rep_count < 3
+        )
+
+        payload = {
+            "Date": _today(),
+            "Name": exercise_name,
+            "Weight": f"{weight_lb:.1f}",
+            "Reps": int(rep_count),
+            "Source": "cv",
+            "Confidence": round(confidence, 3),
+            "Pending": pending,
+        }
+        logger.info("set ended → POST /api/sets",
+                    exercise=exercise_name, reps=int(rep_count),
+                    weight_lb=weight_lb, pending=pending)
+        try:
+            set_id = await self._pump.post_set(payload)
+            logger.info("set written", id=set_id)
+        except Exception as e:
+            logger.error("set write failed", error=str(e))
+
+        # Reset per-set state.
+        self._counter.reset()
+        self._pose_buffer = []
+
+    def _recount_reps(self, spec: ExerciseSpec) -> int:
+        """Replay the pose buffer through a fresh RepCounter using a
+        different joint triple. Used when the classifier picks an
+        exercise whose primary joint differs from the default."""
+        amp, period, win = self._rep_params
+        rc = RepCounter(min_amplitude_deg=amp, min_period_s=period, smoothing_window=win)
+        for p in self._pose_buffer:
+            ang = keypoint_angle(p, spec.a_idx, spec.b_idx, spec.c_idx)
+            if ang is not None:
+                rc.push(ang, p.timestamp)
+        return rc.count
 
 
 def _today() -> str:

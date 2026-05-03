@@ -41,7 +41,7 @@ async def test_pipeline_writes_one_set_per_completed_session():
     pump = _RecordingPump()
     runner = PipelineRunner(
         pump=pump,                             # type: ignore[arg-type]
-        exercise=ExerciseSpec("Squat", LEFT_HIP, LEFT_KNEE, LEFT_ANKLE),
+        default_exercise=ExerciseSpec("Squat", LEFT_HIP, LEFT_KNEE, LEFT_ANKLE),
         rep_amplitude_deg=20.0,
         rep_min_period_s=0.5,
         rep_smoothing_window=5,

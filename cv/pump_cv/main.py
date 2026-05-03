@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import os
+from pathlib import Path
 
+from . import exercises as ex_lookup_mod
 from . import log
+from .classify import PrototypeStore
 from .config import CVConfig, load
 from .pipeline import ExerciseSpec, PipelineRunner
 from .pose.types import (
@@ -23,13 +26,18 @@ from .pump_client import PumpClient
 logger = log.get(__name__)
 
 
-# Phase 1: hardcoded exercise. Replace with the classifier output in phase 2.
+# Default exercise for driving the rep counter when no prototypes are
+# loaded yet. Squat (knee flexion) is the most generic single-joint
+# signal — covers most lower-body work and degrades gracefully on
+# upper-body exercises (the classifier corrects them on set close).
 DEFAULT_EXERCISE = ExerciseSpec(
     name=os.getenv("PUMP_CV_EXERCISE", "Squat"),
     a_idx=LEFT_HIP,
     b_idx=LEFT_KNEE,
     c_idx=LEFT_ANKLE,
 )
+
+PROTOTYPE_DIR = Path(os.getenv("PUMP_CV_PROTOTYPE_DIR", "prototypes"))
 
 
 def _build_pose_source(cfg: CVConfig):
@@ -76,10 +84,20 @@ async def _amain() -> None:
                 pump_base=cfg.pump.base_url)
 
     pose_source = _build_pose_source(cfg)
+
+    # Load any prototypes the operator has recorded so far. Empty list is
+    # fine — runner falls back to the default exercise name.
+    prototypes = []
+    if PROTOTYPE_DIR.exists():
+        prototypes = PrototypeStore(PROTOTYPE_DIR).load_all()
+    logger.info("prototypes loaded", count=len(prototypes), dir=str(PROTOTYPE_DIR))
+
     async with PumpClient(cfg.pump.base_url, cfg.pump.api_key, cfg.pump.request_timeout_s) as pump:
         runner = PipelineRunner(
             pump=pump,
-            exercise=DEFAULT_EXERCISE,
+            default_exercise=DEFAULT_EXERCISE,
+            prototypes=prototypes,
+            exercise_lookup=ex_lookup_mod.lookup,
             rep_amplitude_deg=cfg.rep.min_amplitude_deg,
             rep_min_period_s=cfg.rep.min_period_s,
             rep_smoothing_window=cfg.rep.smoothing_window,
