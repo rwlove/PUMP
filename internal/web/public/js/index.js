@@ -278,6 +278,17 @@ function refreshSetBadges() {
             badge.style.display = (totals[name] > 1) ? '' : 'none';
         }
     });
+
+    // Mark consecutive same-name entries as group-tails so only the head of
+    // each contiguous run shows the color strip.
+    var prevName = null;
+    entries.forEach(function(entry) {
+        var hidden = entry.querySelector('input[data-exname]');
+        if (!hidden) return;
+        var name = hidden.getAttribute('data-exname');
+        entry.classList.toggle('entry-group-tail', name === prevName);
+        prevName = name;
+    });
 }
 
 function updateEmptyState() {

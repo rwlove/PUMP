@@ -380,6 +380,13 @@
   align-self: stretch;
 }
 
+/* For consecutive sets of the same exercise, only the first entry shows the
+   color strip; subsequent entries keep the same width via visibility:hidden
+   so the body content stays aligned. */
+.entry-group-tail .entry-color-strip {
+  visibility: hidden;
+}
+
 .entry-name {
   flex: 1;
   font-weight: 500;
