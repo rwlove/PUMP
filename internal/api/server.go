@@ -6,24 +6,34 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rwlove/PUMP/internal/conf"
 	"github.com/rwlove/PUMP/internal/models"
+	"github.com/rwlove/PUMP/internal/notify"
 	"github.com/rwlove/PUMP/internal/store"
 )
 
 var (
 	appConfig models.Conf
 	dataStore store.Store
+	pushover  *notify.Pushover // may be nil; safe to invoke either way
+	publicURL string           // base URL for deep-links in notifications
 )
 
-// RegisterRoutes mounts all API routes on r using the provided store and config.
+// RegisterRoutes mounts all API routes on r using the provided store and
+// config. p may be nil (notifications disabled). pubURL is the externally-
+// reachable PUMP base URL used to build deep-links in notifications; may
+// be empty (notifications still fire, just without a clickable URL).
+//
 // Used by cmd/pump (monolith). Does not call r.Run().
-func RegisterRoutes(r *gin.Engine, s store.Store, cfg models.Conf) {
+func RegisterRoutes(r *gin.Engine, s store.Store, cfg models.Conf, p *notify.Pushover, pubURL string) {
 	appConfig = cfg
 	dataStore = s
+	pushover = p
+	publicURL = pubURL
 	registerRoutes(r)
 	slog.Debug("api routes registered")
 }
@@ -297,6 +307,14 @@ func postSet(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// Gate CV writes on the operator's opt-in toggle. Manual writes are
+	// always accepted regardless of CVAutoLog.
+	if set.Source == "cv" && !appConfig.CVAutoLog {
+		slog.Warn("postSet: refused CV write — CVAutoLog is off",
+			slog.String("date", set.Date), slog.String("name", set.Name))
+		c.JSON(http.StatusForbidden, gin.H{"error": "CV auto-log is disabled"})
+		return
+	}
 	id, err := dataStore.InsertSet(set)
 	if err != nil {
 		slog.Error("postSet: InsertSet failed", slog.Any("error", err))
@@ -310,10 +328,34 @@ func postSet(c *gin.Context) {
 		slog.String("source", set.Source),
 		slog.Bool("pending", set.Pending),
 	)
-	if stored, err := dataStore.GetSet(id); err == nil {
+	stored, _ := dataStore.GetSet(id)
+	if stored.ID != 0 {
 		publishSetEvent(SetEvent{Type: SetEventAdd, ID: id, Date: stored.Date, Set: &stored})
+		if stored.Pending {
+			pushover.SendAsync(buildPendingSetMessage(stored))
+		}
 	}
 	c.JSON(http.StatusCreated, gin.H{"id": id})
+}
+
+// buildPendingSetMessage formats a Pushover notification for a low-
+// confidence CV set that needs the athlete to confirm or correct.
+func buildPendingSetMessage(s models.Set) notify.Message {
+	conf := int(s.Confidence*100 + 0.5)
+	body := fmt.Sprintf("%s · %s lb × %d (%d%% confidence)",
+		s.Name, s.Weight.String(), s.Reps, conf)
+	if s.Note != "" {
+		body += "\n" + s.Note
+	}
+	m := notify.Message{
+		Title: "PUMP — confirm set",
+		Body:  body,
+	}
+	if publicURL != "" {
+		m.URL = strings.TrimRight(publicURL, "/") + "/"
+		m.URLTitle = "Open PUMP"
+	}
+	return m
 }
 
 func patchSet(c *gin.Context) {

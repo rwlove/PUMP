@@ -84,6 +84,8 @@ All configuration is via environment variables. No config file is required.
 | `CVAUTOLOG` | Accept set writes from the `pump-cv` camera sidecar; toggleable in the UI | `false` |
 | `PUSHOVER_USER_KEY` | Pushover user key for low-confidence set notifications; env-only, never in UI | `""` |
 | `PUSHOVER_APP_TOKEN` | Pushover app token for low-confidence set notifications; env-only, never in UI | `""` |
+| `PUSHOVER_API_URL` | Pushover API endpoint override (testing only) | Pushover |
+| `PUBLIC_URL` | Externally-reachable PUMP base URL; used to build deep-links in notifications | `""` |
 | `NODE_PATH` | Path to local `node_modules` directory; empty = use CDN for Bootstrap/Chart.js | `""` |
 | `TZ` | Timezone | `""` |
 

@@ -12,6 +12,7 @@ import (
 	"github.com/rwlove/PUMP/internal/db"
 	"github.com/rwlove/PUMP/internal/logger"
 	"github.com/rwlove/PUMP/internal/models"
+	"github.com/rwlove/PUMP/internal/notify"
 	"github.com/rwlove/PUMP/internal/store"
 	"github.com/rwlove/PUMP/internal/web"
 )
@@ -35,6 +36,8 @@ func envOr(key, def string) string {
 //	CVAUTOLOG          accept set writes from pump-cv        (default: false; toggleable in UI)
 //	PUSHOVER_USER_KEY  Pushover user key for notifications   (env-only, not in UI)
 //	PUSHOVER_APP_TOKEN Pushover app token for notifications  (env-only, not in UI)
+//	PUSHOVER_API_URL   Pushover API endpoint override         (default: api.pushover.net)
+//	PUBLIC_URL         externally-reachable PUMP base URL    (used in notification deep-links)
 func main() {
 	logger.Init(os.Getenv("LOG_LEVEL"))
 
@@ -100,7 +103,13 @@ func main() {
 	}
 
 	cfg.NodePath = nodePath
-	api.RegisterRoutes(r, pgStore, cfg)
+	pushover := &notify.Pushover{
+		UserKey:  cfg.PushoverUserKey,
+		AppToken: cfg.PushoverAppToken,
+		APIURL:   os.Getenv("PUSHOVER_API_URL"),
+	}
+	publicURL := os.Getenv("PUBLIC_URL")
+	api.RegisterRoutes(r, pgStore, cfg, pushover, publicURL)
 	web.RegisterRoutes(r, pgStore, cfg, func(newCfg models.Conf) {
 		api.SetConfig(newCfg)
 		slog.Info("config updated via web UI",
