@@ -83,6 +83,11 @@ func registerRoutes(r *gin.Engine) {
 	// Config
 	r.GET("/api/config", getConfig)
 	r.PUT("/api/config", putConfig)
+
+	// Wall display
+	r.GET("/api/wall/stream", getWallStream)
+	r.POST("/api/wall/wake", postWallWake)
+	r.POST("/api/wall/sleep", postWallSleep)
 }
 
 // ─── middleware ───────────────────────────────────────────────────────────────
@@ -403,6 +408,75 @@ func postSetConfirm(c *gin.Context) {
 	if stored, err := dataStore.GetSet(id); err == nil {
 		publishSetEvent(SetEvent{Type: SetEventUpdate, ID: id, Date: stored.Date, Set: &stored})
 	}
+	c.Status(http.StatusOK)
+}
+
+// ─── wall display ─────────────────────────────────────────────────────────────
+
+// getWallStream is an SSE endpoint for wall-mounted kiosks. It carries
+// wake/sleep events plus a build_changed event so kiosks self-reload on
+// deploy. Set lifecycle (add/update/delete) stays on /api/sets/stream;
+// the wall just subscribes to both.
+func getWallStream(c *gin.Context) {
+	ch, lastSHA, unsub := wallBroker.subscribe()
+	defer unsub()
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.WriteHeader(http.StatusOK)
+	if _, err := fmt.Fprint(c.Writer, ": connected\n\n"); err != nil {
+		return
+	}
+	c.Writer.Flush()
+
+	// Tell the freshly-connected kiosk what build is currently live so
+	// it can reload if it loaded against a stale build.
+	if lastSHA != "" {
+		data, _ := json.Marshal(WallEvent{Type: WallEventBuildChanged, Data: lastSHA})
+		fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", WallEventBuildChanged, data)
+		c.Writer.Flush()
+	}
+
+	keepalive := time.NewTicker(25 * time.Second)
+	defer keepalive.Stop()
+
+	ctx := c.Request.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-keepalive.C:
+			if _, err := fmt.Fprint(c.Writer, ": keepalive\n\n"); err != nil {
+				return
+			}
+			c.Writer.Flush()
+		case ev, ok := <-ch:
+			if !ok {
+				return
+			}
+			data, err := json.Marshal(ev)
+			if err != nil {
+				continue
+			}
+			if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", ev.Type, data); err != nil {
+				return
+			}
+			c.Writer.Flush()
+		}
+	}
+}
+
+func postWallWake(c *gin.Context) {
+	publishWallEvent(WallEvent{Type: WallEventWake})
+	slog.Debug("wall: wake")
+	c.Status(http.StatusOK)
+}
+
+func postWallSleep(c *gin.Context) {
+	publishWallEvent(WallEvent{Type: WallEventSleep})
+	slog.Debug("wall: sleep")
 	c.Status(http.StatusOK)
 }
 

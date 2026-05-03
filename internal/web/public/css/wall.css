@@ -1,0 +1,249 @@
+/* PUMP wall view — kiosk dashboard for a wall-mounted touch display.
+ *
+ * Design intent:
+ *   - Landscape, ~40% data left / ~60% video right
+ *   - Big readable type from 6–8 ft away (1.5–2× normal)
+ *   - Tap targets ≥ 48 px so sweat-glove fingers don't miss
+ *   - High-contrast dark scheme; ambient gym lighting wins
+ *   - Sleeps to a black "standby" overlay on inactivity
+ */
+
+:root {
+  --wall-bg:        #0a0a0c;
+  --wall-fg:        #f5f5f7;
+  --wall-muted:     #8a8a92;
+  --wall-panel:     #15161a;
+  --wall-divider:   #232428;
+  --wall-accent:    #2780e3;     /* matches default exercise color */
+  --wall-pending:   #ffc107;
+  --wall-pending-bg:#3a2e08;
+  --wall-cv:        #38bdf8;     /* CV-source badge color */
+  --wall-success:   #22c55e;
+  --wall-danger:    #ef4444;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body {
+  background: var(--wall-bg);
+  color: var(--wall-fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 18px;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: none;          /* hide cursor on the kiosk; touch only */
+}
+
+/* ─── Grid ─────────────────────────────────────────────────────────────── */
+.wall-grid {
+  display: grid;
+  grid-template-columns: 40fr 60fr;
+  height: 100vh;
+  gap: 0;
+}
+
+/* ─── Left: data ───────────────────────────────────────────────────────── */
+.wall-data {
+  background: var(--wall-panel);
+  border-right: 1px solid var(--wall-divider);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.wall-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 24px 28px 16px;
+  border-bottom: 1px solid var(--wall-divider);
+}
+.wall-date {
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+.wall-clock {
+  font-size: 1.4rem;
+  color: var(--wall-muted);
+  font-variant-numeric: tabular-nums;
+}
+.wall-sets {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 16px 24px;
+}
+.wall-empty {
+  color: var(--wall-muted);
+  text-align: center;
+  padding: 64px 0;
+  font-size: 1.2rem;
+}
+
+/* Set cards — current/most-recent on top */
+.wall-set {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 16px;
+  align-items: center;
+  padding: 18px 16px;
+  margin-bottom: 12px;
+  background: #1c1d22;
+  border: 1px solid var(--wall-divider);
+  border-radius: 14px;
+  transition: 0.15s ease;
+}
+.wall-set.is-current {
+  border-color: var(--wall-accent);
+  box-shadow: 0 0 0 3px rgba(39, 128, 227, 0.18);
+}
+.wall-set[data-pending="true"] {
+  background: var(--wall-pending-bg);
+  border-color: var(--wall-pending);
+}
+.wall-set-color {
+  width: 6px;
+  align-self: stretch;
+  border-radius: 3px;
+}
+.wall-set-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.wall-set-name {
+  font-size: 1.4rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.wall-set-cvbadge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--wall-cv);
+  border: 1px solid var(--wall-cv);
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.wall-set-numbers {
+  font-size: 2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.wall-set-numbers .unit {
+  font-size: 1.1rem;
+  color: var(--wall-muted);
+  font-weight: 500;
+  margin-left: 4px;
+}
+.wall-set-meta {
+  font-size: 0.85rem;
+  color: var(--wall-muted);
+}
+
+/* Pending tap-to-confirm + reject buttons */
+.wall-set-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.wall-set-btn {
+  width: 64px;
+  height: 64px;
+  font-size: 1.6rem;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--wall-fg);
+  cursor: pointer;
+  transition: 0.15s ease;
+}
+.wall-set-btn.confirm {
+  background: var(--wall-success);
+}
+.wall-set-btn.reject {
+  background: var(--wall-danger);
+}
+.wall-set-btn:active {
+  transform: scale(0.92);
+}
+
+/* ─── Right: video / snapshot ──────────────────────────────────────────── */
+.wall-video {
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+.wall-video-placeholder {
+  text-align: center;
+  color: var(--wall-muted);
+}
+.wall-video-icon {
+  display: block;
+  font-size: 6rem;
+  opacity: 0.18;
+  margin-bottom: 12px;
+}
+.wall-video-msg { font-size: 1.1rem; }
+.wall-video-msg small { color: #4d4d55; }
+
+/* ─── Status pip ───────────────────────────────────────────────────────── */
+.wall-status {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--wall-muted);
+  background: rgba(0,0,0,0.4);
+  padding: 6px 12px;
+  border-radius: 999px;
+}
+.wall-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--wall-muted);
+}
+.wall-status[data-state="live"]       .wall-status-dot { background: var(--wall-success); }
+.wall-status[data-state="connecting"] .wall-status-dot { background: var(--wall-pending); animation: wall-blink 1s infinite; }
+.wall-status[data-state="error"]      .wall-status-dot { background: var(--wall-danger); }
+
+@keyframes wall-blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+
+/* ─── Sleep overlay ───────────────────────────────────────────────────── */
+.wall-sleep {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.6s ease;
+  z-index: 10;
+}
+body.sleeping .wall-sleep {
+  opacity: 1;
+  pointer-events: auto;
+}
+.wall-sleep-msg {
+  font-size: 0.9rem;
+  color: #2a2a2e;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* Tap anywhere on the sleep overlay to wake */
+body.sleeping .wall-sleep { cursor: pointer; }

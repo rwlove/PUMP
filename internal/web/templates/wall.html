@@ -1,0 +1,50 @@
+{{ define "wall.html" }}
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>PUMP — Wall</title>
+<link rel="stylesheet" type="text/css" href="/fs/public/css/wall.css">
+</head>
+<body>
+
+<div class="wall-grid" id="wallRoot">
+  <!-- Left: today's sets -->
+  <section class="wall-data">
+    <header class="wall-header">
+      <span class="wall-date" id="wallDate"></span>
+      <span class="wall-clock" id="wallClock"></span>
+    </header>
+    <div class="wall-sets" id="wallSets">
+      <div class="wall-empty">No sets yet today.</div>
+    </div>
+  </section>
+
+  <!-- Right: video / snapshot pane (phase 2 will fill the loop here) -->
+  <section class="wall-video">
+    <div class="wall-video-placeholder" id="wallVideoPlaceholder">
+      <i class="wall-video-icon">▶</i>
+      <div class="wall-video-msg">Last-set replay shows here<br><small>(phase 2)</small></div>
+    </div>
+  </section>
+</div>
+
+<!-- Sleep overlay; CSS shows it when body has .sleeping -->
+<div class="wall-sleep">
+  <div class="wall-sleep-msg">Standby</div>
+</div>
+
+<!-- Status pip in the corner -->
+<div class="wall-status" id="wallStatus" data-state="connecting">
+  <span class="wall-status-dot"></span>
+  <span class="wall-status-label" id="wallStatusLabel">connecting…</span>
+</div>
+
+<script>
+  window._wallBuildSHA = {{ .Version | json }};
+</script>
+<script src="/fs/public/js/wall.js"></script>
+</body>
+</html>
+{{ end }}

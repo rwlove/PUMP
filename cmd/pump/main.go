@@ -110,6 +110,9 @@ func main() {
 	}
 	publicURL := os.Getenv("PUBLIC_URL")
 	api.RegisterRoutes(r, pgStore, cfg, pushover, publicURL)
+	// Broadcast the running build to any connected wall kiosk so it
+	// can self-reload when this Pod is replaced by a newer image.
+	api.SetBuildSHA(web.Version)
 	web.RegisterRoutes(r, pgStore, cfg, func(newCfg models.Conf) {
 		api.SetConfig(newCfg)
 		slog.Info("config updated via web UI",
