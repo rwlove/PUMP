@@ -5,26 +5,24 @@
 # Pascal-class GPUs (e.g. P40) are still supported by the current PyTorch
 # CUDA 12 builds, just without modern tensor-core features.
 #
-# Ubuntu 24.04 base because it ships python3.12 natively in its default
-# package repos; the older ubuntu22.04 nvidia/cuda image only has
-# python3.10 without external PPAs.
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu24.04 AS runtime
+# Ubuntu 22.04 base — nvidia/cuda doesn't publish a 12.4.1 ubuntu24.04
+# variant (we tried). 22.04 ships python3.10 system-wide, which is
+# everything our code actually needs (we use 3.10+ features, none
+# 3.12-specific).
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_BREAK_SYSTEM_PACKAGES=1
+    PIP_NO_CACHE_DIR=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3.12 \
-        python3.12-venv \
+        python3 \
+        python3-venv \
         python3-pip \
         ffmpeg \
         libgl1 \
         libglib2.0-0 \
-    && ln -sf /usr/bin/python3.12 /usr/local/bin/python \
-    && ln -sf /usr/bin/python3.12 /usr/local/bin/python3 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
