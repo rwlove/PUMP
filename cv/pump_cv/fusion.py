@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from .pose.types import Keypoint, Pose
+from .pose.types import Keypoint, Keypoint3D, Pose
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,14 +40,6 @@ class CameraCalibration:
         """Return the 3×4 projection matrix P = K [R | t]."""
         Rt = np.hstack([self.R, self.t.reshape(3, 1)])
         return self.K @ Rt
-
-
-@dataclass(frozen=True, slots=True)
-class Keypoint3D:
-    x: float
-    y: float
-    z: float
-    confidence: float  # min of the two source 2D confidences
 
 
 def triangulate_pose(

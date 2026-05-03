@@ -36,6 +36,7 @@ from __future__ import annotations
 import datetime as dt
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -49,6 +50,7 @@ from ..fsm import RepCounter, SetBoundary, keypoint_angle
 from ..fsm.set_boundary import RepObservedEvent, SetEndedEvent, SetStartedEvent
 from ..pose.types import FrameAndPoses, Pose
 from ..pump_client import PumpClient
+from ..snapshot import save_snapshot
 from ..tracking import pick_athlete
 from ..weight import estimate_barbell_load
 
@@ -84,6 +86,9 @@ class PipelineRunner:
         rep_smoothing_window: int = 9,
         set_quiet_seconds: float = 25.0,
         confidence_threshold: float = 0.75,
+        snapshot_dir: Path | None = None,
+        on_set_committed=None,  # callable(pending: bool) -> None — for healthd metrics
+        on_set_failed=None,     # callable() -> None
     ):
         self._pump = pump
         self._default_exercise = default_exercise
@@ -97,11 +102,15 @@ class PipelineRunner:
         )
         self._fsm = SetBoundary(quiet_seconds=set_quiet_seconds)
         self._confidence_threshold = confidence_threshold
+        self._snapshot_dir = snapshot_dir
+        self._on_set_committed = on_set_committed
+        self._on_set_failed = on_set_failed
 
         # Per-set buffers used by the classifier and weight detector.
         self._rep_params = (rep_amplitude_deg, rep_min_period_s, rep_smoothing_window)
         self._pose_buffer: list[Pose] = []
         self._latest_frame: np.ndarray | None = None
+        self._latest_athlete_pose: Pose | None = None
 
     async def run(self, pose_stream: AsyncIterator[FrameAndPoses]) -> None:
         async for frame, poses in pose_stream:
@@ -124,6 +133,7 @@ class PipelineRunner:
                 if ang is not None:
                     self._counter.push(ang, athlete.timestamp)
                 self._pose_buffer.append(athlete)
+                self._latest_athlete_pose = athlete
 
             for ev in self._fsm.tick(self._counter.count, now):
                 await self._handle_event(ev)
@@ -195,12 +205,33 @@ class PipelineRunner:
         try:
             set_id = await self._pump.post_set(payload)
             logger.info("set written", id=set_id)
+            if self._on_set_committed:
+                self._on_set_committed(pending)
         except Exception as e:
             logger.error("set write failed", error=str(e))
+            if self._on_set_failed:
+                self._on_set_failed()
+
+        # Save an annotated debug snapshot if a frame was captured.
+        if self._snapshot_dir is not None:
+            try:
+                save_snapshot(
+                    self._snapshot_dir,
+                    self._latest_frame,
+                    self._latest_athlete_pose,
+                    exercise=exercise_name,
+                    weight_lb=weight_lb,
+                    reps=int(rep_count),
+                    confidence=confidence,
+                    pending=pending,
+                )
+            except Exception as e:
+                logger.warning("snapshot save failed", error=str(e))
 
         # Reset per-set state.
         self._counter.reset()
         self._pose_buffer = []
+        self._latest_athlete_pose = None
 
     def _recount_reps(self, spec: ExerciseSpec) -> int:
         """Replay the pose buffer through a fresh RepCounter using a

@@ -12,10 +12,12 @@ import os
 from pathlib import Path
 
 from . import exercises as ex_lookup_mod
-from . import log
+from . import healthd, log
+from .calibration import load_camera
 from .classify import PrototypeStore
 from .config import CVConfig, load
 from .pipeline import ExerciseSpec, PipelineRunner
+from .pose.fused import FusedPoseSource
 from .pose.types import (
     LEFT_ANKLE,
     LEFT_HIP,
@@ -38,34 +40,23 @@ DEFAULT_EXERCISE = ExerciseSpec(
 )
 
 PROTOTYPE_DIR = Path(os.getenv("PUMP_CV_PROTOTYPE_DIR", "prototypes"))
+SNAPSHOT_DIR  = Path(os.getenv("PUMP_CV_SNAPSHOT_DIR", "snapshots"))
+HEALTHD_PORT  = int(os.getenv("PUMP_CV_HEALTHD_PORT", "8080"))
 
 
-def _build_pose_source(cfg: CVConfig):
-    """Construct the PoseSource implied by the config.
-
-    Only the first camera is used in this slice; multi-cam fusion comes
-    later. Backend selection: yaml `pose.backend: mock` skips ultralytics
-    entirely (useful for unit tests and no-GPU dev).
-    """
-    if not cfg.cameras:
-        raise SystemExit("pump-cv: at least one camera must be configured")
-
-    cam = cfg.cameras[0]
+def _build_single_source(cam, cfg: CVConfig):
     source = cam.rtsp_url or cam.video_path
     if not source:
         raise SystemExit(f"pump-cv: camera {cam.name!r} has neither rtsp_url nor video_path")
 
     if cfg.pose.backend == "mock":
-        # Mock source ignores the camera config; useful only for smoke tests.
         from .pose.mock import MockPoseSource
-
         return MockPoseSource(
             schedule=[("rep", 10.0), ("rest", 30.0)],
             camera=cam.name,
         )
 
     from .pose.yolo import YOLOPoseSource
-
     return YOLOPoseSource(
         source=source,
         camera_name=cam.name,
@@ -73,6 +64,27 @@ def _build_pose_source(cfg: CVConfig):
         image_size=cfg.pose.image_size,
         device=cfg.pose.device,
     )
+
+
+def _build_pose_source(cfg: CVConfig):
+    """Construct the PoseSource (single or fused) implied by the config.
+
+    Single camera (or two-camera config without calibration paths) →
+    one PoseSource. Two cameras with calibration → FusedPoseSource that
+    pairs frames by timestamp and triangulates the athlete to 3D.
+    """
+    if not cfg.cameras:
+        raise SystemExit("pump-cv: at least one camera must be configured")
+
+    if len(cfg.cameras) >= 2 and cfg.cameras[0].calibration_path and cfg.cameras[1].calibration_path:
+        cam_a, cam_b = cfg.cameras[0], cfg.cameras[1]
+        src_a = _build_single_source(cam_a, cfg)
+        src_b = _build_single_source(cam_b, cfg)
+        calib_a = load_camera(Path(cam_a.calibration_path))
+        calib_b = load_camera(Path(cam_b.calibration_path))
+        return FusedPoseSource(src_a, src_b, calib_a, calib_b)
+
+    return _build_single_source(cfg.cameras[0], cfg)
 
 
 async def _amain() -> None:
@@ -92,6 +104,7 @@ async def _amain() -> None:
         prototypes = PrototypeStore(PROTOTYPE_DIR).load_all()
     logger.info("prototypes loaded", count=len(prototypes), dir=str(PROTOTYPE_DIR))
 
+    # Run the health server and the pipeline concurrently.
     async with PumpClient(cfg.pump.base_url, cfg.pump.api_key, cfg.pump.request_timeout_s) as pump:
         runner = PipelineRunner(
             pump=pump,
@@ -103,8 +116,18 @@ async def _amain() -> None:
             rep_smoothing_window=cfg.rep.smoothing_window,
             set_quiet_seconds=cfg.set_boundary.quiet_seconds,
             confidence_threshold=cfg.confidence_threshold,
+            snapshot_dir=SNAPSHOT_DIR,
+            on_set_committed=healthd.record_set_posted,
+            on_set_failed=healthd.record_set_failed,
         )
-        await runner.run(pose_source.poses())
+
+        health_task = asyncio.create_task(healthd.serve(port=HEALTHD_PORT))
+        healthd.mark_ready()
+        try:
+            await runner.run(pose_source.poses())
+        finally:
+            health_task.cancel()
+            await asyncio.gather(health_task, return_exceptions=True)
 
     logger.info("pump-cv: pose stream ended")
 

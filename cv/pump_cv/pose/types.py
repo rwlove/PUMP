@@ -50,6 +50,15 @@ class Keypoint:
 
 
 @dataclass(frozen=True, slots=True)
+class Keypoint3D:
+    """A keypoint lifted into a shared world frame via stereo triangulation."""
+    x: float  # mm in world coords
+    y: float
+    z: float
+    confidence: float
+
+
+@dataclass(frozen=True, slots=True)
 class Pose:
     """One person detected in one frame.
 
@@ -57,6 +66,11 @@ class Pose:
     detector confidence for this person (separate from per-keypoint
     confidences). camera identifies which source produced this pose so
     multi-cam fusion can correlate later.
+
+    keypoints_3d is populated by the multi-cam fusion layer (empty tuple
+    in single-cam mode). When present, downstream joint-angle code uses
+    it in preference to the 2D projection — 3D angles are immune to
+    camera viewpoint distortion.
     """
 
     timestamp: float
@@ -64,6 +78,7 @@ class Pose:
     score: float
     keypoints: tuple[Keypoint, ...]
     camera: str = ""
+    keypoints_3d: tuple[Keypoint3D, ...] = ()
 
 
 FrameAndPoses: TypeAlias = tuple["np.ndarray | None", list[Pose]]

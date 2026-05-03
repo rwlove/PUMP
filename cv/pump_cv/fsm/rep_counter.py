@@ -44,11 +44,39 @@ def joint_angle(a: tuple[float, float], b: tuple[float, float], c: tuple[float, 
 
 def keypoint_angle(pose: Pose, a_idx: int, b_idx: int, c_idx: int) -> float | None:
     """Joint angle at b_idx, computed from pose keypoints. Returns None
-    if any of the three keypoints has near-zero confidence (occluded)."""
+    if any of the three keypoints has near-zero confidence (occluded).
+
+    Prefers 3D keypoints when present (multi-cam fusion populates them);
+    falls back to 2D otherwise. 3D angles are viewpoint-independent and
+    more accurate for joints that move out of the image plane.
+    """
+    if pose.keypoints_3d:
+        a3 = pose.keypoints_3d[a_idx]
+        b3 = pose.keypoints_3d[b_idx]
+        c3 = pose.keypoints_3d[c_idx]
+        if a3.confidence < 0.3 or b3.confidence < 0.3 or c3.confidence < 0.3:
+            return None
+        return _joint_angle_3d((a3.x, a3.y, a3.z), (b3.x, b3.y, b3.z), (c3.x, c3.y, c3.z))
+
     a, b, c = pose.keypoints[a_idx], pose.keypoints[b_idx], pose.keypoints[c_idx]
     if a.confidence < 0.3 or b.confidence < 0.3 or c.confidence < 0.3:
         return None
     return joint_angle((a.x, a.y), (b.x, b.y), (c.x, c.y))
+
+
+def _joint_angle_3d(
+    a: tuple[float, float, float], b: tuple[float, float, float], c: tuple[float, float, float],
+) -> float:
+    """Interior angle at vertex b for three 3D points, in degrees (0..180)."""
+    v1 = (a[0] - b[0], a[1] - b[1], a[2] - b[2])
+    v2 = (c[0] - b[0], c[1] - b[1], c[2] - b[2])
+    n1 = math.sqrt(v1[0] ** 2 + v1[1] ** 2 + v1[2] ** 2)
+    n2 = math.sqrt(v2[0] ** 2 + v2[1] ** 2 + v2[2] ** 2)
+    if n1 == 0 or n2 == 0:
+        return 0.0
+    cosang = (v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2]) / (n1 * n2)
+    cosang = max(-1.0, min(1.0, cosang))
+    return math.degrees(math.acos(cosang))
 
 
 @dataclass
