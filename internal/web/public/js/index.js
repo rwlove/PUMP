@@ -68,7 +68,8 @@ function countExistingEntries(name) {
 
 // addExercise — builds one workout entry row.
 // fromPicker: when true, auto-fill logic is applied (if enabled).
-function addExercise(name, weight, reps, color, fromPicker) {
+// note: existing note text for this set (used when reloading saved data).
+function addExercise(name, weight, reps, color, fromPicker, note) {
     id++;
     var container = document.getElementById("todayEx");
     var entry = document.createElement('div');
@@ -80,61 +81,110 @@ function addExercise(name, weight, reps, color, fromPicker) {
     // Determine which set number this will be (1-indexed).
     var setNum = countExistingEntries(name) + 1;
 
-    // Auto-fill: override default weight/reps with historical data when
-    // the user is adding from the picker and the feature is enabled.
-    if (fromPicker && window._autoFill && today) {
-        var filled = getAutoFillData(name, setNum, today);
-        if (filled) {
-            weight = filled.Weight;
-            reps   = filled.Reps;
-        }
+    // Look up the matching set from the last past date this exercise was done.
+    // Used both for auto-fill (weight/reps) and for showing the previous note.
+    var prior = today ? getAutoFillData(name, setNum, today) : null;
+
+    if (fromPicker && window._autoFill && prior) {
+        weight = prior.Weight;
+        reps   = prior.Reps;
     }
 
     var safeWeight = (weight !== undefined && weight !== '' && weight !== '0') ? weight : '';
     var safeReps   = (reps   !== undefined && reps   !== '' && reps   !== '0') ? reps   : '';
+    var safeNote   = note || '';
+    var priorNote  = (prior && prior.Note) ? prior.Note : '';
 
-    // Small set-number badge — always rendered so the DOM is stable.
-    // CSS hides it when only one set exists for that exercise.
     var setBadge = '<span class="set-badge">S' + setNum + '</span>';
 
+    var speechSupported = ('webkitSpeechRecognition' in window) || ('SpeechRecognition' in window);
+    var micBtn = speechSupported
+        ? `<button type="button" class="entry-mic-btn" title="Dictate note">
+               <i class="bi bi-mic"></i>
+           </button>`
+        : '';
+
+    var priorNoteIndicator = priorNote
+        ? `<button type="button" class="entry-prior-note-btn" title="Show note from last time">
+               <i class="bi bi-sticky"></i>
+           </button>`
+        : '';
+
     entry.innerHTML = `
-        <div class="entry-color-strip" style="background-color:${safeColor};"></div>
-        <input type="hidden" name="name" value="${name}" data-exname="${name}">
-        <span class="entry-name" title="${name}">${name}</span>
-        ${setBadge}
-        <div class="entry-controls">
-            <div class="entry-field">
-                <span class="entry-label">lbs</span>
-                <input type="number" class="form-control entry-num" name="weight"
-                    value="${safeWeight}" min="0" step="any" placeholder="—">
+        <div class="entry-main">
+            <div class="entry-color-strip" style="background-color:${safeColor};"></div>
+            <div class="entry-body">
+                <div class="entry-header">
+                    <input type="hidden" name="name" value="${name}" data-exname="${name}">
+                    <span class="entry-name" title="${name}">${name}</span>
+                    ${setBadge}
+                </div>
+                <div class="entry-controls">
+                    <div class="entry-field">
+                        <span class="entry-label">lbs</span>
+                        <input type="number" class="form-control entry-num" name="weight"
+                            value="${safeWeight}" min="0" step="any" placeholder="—">
+                    </div>
+                    <div class="entry-field">
+                        <span class="entry-label">reps</span>
+                        <input type="number" class="form-control entry-num" name="reps"
+                            value="${safeReps}" min="0" placeholder="—">
+                    </div>
+                    <input type="hidden" name="workout_color" value="${safeColor}">
+                    <input type="hidden" class="entry-note-input" name="note" value="">
+                    ${priorNoteIndicator}
+                    ${micBtn}
+                    <button type="button" class="entry-del-btn" title="Remove">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
             </div>
-            <div class="entry-field">
-                <span class="entry-label">reps</span>
-                <input type="number" class="form-control entry-num" name="reps"
-                    value="${safeReps}" min="0" placeholder="—">
-            </div>
-            <input type="color" class="entry-color-picker"
-                name="workout_color" value="${safeColor}">
-            <button type="button" class="entry-del-btn" title="Remove">
-                <i class="bi bi-x-lg"></i>
+        </div>
+        <div class="entry-prior-note" style="display:none;"></div>
+        <div class="entry-note-row" style="display:none;">
+            <i class="bi bi-mic-fill entry-note-icon"></i>
+            <span class="entry-note-text"></span>
+            <button type="button" class="entry-note-clear" title="Clear note">
+                <i class="bi bi-x"></i>
             </button>
         </div>
     `;
+
+    // Set initial note value/visibility
+    var noteInput = entry.querySelector('.entry-note-input');
+    noteInput.value = safeNote;
+    if (safeNote) renderNote(entry, safeNote);
+
+    // Prior-note expand/collapse
+    if (priorNote) {
+        var priorPanel = entry.querySelector('.entry-prior-note');
+        priorPanel.textContent = priorNote;
+        entry.querySelector('.entry-prior-note-btn').addEventListener('click', function() {
+            priorPanel.style.display = priorPanel.style.display === 'none' ? '' : 'none';
+        });
+    }
 
     // Wire up weight/reps inputs → autosave
     entry.querySelectorAll('.entry-num').forEach(function(inp) {
         inp.addEventListener('change', scheduleAutosave);
     });
 
-    // Wire up color picker → color strip live update + autosave
-    var strip = entry.querySelector('.entry-color-strip');
-    var colorPicker = entry.querySelector('.entry-color-picker');
-    colorPicker.addEventListener('input', function() {
-        strip.style.backgroundColor = this.value;
+    // Mic dictation
+    if (speechSupported) {
+        var micButton = entry.querySelector('.entry-mic-btn');
+        micButton.addEventListener('click', function() {
+            startDictation(entry, micButton);
+        });
+    }
+
+    // Clear note
+    entry.querySelector('.entry-note-clear').addEventListener('click', function() {
+        noteInput.value = '';
+        renderNote(entry, '');
         scheduleAutosave();
     });
 
-    // Wire delete button → autosave + re-badge
+    // Delete entry
     entry.querySelector('.entry-del-btn').addEventListener('click', function() {
         entry.remove();
         updateEmptyState();
@@ -146,6 +196,49 @@ function addExercise(name, weight, reps, color, fromPicker) {
     refreshSetBadges();
     updateEmptyState();
     scheduleAutosave();
+}
+
+// renderNote shows or hides the note row based on whether text is present.
+function renderNote(entry, text) {
+    var row = entry.querySelector('.entry-note-row');
+    var span = entry.querySelector('.entry-note-text');
+    if (text) {
+        span.textContent = text;
+        row.style.display = '';
+    } else {
+        span.textContent = '';
+        row.style.display = 'none';
+    }
+}
+
+// startDictation runs the Web Speech API and writes the transcript into the note input.
+function startDictation(entry, button) {
+    var Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) return;
+
+    var rec = new Recognition();
+    rec.lang = 'en-US';
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+
+    var noteInput = entry.querySelector('.entry-note-input');
+
+    button.classList.add('recording');
+    rec.onresult = function(ev) {
+        var transcript = '';
+        for (var i = 0; i < ev.results.length; i++) {
+            transcript += ev.results[i][0].transcript;
+        }
+        transcript = transcript.trim();
+        if (!transcript) return;
+        var existing = noteInput.value.trim();
+        noteInput.value = existing ? existing + ' ' + transcript : transcript;
+        renderNote(entry, noteInput.value);
+        scheduleAutosave();
+    };
+    rec.onerror = function() { button.classList.remove('recording'); };
+    rec.onend   = function() { button.classList.remove('recording'); };
+    try { rec.start(); } catch (_) { button.classList.remove('recording'); }
 }
 
 // Renumber set badges after any structural change (delete, load).
@@ -221,7 +314,7 @@ function setFormContent(sets, date) {
         for (var i = 0; i < sets.length; i++) {
             if (sets[i].Date == date) {
                 // fromPicker=false: loading saved data, no auto-fill override
-                addExercise(sets[i].Name, sets[i].Weight, sets[i].Reps, sets[i].WorkoutColor, false);
+                addExercise(sets[i].Name, sets[i].Weight, sets[i].Reps, sets[i].WorkoutColor, false, sets[i].Note);
             }
         }
     }

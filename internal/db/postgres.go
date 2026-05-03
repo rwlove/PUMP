@@ -61,6 +61,13 @@ ALTER TABLE exercises DROP COLUMN IF EXISTS intensity;
 ALTER TABLE sets DROP COLUMN IF EXISTS intensity;
 `,
 	},
+	{
+		Version:     3,
+		Description: "add note column to sets",
+		SQL: `
+ALTER TABLE sets ADD COLUMN IF NOT EXISTS note TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any

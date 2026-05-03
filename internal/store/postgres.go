@@ -98,7 +98,7 @@ func (s *PostgresStore) UpdateExColor(id int, color string) error {
 func (s *PostgresStore) SelectSet() ([]models.Set, error) {
 	slog.Debug("db: SelectSet")
 	rows, err := s.pool.Query(context.Background(),
-		`SELECT id, date::text, name, color, workout_color, weight::text, reps
+		`SELECT id, date::text, name, color, workout_color, weight::text, reps, note
 		 FROM sets ORDER BY id ASC`)
 	if err != nil {
 		return nil, err
@@ -110,7 +110,7 @@ func (s *PostgresStore) SelectSet() ([]models.Set, error) {
 		var set models.Set
 		var weightStr string
 		if err := rows.Scan(&set.ID, &set.Date, &set.Name, &set.Color,
-			&set.WorkoutColor, &weightStr, &set.Reps); err != nil {
+			&set.WorkoutColor, &weightStr, &set.Reps, &set.Note); err != nil {
 			return nil, err
 		}
 		set.Weight, _ = decimal.NewFromString(weightStr)
@@ -136,10 +136,10 @@ func (s *PostgresStore) BulkReplaceSetsByDate(date string, sets []models.Set) er
 
 	for i, set := range sets {
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO sets (date, name, color, workout_color, weight, reps)
-			 VALUES ($1::date, $2, $3, $4, $5, $6)`,
+			`INSERT INTO sets (date, name, color, workout_color, weight, reps, note)
+			 VALUES ($1::date, $2, $3, $4, $5, $6, $7)`,
 			set.Date, set.Name, set.Color, set.WorkoutColor,
-			set.Weight.String(), set.Reps); err != nil {
+			set.Weight.String(), set.Reps, set.Note); err != nil {
 			slog.Debug("db: insert set failed", slog.Int("index", i), slog.Any("error", err))
 			return err
 		}

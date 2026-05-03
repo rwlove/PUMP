@@ -40,6 +40,7 @@ type Set struct {
 	WorkoutColor string          `db:"WORKOUT_COLOR" json:"WorkoutColor"`
 	Weight       decimal.Decimal `db:"WEIGHT" json:"Weight"`
 	Reps         int             `db:"REPS" json:"Reps"`
+	Note         string          `db:"NOTE" json:"Note"`
 }
 
 // AllExData - all sets and exercises
