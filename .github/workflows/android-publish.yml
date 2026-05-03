@@ -1,8 +1,12 @@
 name: Publish Android APK
 
+# Triggers on git tags of the form `pump-vX.Y.Z` (the Android app
+# tracks the pump server's release line). The `pump-` prefix is
+# stripped to compute VERSION_NAME, APK filename, and the QR code's
+# download URL.
 on:
   push:
-    tags: ["v*"]
+    tags: ["pump-v*"]
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -18,6 +22,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # Strip the `pump-` prefix once, expose as steps.ver.outputs.version
+      # for everything below. github.ref_name still has the prefix.
+      - name: Compute version (strip pump- prefix)
+        id: ver
+        run: |
+          VERSION="${GITHUB_REF_NAME#pump-}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-java@v4
         with:
@@ -37,7 +49,7 @@ jobs:
         run: ./gradlew assembleRelease --no-daemon
         env:
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g"
-          VERSION_NAME: ${{ github.ref_name }}
+          VERSION_NAME: ${{ steps.ver.outputs.version }}
 
       - name: Sign APK
         if: ${{ env.SIGNING_KEY != '' }}
@@ -58,7 +70,7 @@ jobs:
           UNSIGNED=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
           DIR=$(dirname "$UNSIGNED")
           ALIGNED="$DIR/app-release-aligned.apk"
-          SIGNED="$DIR/pump-${{ github.ref_name }}.apk"
+          SIGNED="$DIR/pump-${{ steps.ver.outputs.version }}.apk"
 
           # Align then sign
           "$BUILD_TOOLS/zipalign" -v -p 4 "$UNSIGNED" "$ALIGNED"
@@ -88,8 +100,12 @@ jobs:
 
       - name: Update QR code on main
         run: |
+          # The git tag still has the prefix (release object lives under
+          # the full tag name); the APK filename uses the stripped
+          # version so existing in-app references still resolve.
           TAG="${{ github.ref_name }}"
-          APK_URL="https://github.com/rwlove/PUMP/releases/download/${TAG}/pump-${TAG}.apk"
+          VERSION="${{ steps.ver.outputs.version }}"
+          APK_URL="https://github.com/rwlove/PUMP/releases/download/${TAG}/pump-${VERSION}.apk"
 
           # Generate QR code pointing to the now-live APK download
           sudo apt-get install -y --quiet qrencode
@@ -107,5 +123,5 @@ jobs:
           # Keep both copies in sync: assets/ (README) and internal/web/public/ (served by the app)
           cp assets/qr-android-install.png internal/web/public/qr-android-install.png
           git add assets/qr-android-install.png internal/web/public/qr-android-install.png
-          git commit -m "$(printf 'chore: update QR code for %s APK [skip ci]' "${TAG}")"
+          git commit -m "$(printf 'chore: update QR code for %s APK [skip ci]' "${VERSION}")"
           git push origin main

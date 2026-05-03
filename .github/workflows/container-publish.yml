@@ -1,8 +1,12 @@
 name: Publish Container Images
 
+# Triggers on git tags of the form `pump-vX.Y.Z`. The `pump-` prefix is
+# stripped before tagging the image (so GHCR sees `pump:v0.0.80`, not
+# `pump:pump-v0.0.80`). The CV sidecar has its own `pump-cv-v*` tag
+# line so the two release cadences are independent.
 on:
   push:
-    tags: ["v*"]
+    tags: ["pump-v*"]
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -37,14 +41,13 @@ jobs:
         run: |
           CURRENT_TAG="${{ github.ref_name }}"
 
-          # Walk backward through all prior tags.
-          # For each tag:
-          #   - source differs from current → stop, rebuild needed
-          #   - source same, image exists in GHCR → retag from here
-          #   - source same, no image in GHCR (failed build) → keep looking
+          # Walk backward through prior pump-v* tags only. Legacy tags
+          # without the prefix are ignored (they pre-date the prefix
+          # split). The first prefixed tag falls through to a rebuild,
+          # and from there the optimisation kicks in.
 
           SOURCE_TAG=""
-          for TAG in $(git tag --sort=-version:refname | grep -v "^${CURRENT_TAG}$"); do
+          for TAG in $(git tag --sort=-version:refname | grep '^pump-v' | grep -v "^${CURRENT_TAG}$"); do
 
             CHANGED=$(git diff --name-only "${TAG}..${CURRENT_TAG}" -- \
               cmd/ internal/ go.mod go.sum Dockerfile.pump 2>/dev/null)
@@ -55,7 +58,9 @@ jobs:
             fi
 
             # Same source — does the image actually exist in the registry?
-            if docker buildx imagetools inspect "${IMAGE}:${TAG}" \
+            # Strip the pump- prefix when looking up the image tag.
+            TAG_STRIPPED="${TAG#pump-}"
+            if docker buildx imagetools inspect "${IMAGE}:${TAG_STRIPPED}" \
                  > /dev/null 2>&1; then
               echo "${TAG}: same source, image exists — will retag."
               SOURCE_TAG="$TAG"
@@ -91,7 +96,7 @@ jobs:
           labels: |
             org.opencontainers.image.description=PUMP server (web UI + JSON API)
           tags: |
-            type=ref,event=tag
+            type=match,pattern=pump-(v.*),group=1
             type=raw,value=latest
 
       - name: Build and push
@@ -114,10 +119,12 @@ jobs:
         if: steps.check.outputs.needs_rebuild == 'false'
         run: |
           SOURCE="${{ steps.check.outputs.source_tag }}"
-          echo "Source : ${IMAGE}:${SOURCE}"
-          echo "New tags: ${{ github.ref_name }}, latest"
+          SOURCE_STRIPPED="${SOURCE#pump-}"
+          NEW_STRIPPED="${GITHUB_REF_NAME#pump-}"
+          echo "Source : ${IMAGE}:${SOURCE_STRIPPED}"
+          echo "New tags: ${NEW_STRIPPED}, latest"
           docker buildx imagetools create \
-            --tag "${{ env.IMAGE }}:${{ github.ref_name }}" \
+            --tag "${{ env.IMAGE }}:${NEW_STRIPPED}" \
             --tag "${{ env.IMAGE }}:latest" \
-            "${{ env.IMAGE }}:${SOURCE}"
+            "${{ env.IMAGE }}:${SOURCE_STRIPPED}"
 

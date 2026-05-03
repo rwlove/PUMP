@@ -18,7 +18,19 @@ Whenever the logo SVG is changed, **all four of the following must be updated in
 4. **Android** — replace `android/app/src/main/res/drawable/logo.svg` (or equivalent) with the
    new logo and rebuild the app icon / splash assets as needed.
 
-## Before applying any new version tag
+## Release tag conventions
+
+Two independent tag lines, each driving its own CI:
+
+- `pump-vX.Y.Z` → publishes `ghcr.io/rwlove/pump:vX.Y.Z` (the Go server image) and the Android APK
+- `pump-cv-vA.B.C` → publishes `ghcr.io/rwlove/pump-cv:vA.B.C` (the Python sidecar image)
+
+The `pump-` / `pump-cv-` prefixes are stripped before tagging the image
+in GHCR, so users still pull `pump:v0.0.80` even though the git tag is
+`pump-v0.0.80`. Legacy `v0.0.X` tags (≤ v0.0.79) pre-date the split and
+remain as historical markers — they no longer trigger any CI.
+
+## Before applying any new pump-v* tag
 
 Complete all steps in order before running `git tag`:
 
@@ -91,7 +103,7 @@ Every table, column, and index that the Go code reads or writes must be defined 
 
 ### Schema changes require a version bump
 
-Any PR that adds, removes, or renames a table or column must also increment the patch version (e.g. `v0.0.9` → `v0.0.10`). Document the schema change in the commit message.
+Any PR that adds, removes, or renames a table or column must also increment the patch version on the pump tag line (e.g. `pump-v0.0.80` → `pump-v0.0.81`). Document the schema change in the commit message.
 
 ### Migration checklist before tagging
 
@@ -118,7 +130,8 @@ The migration runner (`internal/db/postgres.go` — `MigratePostgres`) iterates 
    Procedure for each:
    ```
    # Restore a dump from that version, then:
-   docker run --rm -e POSTGRES_DSN=... ghcr.io/rwlove/pump:<new-tag>
+   docker run --rm -e POSTGRES_DSN=... ghcr.io/rwlove/pump:<new-image-tag>
+   # (image tag is the prefix-stripped form, e.g. v0.0.80, NOT pump-v0.0.80)
    # Inspect logs: every pending migration should appear as "applying vN"
    # Verify the app works normally; verify no data was lost
    ```
