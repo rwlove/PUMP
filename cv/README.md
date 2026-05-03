@@ -10,7 +10,7 @@ design.
 
 ## Status
 
-Phase 1, in progress. Complete:
+Phase 1, in progress. Complete (all unit-tested without GPU):
 
 - Repo bootstrap (this README, Dockerfile, pyproject)
 - Structured logging + yaml/env config loader
@@ -19,17 +19,22 @@ Phase 1, in progress. Complete:
   a synthetic mock source for unit testing
 - Single-athlete picker, rep counter, set-boundary FSM
 - Pipeline runner that wires these together
-- Unit tests for every pure-logic module + a live integration test
-  against a running pump-api
+- Multi-camera fusion via DLT triangulation (`pump_cv.fusion`)
+- Camera calibration script (`python -m pump_cv.calibration intrinsics|stereo`)
+- Plate-color barbell weight detector (`pump_cv.weight.estimate_barbell_load`)
+- DTW exercise classifier + on-disk PrototypeStore (`pump_cv.classify`)
+- 28 tests covering every pure-logic module, including triangulation
+  recovery to sub-mm against synthetic ground truth and a live PUMP API
+  integration test
 
-Not yet:
+Not yet (genuinely needs cameras / phase 2):
 
-- Real-camera RTSP smoke test (waiting on physical install)
-- Camera intrinsics/extrinsics calibration script
-- Multi-camera fusion (3D triangulation)
-- Plate-color barbell weight detector
-- DTW exercise classifier
-- Reference-clip recording flow
+- Real-camera RTSP smoke test for the YOLOv8 wrapper
+- Running the calibration CLI against actual checkerboard photos
+- Reference-clip recording flow in the PUMP UI (a separate slice)
+- Wiring the classifier and weight detector into the pipeline runner
+  (currently only the rep counter and set FSM are wired; weight defaults
+  to 0 and exercise is hardcoded)
 
 ## Quickstart (no GPU)
 
