@@ -160,29 +160,40 @@ PUMP holds Pushover credentials; `pump-cv` does not.
 
 ### Repo layout
 
-Standalone repository, not a subdirectory of PUMP. Reasoning: different
-language, different release cadence, different image, different secrets.
-Suggested structure:
+Lives in the PUMP monorepo under `cv/`. Considered a standalone repo
+(different language, different image, different secrets) but for a
+single-developer project the monorepo wins on atomic cross-component
+changes (an API field plus its CV consumer in one commit) and one place
+to find anything. Two Dockerfiles in the same repo: `Dockerfile.pump`
+for the Go service, `cv/Dockerfile` for the Python sidecar; CI scopes
+each build to its respective path. Tags continue on the same `v0.0.N`
+sequence regardless of which side changed.
+
+Structure:
 
 ```
-pump-cv/
-  pump_cv/
-    capture/        # ffmpeg subprocess wrappers per camera
-    pose/           # pose extraction
-    tracking/       # athlete picker
-    classify/       # exercise classifier (prototype matching → learned)
-    weight/         # plate-color, dumbbell-OCR, voltra (opaque) modules
-    fsm/            # rep + set state machines
-    fusion/         # multi-cam fusion
-    pump_client/    # PUMP API client
-    confirm/        # low-confidence handling
-    main.py
-  models/           # downloaded weights (or pulled at startup)
-  calibration/      # checkerboard data, computed intrinsics/extrinsics
-  configs/          # yaml configs per camera, per exercise
-  tests/
-  Dockerfile
-  README.md
+PUMP/
+  cv/
+    pump_cv/
+      pose/           # types + YOLOv8 source + synthetic mock
+      tracking/       # single-athlete picker
+      fsm/            # rep counter + set-boundary state machine
+      pipeline/       # runner that wires source → API
+      classify/       # (later) exercise classifier
+      weight/         # (later) plate-color, dumbbell-OCR, voltra modules
+      fusion/         # (later) multi-cam fusion
+      config.py
+      log.py
+      pump_client.py
+      main.py
+    models/           # downloaded weights (gitignored; or pulled at startup)
+    fixtures/         # video clips for development (gitignored)
+    calibration/      # checkerboard data, computed intrinsics/extrinsics
+    configs/          # yaml configs
+    tests/
+    Dockerfile
+    README.md
+    pyproject.toml
 ```
 
 ### Subsystem design notes

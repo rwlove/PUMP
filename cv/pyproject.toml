@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pump-cv"
+version = "0.1.0"
+description = "Camera-based exercise auto-detection sidecar for PUMP."
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.27",
+    "httpx-sse>=0.4",
+    "numpy>=1.26",
+    "opencv-python>=4.10",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "scipy>=1.13",
+    "structlog>=24.1",
+    "ultralytics>=8.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+pump-cv = "pump_cv.main:run"
+
+[tool.setuptools.packages.find]
+include = ["pump_cv*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]

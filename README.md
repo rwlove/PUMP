@@ -36,6 +36,10 @@ There is no separate API or frontend port — all traffic goes through `:8080`.
 
 Use image `ghcr.io/rwlove/pump`. Set `POSTGRES_DSN` and optionally `API_KEY`.
 
+### Optional: pump-cv camera sidecar
+
+A separate Python service under [`cv/`](cv/) watches gym cameras, detects exercises/reps/sets, and writes them to PUMP via the per-set REST API. Disabled by default — enable on the config page (`CVAutoLog`) once cameras are installed and the sidecar is running. See [`docs/cv-autolog-plan.md`](docs/cv-autolog-plan.md) for the full design and [`cv/README.md`](cv/README.md) for runtime details.
+
 ## Android App
 
 The PUMP Android app provides the same workout logging experience as the web UI, connecting to any PUMP API server you specify.

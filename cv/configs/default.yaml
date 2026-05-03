@@ -1,0 +1,32 @@
+# Default pump-cv configuration.
+#
+# In production this is mounted from a Kubernetes ConfigMap. The PUMP API
+# key comes from the PUMP_API_KEY env var (Secret), never from this file.
+# RTSP credentials, if part of the URL, are unfortunately in the file —
+# move them into a Secret-derived env var (PUMP_CV_CAM_A_RTSP_URL) and
+# reference that here once you start using auth on the cameras.
+
+cameras:
+  # Phase 1 dev: replace with rtsp_url when cameras are installed.
+  - name: cam-a
+    video_path: fixtures/sample-squat.mp4
+
+pose:
+  backend: yolo          # set to "mock" for unit tests / no-GPU dev
+  model: yolov8m-pose.pt
+  image_size: 640
+  device: cuda:0
+
+rep:
+  min_amplitude_deg: 25
+  min_period_s: 0.6
+  smoothing_window: 9
+
+set_boundary:
+  quiet_seconds: 25
+
+pump:
+  base_url: http://pump-api:8851
+  request_timeout_s: 10
+
+confidence_threshold: 0.75

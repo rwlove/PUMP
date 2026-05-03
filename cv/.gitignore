@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+build/
+dist/
+
+# Model weights and downloaded fixtures (keep out of git)
+models/
+fixtures/*.mp4
+fixtures/*.mov
+fixtures/*.avi
+
+# Local calibration data
+calibration/*.npz
+calibration/captures/
