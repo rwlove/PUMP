@@ -105,7 +105,11 @@ jobs:
         with:
           context: .
           file: Dockerfile.pump
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          # Single arch — actual deployment is all x86 (K8s nodes, GPU
+          # node, kiosk mini-PC). Multi-arch was costing 10-15 min/build
+          # for unused arm64/v7 binaries. Build locally with
+          # `--platform linux/arm64` if you ever need the cross-arch.
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
