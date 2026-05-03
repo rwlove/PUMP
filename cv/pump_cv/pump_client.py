@@ -96,6 +96,16 @@ class PumpClient:
         if r.status_code not in (200, 204, 404):
             r.raise_for_status()
 
+    # ─── wall display ────────────────────────────────────────────────────
+
+    async def post_wall_wake(self) -> None:
+        r = await self._client.post("/api/wall/wake")
+        r.raise_for_status()
+
+    async def post_wall_sleep(self) -> None:
+        r = await self._client.post("/api/wall/sleep")
+        r.raise_for_status()
+
     # ─── SSE ─────────────────────────────────────────────────────────────
 
     async def stream_set_events(self) -> AsyncIterator[SetEvent]:

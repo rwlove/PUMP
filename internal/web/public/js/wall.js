@@ -48,6 +48,7 @@
 
     if (todays.length === 0) {
       els.sets.innerHTML = '<div class="wall-empty">No sets yet today.</div>';
+      renderVideo(null);
       return;
     }
 
@@ -61,6 +62,27 @@
       if (confirmBtn) confirmBtn.addEventListener('click', () => confirmSet(id));
       if (rejectBtn)  rejectBtn.addEventListener('click',  () => rejectSet(id));
     });
+
+    // Show the most recent set's clip in the video pane (if it has one).
+    renderVideo(todays[0]);
+  }
+
+  // Tracks the currently-mounted clip src so we don't tear down + recreate
+  // the <video> on every set update.
+  let _videoSrc = null;
+  function renderVideo(set) {
+    const pane = document.querySelector('.wall-video');
+    const desired = (set && set.ClipPath) ? '/clips/' + set.ClipPath : null;
+    if (desired === _videoSrc) return;
+    _videoSrc = desired;
+    if (!desired) {
+      pane.innerHTML = '<div class="wall-video-placeholder" id="wallVideoPlaceholder">'
+                     + '<i class="wall-video-icon">▶</i>'
+                     + '<div class="wall-video-msg">Last-set replay shows here<br><small>(no clip yet)</small></div>'
+                     + '</div>';
+    } else {
+      pane.innerHTML = `<video class="wall-video-el" src="${desired}" autoplay loop muted playsinline></video>`;
+    }
   }
 
   function renderSetCard(s, isCurrent) {

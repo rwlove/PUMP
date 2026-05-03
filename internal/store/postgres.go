@@ -97,14 +97,14 @@ func (s *PostgresStore) UpdateExColor(id int, color string) error {
 // ─── sets ─────────────────────────────────────────────────────────────────────
 
 const setColumns = `id, date::text, name, color, workout_color,
-	weight::text, reps, note, source, confidence, pending`
+	weight::text, reps, note, source, confidence, pending, clip_path`
 
 func scanSet(row interface{ Scan(...any) error }) (models.Set, error) {
 	var set models.Set
 	var weightStr string
 	if err := row.Scan(&set.ID, &set.Date, &set.Name, &set.Color,
 		&set.WorkoutColor, &weightStr, &set.Reps, &set.Note,
-		&set.Source, &set.Confidence, &set.Pending); err != nil {
+		&set.Source, &set.Confidence, &set.Pending, &set.ClipPath); err != nil {
 		return set, err
 	}
 	set.Weight, _ = decimal.NewFromString(weightStr)
@@ -156,12 +156,12 @@ func (s *PostgresStore) InsertSet(set models.Set) (int, error) {
 	var id int
 	err := s.pool.QueryRow(context.Background(),
 		`INSERT INTO sets (date, name, color, workout_color, weight, reps,
-		                   note, source, confidence, pending)
-		 VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		                   note, source, confidence, pending, clip_path)
+		 VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		 RETURNING id`,
 		set.Date, set.Name, set.Color, set.WorkoutColor,
 		set.Weight.String(), set.Reps, set.Note,
-		source, confidence, set.Pending).Scan(&id)
+		source, confidence, set.Pending, set.ClipPath).Scan(&id)
 	if err != nil {
 		slog.Debug("db: InsertSet failed", slog.Any("error", err))
 	}
@@ -195,6 +195,9 @@ func (s *PostgresStore) UpdateSet(id int, upd models.SetUpdate) error {
 	}
 	if upd.Pending != nil {
 		add("pending", *upd.Pending)
+	}
+	if upd.ClipPath != nil {
+		add("clip_path", *upd.ClipPath)
 	}
 
 	if len(cols) == 0 {

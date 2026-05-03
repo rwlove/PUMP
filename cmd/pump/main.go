@@ -38,6 +38,8 @@ func envOr(key, def string) string {
 //	PUSHOVER_APP_TOKEN Pushover app token for notifications  (env-only, not in UI)
 //	PUSHOVER_API_URL   Pushover API endpoint override         (default: api.pushover.net)
 //	PUBLIC_URL         externally-reachable PUMP base URL    (used in notification deep-links)
+//	PUMP_CV_URL        where to forward reference-clip uploads (e.g. http://pump-cv:8080)
+//	PUMP_CLIPS_DIR     local directory holding per-set clip mp4s, served at /clips/
 func main() {
 	logger.Init(os.Getenv("LOG_LEVEL"))
 
@@ -113,6 +115,14 @@ func main() {
 	// Broadcast the running build to any connected wall kiosk so it
 	// can self-reload when this Pod is replaced by a newer image.
 	api.SetBuildSHA(web.Version)
+
+	// Static serving of per-set clip mp4s written by pump-cv. Both
+	// services mount the same volume; this side just exposes it at
+	// /clips/ so the browser can <video src="/clips/<date>/<file>.mp4">.
+	if clipsDir := os.Getenv("PUMP_CLIPS_DIR"); clipsDir != "" {
+		r.Static("/clips", clipsDir)
+		slog.Info("serving CV clips", slog.String("from", clipsDir))
+	}
 	web.RegisterRoutes(r, pgStore, cfg, func(newCfg models.Conf) {
 		api.SetConfig(newCfg)
 		slog.Info("config updated via web UI",

@@ -46,6 +46,7 @@ from ..classify import (
     classify_window,
     pose_sequence_to_features,
 )
+from ..clipper import ClipBuffer
 from ..fsm import RepCounter, SetBoundary, keypoint_angle
 from ..fsm.set_boundary import RepObservedEvent, SetEndedEvent, SetStartedEvent
 from ..pose.types import FrameAndPoses, Pose
@@ -87,6 +88,10 @@ class PipelineRunner:
         set_quiet_seconds: float = 25.0,
         confidence_threshold: float = 0.75,
         snapshot_dir: Path | None = None,
+        clips_dir: Path | None = None,
+        clip_capacity_seconds: float = 8.0,
+        wake_after_present_seconds: float = 1.0,
+        sleep_after_absent_seconds: float = 600.0,
         on_set_committed=None,  # callable(pending: bool) -> None — for healthd metrics
         on_set_failed=None,     # callable() -> None
     ):
@@ -103,8 +108,19 @@ class PipelineRunner:
         self._fsm = SetBoundary(quiet_seconds=set_quiet_seconds)
         self._confidence_threshold = confidence_threshold
         self._snapshot_dir = snapshot_dir
+        self._clips_dir = clips_dir
+        self._clip_buffer = ClipBuffer(capacity_seconds=clip_capacity_seconds) \
+            if clips_dir is not None else None
         self._on_set_committed = on_set_committed
         self._on_set_failed = on_set_failed
+
+        # Wake/sleep tracking — pump-cv signals the wall display when the
+        # athlete enters / leaves the room so the kiosk dims itself.
+        self._wake_after_present = wake_after_present_seconds
+        self._sleep_after_absent = sleep_after_absent_seconds
+        self._present_since: float | None = None
+        self._absent_since: float | None = None
+        self._is_awake: bool = False
 
         # Per-set buffers used by the classifier and weight detector.
         self._rep_params = (rep_amplitude_deg, rep_min_period_s, rep_smoothing_window)
@@ -119,6 +135,15 @@ class PipelineRunner:
 
             athlete = pick_athlete(poses)
             now = poses[0].timestamp if poses else 0.0
+
+            # Wake/sleep signal to the wall display.
+            await self._update_presence(athlete is not None, now)
+
+            # Rolling clip buffer — stays warm across sets so the next
+            # commit can dump it.
+            if self._clip_buffer is not None and frame is not None:
+                self._clip_buffer.push(frame, now)
+
             if athlete is not None:
                 # Drive the rep counter with the default exercise's joint.
                 # The classifier will (post-hoc) override the exercise name
@@ -137,6 +162,32 @@ class PipelineRunner:
 
             for ev in self._fsm.tick(self._counter.count, now):
                 await self._handle_event(ev)
+
+    async def _update_presence(self, present: bool, now: float) -> None:
+        if present:
+            self._absent_since = None
+            if self._present_since is None:
+                self._present_since = now
+            elif (not self._is_awake
+                  and now - self._present_since >= self._wake_after_present):
+                self._is_awake = True
+                logger.info("athlete present → POST /api/wall/wake")
+                try:
+                    await self._pump.post_wall_wake()
+                except Exception as e:
+                    logger.warning("wake post failed", error=str(e))
+        else:
+            self._present_since = None
+            if self._absent_since is None:
+                self._absent_since = now
+            elif (self._is_awake
+                  and now - self._absent_since >= self._sleep_after_absent):
+                self._is_awake = False
+                logger.info("athlete absent → POST /api/wall/sleep")
+                try:
+                    await self._pump.post_wall_sleep()
+                except Exception as e:
+                    logger.warning("sleep post failed", error=str(e))
 
     async def _handle_event(self, ev) -> None:
         match ev:
@@ -222,6 +273,23 @@ class PipelineRunner:
             logger.info("set written", id=set_id)
             if self._on_set_committed:
                 self._on_set_committed(pending)
+
+            # Phase 2: dump the rolling clip buffer named by the server-
+            # assigned id, then PATCH the row with its path. PUMP serves
+            # the file at /clips/<date>/<id>__<exercise>.mp4.
+            if (self._clip_buffer is not None
+                    and self._clips_dir is not None
+                    and len(self._clip_buffer) > 0):
+                try:
+                    rel_path = self._clip_buffer.write_clip(
+                        self._clips_dir,
+                        set_id=set_id,
+                        exercise=exercise_name,
+                    )
+                    if rel_path is not None:
+                        await self._pump.patch_set(set_id, {"ClipPath": str(rel_path)})
+                except Exception as e:
+                    logger.warning("clip write/patch failed", error=str(e))
         except Exception as e:
             logger.error("set write failed", error=str(e))
             if self._on_set_failed:
@@ -263,3 +331,52 @@ class PipelineRunner:
 
 def _today() -> str:
     return dt.date.today().isoformat()
+
+
+# Add admin-panel introspection methods to PipelineRunner. Defined on the
+# class via assignment so they sit alongside the rest without crowding
+# the constructor at the top.
+def _snapshot_state(self) -> dict:
+    return {
+        "default_exercise": self._default_exercise.name,
+        "fsm_state": self._fsm.state.value,
+        "rep_count": self._counter.count,
+        "is_awake": self._is_awake,
+        "buffer_frames": len(self._clip_buffer) if self._clip_buffer else 0,
+        "pose_buffer_len": len(self._pose_buffer),
+        "prototypes_loaded": len(self._prototypes),
+    }
+
+def _snapshot_thresholds(self) -> dict:
+    return {
+        "rep": {
+            "min_amplitude_deg": self._counter.min_amplitude_deg,
+            "min_period_s":      self._counter.min_period_s,
+            "smoothing_window":  self._counter.smoothing_window,
+        },
+        "set_boundary": {
+            "quiet_seconds": self._fsm.quiet_seconds,
+        },
+        "confidence_threshold": self._confidence_threshold,
+    }
+
+def _update_thresholds(self, payload: dict) -> None:
+    """Hot-reload tunables. Accepts dotted keys ('rep.min_period_s').
+    Unknown keys are ignored. The new values take effect on the next
+    frame; no pipeline restart needed."""
+    for key, value in payload.items():
+        if key == "rep.min_amplitude_deg":
+            self._counter.min_amplitude_deg = float(value)
+        elif key == "rep.min_period_s":
+            self._counter.min_period_s = float(value)
+        elif key == "rep.smoothing_window":
+            self._counter.smoothing_window = int(value)
+        elif key == "set_boundary.quiet_seconds":
+            self._fsm.quiet_seconds = float(value)
+        elif key == "confidence_threshold":
+            self._confidence_threshold = float(value)
+
+
+PipelineRunner.snapshot_state = _snapshot_state
+PipelineRunner.snapshot_thresholds = _snapshot_thresholds
+PipelineRunner.update_thresholds = _update_thresholds

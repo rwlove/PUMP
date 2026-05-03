@@ -41,6 +41,7 @@ DEFAULT_EXERCISE = ExerciseSpec(
 
 PROTOTYPE_DIR = Path(os.getenv("PUMP_CV_PROTOTYPE_DIR", "prototypes"))
 SNAPSHOT_DIR  = Path(os.getenv("PUMP_CV_SNAPSHOT_DIR", "snapshots"))
+CLIPS_DIR     = Path(os.getenv("PUMP_CV_CLIPS_DIR", "clips"))
 HEALTHD_PORT  = int(os.getenv("PUMP_CV_HEALTHD_PORT", "8080"))
 
 
@@ -117,12 +118,18 @@ async def _amain() -> None:
             set_quiet_seconds=cfg.set_boundary.quiet_seconds,
             confidence_threshold=cfg.confidence_threshold,
             snapshot_dir=SNAPSHOT_DIR,
+            clips_dir=CLIPS_DIR,
             on_set_committed=healthd.record_set_posted,
             on_set_failed=healthd.record_set_failed,
         )
 
         health_task = asyncio.create_task(
-            healthd.serve(port=HEALTHD_PORT, prototype_dir=PROTOTYPE_DIR),
+            healthd.serve(
+                port=HEALTHD_PORT,
+                prototype_dir=PROTOTYPE_DIR,
+                snapshot_dir=SNAPSHOT_DIR,
+                runner=runner,
+            ),
         )
         healthd.mark_ready()
         try:

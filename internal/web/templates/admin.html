@@ -1,0 +1,68 @@
+{{ define "admin.html" }}
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PUMP — Admin</title>
+<link rel="stylesheet" type="text/css" href="/fs/public/css/wall.css">
+<link rel="stylesheet" type="text/css" href="/fs/public/css/admin.css">
+</head>
+<body class="admin">
+
+<header class="admin-header">
+  <h1>PUMP CV Admin</h1>
+  <span class="admin-build">build: {{ .Version }}</span>
+  <a class="admin-link" href="/wall/">↳ wall view</a>
+  <a class="admin-link" href="/">↳ today</a>
+</header>
+
+<nav class="admin-tabs">
+  <button class="admin-tab is-active" data-tab="state">Pipeline state</button>
+  <button class="admin-tab" data-tab="metrics">Metrics</button>
+  <button class="admin-tab" data-tab="thresholds">Thresholds</button>
+  <button class="admin-tab" data-tab="prototypes">Prototypes</button>
+  <button class="admin-tab" data-tab="snapshots">Snapshots</button>
+  <button class="admin-tab" data-tab="cameras">Cameras</button>
+  <button class="admin-tab" data-tab="hsv">Plate HSV</button>
+</nav>
+
+<main class="admin-body">
+  <section class="admin-pane is-active" data-pane="state">
+    <h2>Live pipeline state</h2>
+    <pre class="admin-json" id="paneState">loading…</pre>
+  </section>
+  <section class="admin-pane" data-pane="metrics">
+    <h2>Metrics</h2>
+    <pre class="admin-json" id="paneMetrics">loading…</pre>
+  </section>
+  <section class="admin-pane" data-pane="thresholds">
+    <h2>Tunable thresholds</h2>
+    <p class="admin-muted">Edits hot-reload pump-cv (no restart needed).</p>
+    <div id="paneThresholds">loading…</div>
+  </section>
+  <section class="admin-pane" data-pane="prototypes">
+    <h2>Exercise prototypes</h2>
+    <p class="admin-muted">Reference clips fed into the DTW classifier.</p>
+    <div id="panePrototypes">loading…</div>
+  </section>
+  <section class="admin-pane" data-pane="snapshots">
+    <h2>Per-set debug snapshots</h2>
+    <p class="admin-muted">One PNG saved by pump-cv at each set close — annotated skeleton + caption. Useful for spotting CV mistakes after the fact.</p>
+    <div id="paneSnapshots">loading…</div>
+  </section>
+  <section class="admin-pane" data-pane="cameras">
+    <h2>Cameras</h2>
+    <div id="paneCameras">loading…</div>
+  </section>
+  <section class="admin-pane" data-pane="hsv">
+    <h2>Plate HSV calibration</h2>
+    <p class="admin-muted">Tune the plate-color thresholds against a captured frame and preview the resulting mask in real time.</p>
+    <div class="admin-stub">Live HSV preview is wired but the mask-render endpoint on pump-cv is a stub for this milestone — tabs ship before features. Use <code>pump_cv.weight.PLATE_COLORS</code> in code for now.</div>
+  </section>
+</main>
+
+<script src="/fs/public/js/admin.js"></script>
+</body>
+</html>
+{{ end }}

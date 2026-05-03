@@ -85,6 +85,13 @@ ALTER TABLE sets
 ALTER TABLE sets ALTER COLUMN confidence TYPE DOUBLE PRECISION;
 `,
 	},
+	{
+		Version:     6,
+		Description: "add clip_path column to sets (looping video for wall view)",
+		SQL: `
+ALTER TABLE sets ADD COLUMN IF NOT EXISTS clip_path TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any

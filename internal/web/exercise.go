@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
@@ -90,6 +91,48 @@ func saveExerciseHandler(c *gin.Context) {
 	}
 
 	c.Redirect(http.StatusFound, "/")
+}
+
+// pumpCVProxyHandler forwards any /api/cv/* request to pump-cv. The
+// path after /api/cv/ becomes the path on pump-cv. Method, body, and
+// most headers are passed through. Used by the admin panel to reach
+// pump-cv's live data (state, prototypes, snapshots, metrics) without
+// exposing pump-cv directly to the kiosk's network.
+//
+// PUMP_CV_URL must be set; if not, returns 503.
+func pumpCVProxyHandler(c *gin.Context) {
+	cvURL := os.Getenv("PUMP_CV_URL")
+	if cvURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "PUMP_CV_URL is not configured"})
+		return
+	}
+	// Path after the /api/cv/ prefix, preserved verbatim.
+	subpath := c.Param("path")
+	url := strings.TrimRight(cvURL, "/") + subpath
+	if c.Request.URL.RawQuery != "" {
+		url += "?" + c.Request.URL.RawQuery
+	}
+
+	req, err := http.NewRequestWithContext(c.Request.Context(),
+		c.Request.Method, url, c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	// Pass through Content-Type for POST/PUT bodies.
+	if ct := c.Request.Header.Get("Content-Type"); ct != "" {
+		req.Header.Set("Content-Type", ct)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), body)
 }
 
 // uploadReferenceClipHandler accepts a video clip uploaded from the

@@ -57,6 +57,7 @@ type Set struct {
 	Source       string          `db:"SOURCE" json:"Source"`         // "manual" | "cv"
 	Confidence   float64         `db:"CONFIDENCE" json:"Confidence"` // 0.0–1.0
 	Pending      bool            `db:"PENDING" json:"Pending"`
+	ClipPath     string          `db:"CLIP_PATH" json:"ClipPath"`    // path under PUMP_CLIPS_DIR, served at /clips/<...>
 }
 
 // SetUpdate - partial update for one set. Only non-nil fields are applied.
@@ -67,6 +68,7 @@ type SetUpdate struct {
 	Note       *string          `json:"Note,omitempty"`
 	Confidence *float64         `json:"Confidence,omitempty"`
 	Pending    *bool            `json:"Pending,omitempty"`
+	ClipPath   *string          `json:"ClipPath,omitempty"`
 }
 
 // AllExData - all sets and exercises
