@@ -15,7 +15,7 @@ function addWeight(i, date, weight, id) {
     var row = '<tr>'
         + '<td class="ps-3" style="opacity:45%;">' + i + '.</td>'
         + '<td>' + date + '</td>'
-        + '<td>' + weight + '</td>'
+        + '<td>' + parseFloat(weight).toFixed(1) + '</td>'
         + '<td>' + deleteForm + '</td>'
         + '</tr>';
 

@@ -28,14 +28,13 @@ function weightChart(id, dates, ws, wcolor, xticks) {
                 type: 'line',
                 label: 'Weight',
                 data: ws,
-                // Per-segment coloring: green when rising, red when falling
                 segment: {
                     borderColor(ctx) {
                         const prev = ctx.p0.parsed.y;
                         const next = ctx.p1.parsed.y;
-                        if (next > prev) return '#28a745'; // rising → green
-                        if (next < prev) return '#dc3545'; // falling → red
-                        return wcolor;                     // flat → default
+                        if (next < prev) return '#28a745'; // falling → green
+                        if (next > prev) return '#dc3545'; // rising → red
+                        return wcolor;
                     }
                 },
                 backgroundColor: wcolor + '15',
@@ -69,7 +68,7 @@ function weightChart(id, dates, ws, wcolor, xticks) {
                         color: 'var(--bs-secondary-color)'
                     },
                     ticks: {
-                        callback(v) { return v + ' lbs'; }
+                        callback(v) { return Number(v).toFixed(1) + ' lbs'; }
                     }
                 }
             },
@@ -78,7 +77,7 @@ function weightChart(id, dates, ws, wcolor, xticks) {
                 tooltip: {
                     callbacks: {
                         label(ctx) {
-                            return `Weight: ${ctx.raw} lbs`;
+                            return `Weight: ${parseFloat(ctx.raw).toFixed(1)} lbs`;
                         }
                     }
                 }
