@@ -57,8 +57,8 @@
   </section>
   <section class="admin-pane" data-pane="hsv">
     <h2>Plate HSV calibration</h2>
-    <p class="admin-muted">Tune the plate-color thresholds against a captured frame and preview the resulting mask in real time.</p>
-    <div class="admin-stub">Live HSV preview is wired but the mask-render endpoint on pump-cv is a stub for this milestone — tabs ship before features. Use <code>pump_cv.weight.PLATE_COLORS</code> in code for now.</div>
+    <p class="admin-muted">Upload a photo of your loaded bar (or any frame containing plates) and tune the HSV bounds — the mask updates live. Once happy, copy the values into <code>pump_cv.weight.plate_color.PLATE_COLORS</code>.</p>
+    <div id="paneHsv">loading…</div>
   </section>
 </main>
 

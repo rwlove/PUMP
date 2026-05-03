@@ -175,21 +175,105 @@
   // ─── Cameras ──────────────────────────────────────────────────────
   loaders.cameras = function() {
     const el = document.getElementById('paneCameras');
-    cvFetch('/api/v1/cameras').then(data => {
-      if (!data.length) {
-        el.innerHTML = '<div class="admin-muted">No cameras configured.</div>';
-        return;
-      }
-      el.innerHTML = '<div class="admin-list">' + data.map(c => `
-        <div class="admin-list-row">
-          <div>
-            <div class="name">${c.name}</div>
-            <div class="meta">${c.source} · ${c.fps ? c.fps.toFixed(1) + ' fps' : 'no signal'}</div>
+    function tick() {
+      cvFetch('/api/v1/cameras').then(data => {
+        if (!data.length) {
+          el.innerHTML = '<div class="admin-muted">No cameras registered. (pump-cv may not have started a pose source yet.)</div>';
+          return;
+        }
+        el.innerHTML = '<div class="admin-list">' + data.map(c => `
+          <div class="admin-list-row">
+            <div>
+              <div class="name">${c.name}</div>
+              <div class="meta">${c.source} · ${c.fps ? c.fps.toFixed(1) + ' fps' : 'no signal'}</div>
+            </div>
+            <div class="meta">${c.connected ? 'connected' : 'disconnected'}</div>
           </div>
-          <div class="meta">${c.connected ? 'connected' : 'disconnected'}</div>
+        `).join('') + '</div>';
+      }).catch(e => showError(el, e));
+    }
+    tick();
+    setInterval(tick, 5000);
+  };
+
+  // ─── HSV mask preview ─────────────────────────────────────────────
+  loaders.hsv = function() {
+    const el = document.getElementById('paneHsv');
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:300px 1fr;gap:24px">
+        <div>
+          <label style="display:block;margin-bottom:8px">
+            Source image:
+            <input type="file" id="hsvFile" accept="image/*" style="display:block;margin-top:4px">
+          </label>
+          <div id="hsvSliders"></div>
         </div>
-      `).join('') + '</div>';
-    }).catch(e => showError(el, e));
+        <div>
+          <h3 style="margin-top:0">Original</h3>
+          <img id="hsvOrig" style="max-width:100%;border:1px solid var(--wall-divider);border-radius:6px">
+          <h3>Mask</h3>
+          <img id="hsvMask" style="max-width:100%;border:1px solid var(--wall-divider);border-radius:6px;background:#222">
+        </div>
+      </div>
+    `;
+    const sliders = document.getElementById('hsvSliders');
+    const ranges = [
+      ['h_lo', 'Hue low',    0, 180,   0],
+      ['h_hi', 'Hue high',   0, 180, 180],
+      ['s_lo', 'Sat low',    0, 255, 100],
+      ['s_hi', 'Sat high',   0, 255, 255],
+      ['v_lo', 'Val low',    0, 255,  60],
+      ['v_hi', 'Val high',   0, 255, 255],
+    ];
+    const state = {};
+    ranges.forEach(([key, label, min, max, def]) => {
+      state[key] = def;
+      const row = document.createElement('div');
+      row.className = 'admin-slider-row';
+      row.innerHTML = `<label>${label}</label>
+                       <input type="range" min="${min}" max="${max}" value="${def}">
+                       <span class="value">${def}</span>`;
+      const inp = row.querySelector('input');
+      const val = row.querySelector('.value');
+      inp.addEventListener('input', () => {
+        val.textContent = inp.value;
+        state[key] = parseInt(inp.value, 10);
+        debouncedRefresh();
+      });
+      sliders.appendChild(row);
+    });
+
+    let _file = null;
+    const hsvFile = document.getElementById('hsvFile');
+    const hsvOrig = document.getElementById('hsvOrig');
+    const hsvMask = document.getElementById('hsvMask');
+    hsvFile.addEventListener('change', () => {
+      const f = hsvFile.files[0];
+      if (!f) return;
+      _file = f;
+      hsvOrig.src = URL.createObjectURL(f);
+      refresh();
+    });
+
+    let timer = null;
+    function debouncedRefresh() {
+      clearTimeout(timer);
+      timer = setTimeout(refresh, 150);
+    }
+    async function refresh() {
+      if (!_file) return;
+      const fd = new FormData();
+      fd.append('image', _file);
+      Object.entries(state).forEach(([k, v]) => fd.append(k, v));
+      try {
+        const r = await fetch('/api/cv/api/v1/hsv-preview', { method: 'POST', body: fd });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const blob = await r.blob();
+        hsvMask.src = URL.createObjectURL(blob);
+      } catch (e) {
+        console.error('hsv preview failed', e);
+      }
+    }
   };
 
   // Activate the default tab.

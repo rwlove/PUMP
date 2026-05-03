@@ -227,4 +227,10 @@
   loadInitialSets();
   openSetsStream();
   openWallStream();
+
+  // PWA: register the service worker for offline-resilient kiosk boot.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/fs/public/wall-sw.js', { scope: '/wall/' })
+      .catch(err => console.warn('wall: SW registration failed', err));
+  }
 })();

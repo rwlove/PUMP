@@ -1,0 +1,14 @@
+{
+  "name": "PUMP — Wall",
+  "short_name": "PUMP Wall",
+  "description": "Gym wall display showing today's sets and looping clips.",
+  "start_url": "/wall/",
+  "scope": "/wall/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0a0a0c",
+  "theme_color": "#0a0a0c",
+  "icons": [
+    { "src": "/fs/public/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

@@ -577,6 +577,26 @@
   color: var(--bs-danger);
 }
 
+/* ─── Large-viewport touch overrides (gym wall display) ────────────────── */
+/* When the page is rendered on a wall-mounted touchscreen at 1080p+, bump
+   tap targets and font sizes so sweat-glove-finger taps land reliably and
+   the data is readable from across the room. */
+@media (min-width: 1280px) and (pointer: coarse) {
+  .workout-entry { padding: 14px 16px; }
+  .entry-name { font-size: 1.1rem; }
+  .entry-num { width: 96px; height: 44px; font-size: 1.2rem; }
+  .entry-mic-btn,
+  .entry-prior-note-btn,
+  .entry-confirm-btn,
+  .entry-reject-btn,
+  .entry-del-btn {
+    width: 56px; height: 56px;
+    font-size: 1.4rem;
+  }
+  .entry-pending-banner { font-size: 0.9rem; padding: 8px 12px; }
+  .set-badge { font-size: 0.85rem; padding: 4px 10px; }
+}
+
 /* ─── Stats page tab bar (no date-nav-bar above it) ─────────────────────── */
 
 .stats-tabs-bar {

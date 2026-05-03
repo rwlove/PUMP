@@ -49,6 +49,34 @@ class YOLOPoseSource:
         self._retry_max = retry_max_seconds
         self._model = None
 
+        # FPS + connection state — surfaced to the admin panel via the
+        # global registry below.
+        from collections import deque
+        self._frame_times: deque[float] = deque(maxlen=60)
+        self._connected: bool = False
+        register_camera(self)
+
+    # ─── admin introspection ─────────────────────────────────────────
+    @property
+    def camera_name(self) -> str: return self._camera
+    @property
+    def source_url(self) -> str: return self._source
+
+    def stats(self) -> dict:
+        """Return current FPS + connected status for the admin panel."""
+        n = len(self._frame_times)
+        fps = 0.0
+        if n >= 2:
+            span = self._frame_times[-1] - self._frame_times[0]
+            if span > 0:
+                fps = (n - 1) / span
+        return {
+            "name": self._camera,
+            "source": self._source,
+            "fps": round(fps, 1),
+            "connected": self._connected,
+        }
+
     def _ensure_model(self) -> None:
         if self._model is None:
             from ultralytics import YOLO
@@ -92,6 +120,7 @@ class YOLOPoseSource:
         cap = cv2.VideoCapture(self._source)
         if not cap.isOpened():
             raise RuntimeError(f"yolo: cannot open source {self._source}")
+        self._connected = True
 
         fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
         frame_period = 1.0 / fps
@@ -106,6 +135,7 @@ class YOLOPoseSource:
 
                 ts = frame_idx * frame_period if is_file else time.time()
                 frame_idx += 1
+                self._frame_times.append(time.time())
 
                 results = await asyncio.to_thread(
                     self._model.predict,
@@ -116,7 +146,21 @@ class YOLOPoseSource:
                 )
                 yield frame, self._results_to_poses(results, ts)
         finally:
+            self._connected = False
             cap.release()
+
+
+# Module-level camera registry — pose sources self-register on construction;
+# healthd reads the list to render the admin "Cameras" tab.
+_CAMERA_REGISTRY: list = []
+
+
+def register_camera(source) -> None:
+    _CAMERA_REGISTRY.append(source)
+
+
+def registered_cameras() -> list:
+    return list(_CAMERA_REGISTRY)
 
     def _results_to_poses(self, results, ts: float) -> list[Pose]:
         poses: list[Pose] = []

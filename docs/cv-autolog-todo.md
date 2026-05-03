@@ -41,7 +41,13 @@ as of `pump-v0.0.81` / `pump-cv-v0.2.0`. Companion to
 
 - [ ] Form feedback overlays (depth on squat, bar path on bench, tempo)
 - [ ] Velocity-based training estimates from bar speed
-- [ ] **Voltra BLE GATT reverse-engineering spike.** Time-boxed 1 week. Steps: confirm Android app exists (BLE snoop is much easier with HCI logs), email Beyond Power support to ask, otherwise hardware-sniff with an nRF52840 dongle. Decode at minimum: current resistance value + rep events. If successful, swap the Voltra branch from "opaque + manual confirm" to "BLE subscriber + automatic logging."
+- [ ] **Voltra integration spike.** Time-boxed 1–2 weeks. Updated approach based on follow-up research:
+  - **No Android app yet** ([confirmed by Beyond Power](https://help.beyond-power.com/en/articles/9932264-android-version-of-beyond)). Means no easy HCI-snoop path; need a hardware BLE sniffer from the start (nRF52840 dongle ~$15, or Ubertooth).
+  - **No community RE work** for the Voltra exists in 2026 (no GitHub, no HA integration, no Reddit thread). The voltraco/docs GitHub repo is a different company, not Beyond Power.
+  - **Voltra has WiFi for firmware updates** — worth scanning the local network for an mDNS service or HTTP endpoint *before* doing BLE work; might be a quick win.
+  - **Recommended order**: (a) `nmap` and `avahi-browse` the device's IP for HTTP/mDNS first; (b) email Beyond Power support to ask about a BLE protocol document for non-commercial integration; (c) only if both fail, do hardware BLE sniffing with the iOS app paired to the device.
+  - Decode at minimum: current resistance value + rep events.
+  - If successful, swap the Voltra branch from "opaque + manual confirm" to "BLE/HTTP subscriber + automatic logging."
 
 ## Operations + docs
 

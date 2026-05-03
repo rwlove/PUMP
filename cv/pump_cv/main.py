@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 
 from . import exercises as ex_lookup_mod
-from . import healthd, log
+from . import healthd, log, retention
 from .calibration import load_camera
 from .classify import PrototypeStore
 from .config import CVConfig, load
@@ -43,6 +43,7 @@ PROTOTYPE_DIR = Path(os.getenv("PUMP_CV_PROTOTYPE_DIR", "prototypes"))
 SNAPSHOT_DIR  = Path(os.getenv("PUMP_CV_SNAPSHOT_DIR", "snapshots"))
 CLIPS_DIR     = Path(os.getenv("PUMP_CV_CLIPS_DIR", "clips"))
 HEALTHD_PORT  = int(os.getenv("PUMP_CV_HEALTHD_PORT", "8080"))
+RETENTION_DAYS = float(os.getenv("PUMP_CV_RETENTION_DAYS", "30"))
 
 
 def _build_single_source(cam, cfg: CVConfig):
@@ -131,12 +132,16 @@ async def _amain() -> None:
                 runner=runner,
             ),
         )
+        retention_task = asyncio.create_task(
+            retention.run_forever(SNAPSHOT_DIR, CLIPS_DIR, RETENTION_DAYS),
+        )
         healthd.mark_ready()
         try:
             await runner.run(pose_source.poses())
         finally:
             health_task.cancel()
-            await asyncio.gather(health_task, return_exceptions=True)
+            retention_task.cancel()
+            await asyncio.gather(health_task, retention_task, return_exceptions=True)
 
     logger.info("pump-cv: pose stream ended")
 

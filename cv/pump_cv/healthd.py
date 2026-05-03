@@ -171,12 +171,19 @@ def build_app(
     # ─── admin panel: snapshots ───────────────────────────────────────
 
     @app.get("/api/v1/snapshots")
-    def list_snapshots() -> list[dict]:
+    def list_snapshots(since: str | None = None, limit: int = 200) -> list[dict]:
+        """List snapshots, newest first. `since` filters by date prefix
+        (e.g. since=2026-05-01). Default cap of 200 keeps the gallery snappy."""
         if snapshot_dir is None or not snapshot_dir.exists():
             return []
         out = []
-        for p in sorted(snapshot_dir.rglob("*.png"), reverse=True)[:200]:
-            out.append({"path": str(p.relative_to(snapshot_dir))})
+        for p in sorted(snapshot_dir.rglob("*.png"), reverse=True):
+            rel = str(p.relative_to(snapshot_dir))
+            if since and rel < since:
+                continue
+            out.append({"path": rel})
+            if len(out) >= limit:
+                break
         return out
 
     @app.get("/api/v1/snapshots/{path:path}")
@@ -194,9 +201,40 @@ def build_app(
 
     @app.get("/api/v1/cameras")
     def list_cameras() -> list[dict]:
-        # Phase 2 stub: real per-camera FPS + connection status comes
-        # when the pose source layer learns to report it.
-        return []
+        from .pose.yolo import registered_cameras
+        return [c.stats() for c in registered_cameras()]
+
+    # ─── admin panel: HSV mask preview ────────────────────────────────
+
+    @app.post("/api/v1/hsv-preview")
+    async def hsv_preview(
+        image:  UploadFile = File(...),
+        h_lo:   int = Form(...),
+        s_lo:   int = Form(...),
+        v_lo:   int = Form(...),
+        h_hi:   int = Form(...),
+        s_hi:   int = Form(...),
+        v_hi:   int = Form(...),
+    ) -> Response:
+        """Render the HSV mask of an uploaded BGR image. Returns the
+        binary mask as a PNG so the admin UI can show it next to the
+        original. Useful for tuning PLATE_COLORS by eye against a
+        photograph of your loaded bar."""
+        import cv2
+        import numpy as np
+        data = await image.read()
+        arr = np.frombuffer(data, dtype=np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if img is None:
+            raise HTTPException(status_code=400, detail="invalid image")
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv,
+                           np.array([h_lo, s_lo, v_lo], dtype=np.uint8),
+                           np.array([h_hi, s_hi, v_hi], dtype=np.uint8))
+        ok, png = cv2.imencode(".png", mask)
+        if not ok:
+            raise HTTPException(status_code=500, detail="png encode failed")
+        return Response(content=png.tobytes(), media_type="image/png")
 
     return app
 

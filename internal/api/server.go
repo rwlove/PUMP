@@ -88,6 +88,9 @@ func registerRoutes(r *gin.Engine) {
 	r.GET("/api/wall/stream", getWallStream)
 	r.POST("/api/wall/wake", postWallWake)
 	r.POST("/api/wall/sleep", postWallSleep)
+
+	// Notifications
+	r.POST("/api/notify/test", postNotifyTest)
 }
 
 // ─── middleware ───────────────────────────────────────────────────────────────
@@ -478,6 +481,33 @@ func postWallSleep(c *gin.Context) {
 	publishWallEvent(WallEvent{Type: WallEventSleep})
 	slog.Debug("wall: sleep")
 	c.Status(http.StatusOK)
+}
+
+// postNotifyTest fires a one-off Pushover notification so the operator
+// can verify their credentials without waiting for a real pending set.
+// Returns 412 when Pushover isn't configured, 502 when the upstream
+// rejects the credentials.
+func postNotifyTest(c *gin.Context) {
+	if !pushover.Configured() {
+		c.JSON(http.StatusPreconditionFailed,
+			gin.H{"error": "Pushover not configured"})
+		return
+	}
+	url := publicURL
+	if url == "" {
+		url = "https://pushover.net/"
+	}
+	msg := notify.Message{
+		Title: "PUMP — test notification",
+		Body:  "If you see this on your phone, Pushover credentials are wired correctly.",
+		URL:   url,
+	}
+	if err := pushover.Send(c.Request.Context(), msg); err != nil {
+		slog.Warn("notify test failed", slog.Any("error", err))
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"sent": true})
 }
 
 func deleteSet(c *gin.Context) {

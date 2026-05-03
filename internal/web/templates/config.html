@@ -67,6 +67,32 @@
                     <td>
                         {{ if .Config.PushoverConfigured }}
                             <span class="badge text-bg-success">Configured (via env)</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-2" id="pushoverTestBtn">
+                                Send test
+                            </button>
+                            <span id="pushoverTestStatus" class="small ms-2"></span>
+                            <script>
+                            document.getElementById('pushoverTestBtn').addEventListener('click', async function(ev) {
+                                ev.preventDefault();
+                                var status = document.getElementById('pushoverTestStatus');
+                                status.textContent = 'sending…';
+                                status.className = 'small ms-2 text-body-secondary';
+                                try {
+                                    var r = await fetch('/api/notify/test', { method: 'POST' });
+                                    if (r.ok) {
+                                        status.textContent = 'sent ✓';
+                                        status.className = 'small ms-2 text-success';
+                                    } else {
+                                        var err = await r.text();
+                                        status.textContent = 'failed (' + r.status + '): ' + err;
+                                        status.className = 'small ms-2 text-danger';
+                                    }
+                                } catch (e) {
+                                    status.textContent = 'error: ' + e.message;
+                                    status.className = 'small ms-2 text-danger';
+                                }
+                            });
+                            </script>
                         {{ else }}
                             <span class="badge text-bg-secondary">Not configured</span>
                             <div class="small text-body-secondary mt-1">Set PUSHOVER_USER_KEY and PUSHOVER_APP_TOKEN in the container environment to enable.</div>
