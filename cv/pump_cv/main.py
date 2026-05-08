@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 
 from . import exercises as ex_lookup_mod
-from . import healthd, log, retention
+from . import healthd, log, retention, state
 from .calibration import load_camera
 from .classify import PrototypeStore
 from .config import CVConfig, load
@@ -97,7 +97,30 @@ async def _amain() -> None:
                 pose_backend=cfg.pose.backend,
                 pump_base=cfg.pump.base_url)
 
-    pose_source = _build_pose_source(cfg)
+    # ─── Calibration gate ─────────────────────────────────────────────
+    # When >=2 cameras are configured we enter a multi-cam fusion flow
+    # that needs per-camera intrinsics+extrinsics .npz files. If those
+    # files don't exist yet, hold here and let the wizard endpoints
+    # in healthd drive the user through capture → compute. The runner
+    # below will not start until state.set_phase("ready") is called.
+    state.set_camera_count(len(cfg.cameras))
+    state.load_persisted_captures()
+    needs_cal = (
+        len(cfg.cameras) >= 2
+        and not all(
+            c.calibration_path
+            and Path(c.calibration_path).is_file()
+            for c in cfg.cameras
+        )
+    )
+    if needs_cal:
+        state.set_phase("needs_calibration")
+        logger.info("pump-cv: holding for calibration",
+                    cameras=[c.name for c in cfg.cameras])
+    else:
+        state.set_phase("ready")
+
+    pose_source = _build_pose_source(cfg) if state.is_ready() else None
 
     # Load any prototypes the operator has recorded so far. Empty list is
     # fine — runner falls back to the default exercise name.
@@ -137,7 +160,20 @@ async def _amain() -> None:
         )
         healthd.mark_ready()
         try:
-            await runner.run(pose_source.poses())
+            # If we held for calibration, wait for the wizard to flip the
+            # state to "ready" before starting the pose loop. The wizard
+            # endpoints write the .npz files and call state.set_phase.
+            # They also re-construct the pose_source via this branch on
+            # the next loop iteration.
+            while True:
+                await state.wait_for_ready()
+                if pose_source is None:
+                    pose_source = _build_pose_source(load())
+                await runner.run(pose_source.poses())
+                # runner.run only returns on a finite source (video file)
+                # or fatal upstream error — break out of the gate loop
+                # in either case so we don't spin.
+                break
         finally:
             health_task.cancel()
             retention_task.cancel()

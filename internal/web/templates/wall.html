@@ -50,6 +50,38 @@
   </div>
 </div>
 
+<!-- Calibration wizard takeover. wall.js polls
+     /api/cv/api/v1/calibration/state and shows this overlay whenever
+     pump-cv reports phase != "ready". The rep pipeline is held server-
+     side in that state; this view drives capture → compute. -->
+<div class="wall-calib" id="wallCalib" hidden>
+  <div class="wall-calib-box">
+    <h1 class="wall-calib-title">Calibration required</h1>
+    <p class="wall-calib-intro">
+      Two cameras are configured but not yet calibrated. Hold a 9×6
+      checkerboard so it is visible to <strong>both</strong> cameras at
+      the same time, then capture pairs from a variety of poses
+      (different angles, distances, and rotations). At least 10 good
+      pairs are needed; 15–20 gives sharper results.
+    </p>
+
+    <div class="wall-calib-prevs" id="wallCalibPrevs">
+      <!-- Per-camera preview tile cloned in here by wall.js. -->
+    </div>
+
+    <div class="wall-calib-status" id="wallCalibStatus">…</div>
+
+    <div class="wall-calib-actions">
+      <button class="wall-calib-btn" id="wallCalibCapture">Capture pair</button>
+      <button class="wall-calib-btn wall-calib-btn-warn" id="wallCalibUndo">Undo last</button>
+      <button class="wall-calib-btn wall-calib-btn-primary" id="wallCalibCompute" disabled>Compute</button>
+      <button class="wall-calib-btn wall-calib-btn-danger" id="wallCalibReset">Start over</button>
+    </div>
+
+    <div class="wall-calib-error" id="wallCalibError" hidden></div>
+  </div>
+</div>
+
 <!-- Status pip in the corner -->
 <div class="wall-status" id="wallStatus" data-state="connecting">
   <span class="wall-status-dot"></span>

@@ -406,11 +406,216 @@
   window.addEventListener('mousemove', resetCursorIdle, { passive: true });
   resetCursorIdle();
 
+  // ─── Calibration wizard ─────────────────────────────────────────────
+  // pump-cv enters a needs_calibration state when ≥2 cameras are
+  // configured and no .npz files exist yet. This block polls
+  // /api/cv/api/v1/calibration/state; whenever phase != "ready" the
+  // wizard takeover is shown and the rest of the page (sets, cams)
+  // stays paused. Once compute succeeds and the state transitions to
+  // "ready" the takeover hides itself and the regular boot proceeds.
+  const calib = {
+    el:        document.getElementById('wallCalib'),
+    prevs:     document.getElementById('wallCalibPrevs'),
+    status:    document.getElementById('wallCalibStatus'),
+    error:     document.getElementById('wallCalibError'),
+    btnCap:    document.getElementById('wallCalibCapture'),
+    btnUndo:   document.getElementById('wallCalibUndo'),
+    btnCompute:document.getElementById('wallCalibCompute'),
+    btnReset:  document.getElementById('wallCalibReset'),
+    bootDone:  false,
+    pollTimer: null,
+    prevTimer: null,
+  };
+  const CALIB_POLL_MS    = 2000;
+  const CALIB_PREVIEW_MS = 1000;
+  const CALIB_NEEDED     = 10;
+
+  async function calibFetchState() {
+    try {
+      const r = await fetch('/api/cv/api/v1/calibration/state');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.json();
+    } catch (e) {
+      console.warn('wall: calibration state unavailable', e);
+      return null;
+    }
+  }
+
+  function calibBuildPrevs(camNames) {
+    if (!calib.prevs) return;
+    if (calib.prevs.dataset.cams === camNames.join('|')) return;
+    calib.prevs.dataset.cams = camNames.join('|');
+    calib.prevs.innerHTML = camNames.map(n => `
+      <div class="wall-calib-prev" data-cam="${escapeHTML(n)}">
+        <span class="wall-calib-prev-label">${escapeHTML(n)}</span>
+        <img alt="${escapeHTML(n)} preview">
+        <span class="wall-calib-prev-detect" hidden></span>
+      </div>
+    `).join('');
+  }
+
+  function calibStartPreviews(camNames) {
+    clearInterval(calib.prevTimer);
+    const tick = () => {
+      camNames.forEach(n => {
+        const tile = calib.prevs.querySelector(`.wall-calib-prev[data-cam="${cssEscape(n)}"]`);
+        if (!tile) return;
+        const img = tile.querySelector('img');
+        // Cache-bust so we always get the latest.
+        img.src = `/api/cv/api/v1/cameras/${encodeURIComponent(n)}/snapshot?_=${Date.now()}`;
+      });
+    };
+    tick();
+    calib.prevTimer = setInterval(tick, CALIB_PREVIEW_MS);
+  }
+  function calibStopPreviews() {
+    clearInterval(calib.prevTimer);
+    calib.prevTimer = null;
+  }
+
+  function calibUpdateStatus(s) {
+    if (!s) {
+      calib.status.textContent = 'Waiting for pump-cv…';
+      return;
+    }
+    const counts = Object.entries(s.captures || {})
+      .map(([k, v]) => `${k}: ${v}`)
+      .join('  •  ') || '0 captures';
+    const need = Math.max(0, CALIB_NEEDED - Math.min(...Object.values(s.captures || {0:0})));
+    const phaseLabel = ({
+      needs_calibration: 'Awaiting first capture',
+      calibrating: need > 0 ? `${need} more pair(s) needed` : 'Ready to compute',
+      ready: 'Calibration complete',
+      error: 'Compute failed',
+    })[s.phase] || s.phase;
+    calib.status.textContent = `${phaseLabel}  —  ${counts}`;
+    if (s.phase === 'error' && s.error) {
+      calib.error.textContent = s.error;
+      calib.error.hidden = false;
+    } else {
+      calib.error.hidden = true;
+    }
+    const minCount = Math.min(...Object.values(s.captures || {0:0}));
+    calib.btnCompute.disabled = (minCount < CALIB_NEEDED);
+  }
+
+  async function calibCapture() {
+    calib.btnCap.disabled = true;
+    try {
+      const r = await fetch('/api/cv/api/v1/calibration/capture', { method: 'POST' });
+      if (!r.ok) {
+        const t = await r.text();
+        calib.error.textContent = `Capture failed: ${t}`;
+        calib.error.hidden = false;
+        return;
+      }
+      const result = await r.json();
+      // Briefly flash the per-camera detection result on the tile.
+      Object.entries(result.detections || {}).forEach(([n, ok]) => {
+        const tile = calib.prevs.querySelector(`.wall-calib-prev[data-cam="${cssEscape(n)}"]`);
+        if (!tile) return;
+        const badge = tile.querySelector('.wall-calib-prev-detect');
+        badge.dataset.ok = ok ? 'true' : 'false';
+        badge.textContent = ok ? '✓ board found' : '✗ no board';
+        badge.hidden = false;
+      });
+    } finally {
+      calib.btnCap.disabled = false;
+    }
+  }
+
+  async function calibUndo() {
+    const s = await calibFetchState();
+    if (!s) return;
+    const idx = Math.min(...Object.values(s.captures || {0:0})) - 1;
+    if (idx < 0) return;
+    await fetch(`/api/cv/api/v1/calibration/capture/${idx}`, { method: 'DELETE' });
+  }
+
+  async function calibCompute() {
+    calib.btnCompute.disabled = true;
+    calib.status.textContent = 'Computing calibration…';
+    try {
+      const r = await fetch('/api/cv/api/v1/calibration/compute', { method: 'POST' });
+      if (!r.ok) {
+        const t = await r.text();
+        calib.error.textContent = `Compute failed: ${t}`;
+        calib.error.hidden = false;
+      }
+    } catch (e) {
+      calib.error.textContent = String(e);
+      calib.error.hidden = false;
+    } finally {
+      calib.btnCompute.disabled = false;
+    }
+  }
+
+  async function calibReset() {
+    if (!window.confirm('Discard all captures and start over?')) return;
+    await fetch('/api/cv/api/v1/calibration/reset', { method: 'POST' });
+  }
+
+  function calibStartBoot() {
+    if (calib.bootDone) return;
+    calib.bootDone = true;
+    calibStopPreviews();
+    if (calib.el) calib.el.hidden = true;
+    clearInterval(calib.pollTimer);
+    calib.pollTimer = null;
+    loadInitialSets();
+    loadCameras();
+    openSetsStream();
+    openWallStream();
+  }
+
+  function calibAttachHandlers() {
+    if (!calib.btnCap) return;
+    calib.btnCap.addEventListener('click', calibCapture);
+    calib.btnUndo.addEventListener('click', calibUndo);
+    calib.btnCompute.addEventListener('click', calibCompute);
+    calib.btnReset.addEventListener('click', calibReset);
+  }
+
+  async function calibPollOnce() {
+    const s = await calibFetchState();
+    if (!s) {
+      // pump-cv unreachable → assume single-cam / no wizard needed and
+      // boot the normal page rather than blocking the user.
+      calibStartBoot();
+      return;
+    }
+    if (s.phase === 'ready' || s.camera_count < 2) {
+      calibStartBoot();
+      return;
+    }
+    if (calib.el) calib.el.hidden = false;
+    const camNames = Object.keys(s.captures || {});
+    if (camNames.length === 0) {
+      // Pump-cv hasn't registered cameras yet; fall back to the
+      // configured names by hitting /api/v1/cameras.
+      try {
+        const r = await fetch('/api/cv/api/v1/cameras');
+        if (r.ok) {
+          const cams = await r.json();
+          cams.forEach(c => { (s.captures = s.captures || {})[c.name] = 0; });
+        }
+      } catch (_) { /* ignore */ }
+    }
+    const finalCamNames = Object.keys(s.captures || {});
+    if (finalCamNames.length >= 2) {
+      calibBuildPrevs(finalCamNames);
+      if (!calib.prevTimer) calibStartPreviews(finalCamNames);
+    }
+    calibUpdateStatus(s);
+  }
+
+  calibAttachHandlers();
+  calibPollOnce();
+  calib.pollTimer = setInterval(calibPollOnce, CALIB_POLL_MS);
+
   // ─── Boot ───────────────────────────────────────────────────────────
-  loadInitialSets();
-  loadCameras();
-  openSetsStream();
-  openWallStream();
+  // calibStartBoot() above triggers the rest of the wall view once
+  // pump-cv reports ready (or is unreachable). Don't double-boot here.
 
   // PWA: register the service worker for offline-resilient kiosk boot.
   if ('serviceWorker' in navigator) {

@@ -32,7 +32,7 @@ import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 
-from . import log
+from . import log, state
 
 logger = log.get(__name__)
 
@@ -252,6 +252,188 @@ def build_app(
                     headers={"Cache-Control": "no-store"},
                 )
         raise HTTPException(status_code=404, detail="unknown camera")
+
+    # ─── calibration wizard ──────────────────────────────────────────
+    # Two-camera setups gate the rep pipeline behind calibration. The
+    # wall page polls /state, drives /capture per pair, then /compute
+    # which runs the existing calibrate_intrinsics + calibrate_stereo
+    # functions and writes .npz files into the cache PVC. State
+    # transitions are managed in pump_cv.state.
+
+    @app.get("/api/v1/calibration/state")
+    def calibration_state() -> dict:
+        return state.to_dict()
+
+    @app.post("/api/v1/calibration/capture")
+    def calibration_capture() -> dict:
+        """Grab the latest decoded frame from each registered camera and
+        save it as a paired sample under
+        /cache/calibration/captures/<camera>/pair-<NNN>.jpg. Returns the
+        per-camera capture count and whether the chessboard was detected
+        in each image (so the wizard can warn before letting the user
+        accept the sample)."""
+        import cv2
+
+        from .pose.yolo import registered_cameras
+        cams = list(registered_cameras())
+        if len(cams) < 2:
+            raise HTTPException(status_code=400,
+                                detail="calibration requires >=2 cameras")
+        # Check every camera has a frame ready before writing anything,
+        # so we don't end up with an unpaired half-capture on disk.
+        frames = []
+        for c in cams:
+            frame = c.latest_frame()
+            if frame is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"camera '{c.camera_name}' has no frame yet",
+                )
+            frames.append((c.camera_name, frame))
+
+        # Index by lowest-numbered missing slot so retake on a previous
+        # pair just overwrites that pair.
+        s = state.get()
+        idx = max(s.captures.values(), default=0)
+        result: dict[str, object] = {"index": idx, "detections": {}}
+        for name, frame in frames:
+            d = state.captures_dir(name)
+            d.mkdir(parents=True, exist_ok=True)
+            path = d / f"pair-{idx:03d}.jpg"
+            cv2.imwrite(str(path), frame)
+            state.set_capture_count(name, idx + 1)
+            # Quick chessboard probe so the UI can mark this sample as
+            # usable. Detection is cheap (well under a second on the
+            # substream resolution we're working with).
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            ok, _ = cv2.findChessboardCorners(gray, (9, 6))
+            result["detections"][name] = bool(ok)
+
+        state.persist_captures()
+        if state.get().phase != "calibrating":
+            state.set_phase("calibrating")
+        return result
+
+    @app.delete("/api/v1/calibration/capture/{index}")
+    def calibration_capture_delete(index: int) -> dict:
+        """Drop the most recent pair (or any pair by index) — the wizard
+        calls this when the user rejects a capture."""
+        from .pose.yolo import registered_cameras
+        cams = list(registered_cameras())
+        for c in cams:
+            p = state.captures_dir(c.camera_name) / f"pair-{index:03d}.jpg"
+            if p.is_file():
+                p.unlink()
+            # Recompute the count from disk so we stay honest after
+            # arbitrary deletes.
+            n = sum(1 for _ in state.captures_dir(c.camera_name).glob("pair-*.jpg"))
+            state.set_capture_count(c.camera_name, n)
+        state.persist_captures()
+        return state.to_dict()
+
+    @app.post("/api/v1/calibration/compute")
+    def calibration_compute(
+        rows: int = Query(6, ge=3, le=20),
+        cols: int = Query(9, ge=3, le=20),
+        square_size_mm: float = Query(25.0, gt=0.0),
+    ) -> dict:
+        """Run intrinsics-per-camera + stereo extrinsics on the captured
+        pairs, write the .npz files, transition state to ready."""
+        from .calibration import calibrate_intrinsics, calibrate_stereo, save_camera
+
+        from .pose.yolo import registered_cameras
+        cams = list(registered_cameras())
+        if len(cams) < 2:
+            raise HTTPException(status_code=400,
+                                detail="calibration requires >=2 cameras")
+
+        # Need at least the same N pairs in every camera's dir, and N>=10.
+        per_cam = {
+            c.camera_name: sorted(state.captures_dir(c.camera_name).glob("pair-*.jpg"))
+            for c in cams
+        }
+        n = min(len(v) for v in per_cam.values())
+        if n < 10:
+            raise HTTPException(
+                status_code=409,
+                detail=f"need >=10 pairs per camera; have {n}",
+            )
+
+        try:
+            intrinsics: dict[str, tuple] = {}
+            metrics: dict[str, float] = {}
+            for name, paths in per_cam.items():
+                K, dist = calibrate_intrinsics(
+                    paths[:n], rows=rows, cols=cols,
+                    square_size_mm=square_size_mm,
+                )
+                intrinsics[name] = (K, dist)
+                # calibrate_intrinsics already logs RMS; we don't get it
+                # back as a return value, so re-run a lightweight check
+                # later if we want metric reporting. For now leave the
+                # value off; main RMS is the stereo one below.
+
+            # Stereo: first cam in registry order is the "left" / world
+            # frame. .npz for the left camera stores intrinsics only;
+            # .npz for the right stores intrinsics + R/t into left's frame.
+            left_name = cams[0].camera_name
+            right_name = cams[1].camera_name
+            left_K, left_dist = intrinsics[left_name]
+            right_K, right_dist = intrinsics[right_name]
+
+            R, t = calibrate_stereo(
+                per_cam[left_name][:n], per_cam[right_name][:n],
+                left_K, left_dist, right_K, right_dist,
+                rows=rows, cols=cols, square_size_mm=square_size_mm,
+            )
+
+            save_camera(state.npz_path(left_name), left_K, left_dist)
+            save_camera(state.npz_path(right_name), right_K, right_dist, R=R, t=t)
+
+            state.set_metrics(metrics)
+            state.set_phase("ready")
+            logger.info("calibration compute succeeded",
+                        left=left_name, right=right_name, n_pairs=n)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning("calibration compute failed", error=str(e))
+            state.set_phase("error", error=str(e))
+            raise HTTPException(status_code=500, detail=str(e))
+
+        return state.to_dict()
+
+    @app.post("/api/v1/calibration/reset")
+    def calibration_reset() -> dict:
+        """Wipe all captures and saved .npz files, return to
+        needs_calibration. Use to start over."""
+        from .pose.yolo import registered_cameras
+        cams = list(registered_cameras())
+        for c in cams:
+            d = state.captures_dir(c.camera_name)
+            if d.is_dir():
+                shutil.rmtree(d)
+            npz = state.npz_path(c.camera_name)
+            if npz.is_file():
+                npz.unlink()
+            state.set_capture_count(c.camera_name, 0)
+        marker = state.state_marker_path()
+        if marker.is_file():
+            marker.unlink()
+        state.set_phase("needs_calibration")
+        return state.to_dict()
+
+    # Serve a captured pair frame for wizard preview thumbnails. Reuses
+    # the same path safety check pattern as the snapshot endpoint.
+
+    @app.get("/api/v1/calibration/captures/{camera}/{name}")
+    def calibration_capture_image(camera: str, name: str) -> FileResponse:
+        target = (state.captures_dir(camera) / name).resolve()
+        if not str(target).startswith(str(state.captures_dir(camera).resolve())):
+            raise HTTPException(status_code=400, detail="bad path")
+        if not target.is_file():
+            raise HTTPException(status_code=404, detail="not found")
+        return FileResponse(target)
 
     # ─── admin panel: HSV mask preview ────────────────────────────────
 
