@@ -12,28 +12,25 @@
 <body>
 
 <div class="wall-grid" id="wallRoot">
-  <!-- Left: today's sets -->
   <section class="wall-data">
     <header class="wall-header">
       <span class="wall-date" id="wallDate"></span>
       <span class="wall-clock" id="wallClock"></span>
     </header>
-    <div class="wall-sets" id="wallSets">
-      <div class="wall-empty">No sets yet today.</div>
-    </div>
-  </section>
 
-  <!-- Right: video / snapshot pane. Live previews of the configured
-       cameras (one tile per camera) are populated by wall.js once it
-       fetches /api/cv/api/v1/cameras. Each tile has a toggle that
-       starts/stops the snapshot polling loop; state persists in
-       localStorage. -->
-  <section class="wall-video">
+    <!-- Live camera previews. wall.js fetches /api/cv/api/v1/cameras
+         and renders one tile per camera; each tile has a toggle that
+         starts/stops the snapshot polling loop, state persists in
+         localStorage. Two-up grid; tiles sized to leave most of the
+         column for the set list below. -->
     <div class="wall-cams" id="wallCams">
       <div class="wall-video-placeholder" id="wallVideoPlaceholder">
-        <i class="wall-video-icon">▶</i>
         <div class="wall-video-msg">Loading cameras…</div>
       </div>
+    </div>
+
+    <div class="wall-sets" id="wallSets">
+      <div class="wall-empty">No sets yet today.</div>
     </div>
   </section>
 </div>
