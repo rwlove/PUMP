@@ -32,7 +32,8 @@ import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 
-from . import log, state
+from . import log
+from . import state as cv_state
 
 logger = log.get(__name__)
 
@@ -262,7 +263,7 @@ def build_app(
 
     @app.get("/api/v1/calibration/state")
     def calibration_state() -> dict:
-        return state.to_dict()
+        return cv_state.to_dict()
 
     @app.post("/api/v1/calibration/capture")
     def calibration_capture() -> dict:
@@ -293,15 +294,15 @@ def build_app(
 
         # Index by lowest-numbered missing slot so retake on a previous
         # pair just overwrites that pair.
-        s = state.get()
+        s = cv_state.get()
         idx = max(s.captures.values(), default=0)
         result: dict[str, object] = {"index": idx, "detections": {}}
         for name, frame in frames:
-            d = state.captures_dir(name)
+            d = cv_state.captures_dir(name)
             d.mkdir(parents=True, exist_ok=True)
             path = d / f"pair-{idx:03d}.jpg"
             cv2.imwrite(str(path), frame)
-            state.set_capture_count(name, idx + 1)
+            cv_state.set_capture_count(name, idx + 1)
             # Quick chessboard probe so the UI can mark this sample as
             # usable. Detection is cheap (well under a second on the
             # substream resolution we're working with).
@@ -309,9 +310,9 @@ def build_app(
             ok, _ = cv2.findChessboardCorners(gray, (9, 6))
             result["detections"][name] = bool(ok)
 
-        state.persist_captures()
-        if state.get().phase != "calibrating":
-            state.set_phase("calibrating")
+        cv_state.persist_captures()
+        if cv_state.get().phase != "calibrating":
+            cv_state.set_phase("calibrating")
         return result
 
     @app.delete("/api/v1/calibration/capture/{index}")
@@ -321,15 +322,15 @@ def build_app(
         from .pose.yolo import registered_cameras
         cams = list(registered_cameras())
         for c in cams:
-            p = state.captures_dir(c.camera_name) / f"pair-{index:03d}.jpg"
+            p = cv_state.captures_dir(c.camera_name) / f"pair-{index:03d}.jpg"
             if p.is_file():
                 p.unlink()
             # Recompute the count from disk so we stay honest after
             # arbitrary deletes.
-            n = sum(1 for _ in state.captures_dir(c.camera_name).glob("pair-*.jpg"))
-            state.set_capture_count(c.camera_name, n)
-        state.persist_captures()
-        return state.to_dict()
+            n = sum(1 for _ in cv_state.captures_dir(c.camera_name).glob("pair-*.jpg"))
+            cv_state.set_capture_count(c.camera_name, n)
+        cv_state.persist_captures()
+        return cv_state.to_dict()
 
     @app.post("/api/v1/calibration/compute")
     def calibration_compute(
@@ -349,7 +350,7 @@ def build_app(
 
         # Need at least the same N pairs in every camera's dir, and N>=10.
         per_cam = {
-            c.camera_name: sorted(state.captures_dir(c.camera_name).glob("pair-*.jpg"))
+            c.camera_name: sorted(cv_state.captures_dir(c.camera_name).glob("pair-*.jpg"))
             for c in cams
         }
         n = min(len(v) for v in per_cam.values())
@@ -387,21 +388,21 @@ def build_app(
                 rows=rows, cols=cols, square_size_mm=square_size_mm,
             )
 
-            save_camera(state.npz_path(left_name), left_K, left_dist)
-            save_camera(state.npz_path(right_name), right_K, right_dist, R=R, t=t)
+            save_camera(cv_state.npz_path(left_name), left_K, left_dist)
+            save_camera(cv_state.npz_path(right_name), right_K, right_dist, R=R, t=t)
 
-            state.set_metrics(metrics)
-            state.set_phase("ready")
+            cv_state.set_metrics(metrics)
+            cv_state.set_phase("ready")
             logger.info("calibration compute succeeded",
                         left=left_name, right=right_name, n_pairs=n)
         except HTTPException:
             raise
         except Exception as e:
             logger.warning("calibration compute failed", error=str(e))
-            state.set_phase("error", error=str(e))
+            cv_state.set_phase("error", error=str(e))
             raise HTTPException(status_code=500, detail=str(e))
 
-        return state.to_dict()
+        return cv_state.to_dict()
 
     @app.post("/api/v1/calibration/reset")
     def calibration_reset() -> dict:
@@ -410,26 +411,26 @@ def build_app(
         from .pose.yolo import registered_cameras
         cams = list(registered_cameras())
         for c in cams:
-            d = state.captures_dir(c.camera_name)
+            d = cv_state.captures_dir(c.camera_name)
             if d.is_dir():
                 shutil.rmtree(d)
-            npz = state.npz_path(c.camera_name)
+            npz = cv_state.npz_path(c.camera_name)
             if npz.is_file():
                 npz.unlink()
-            state.set_capture_count(c.camera_name, 0)
-        marker = state.state_marker_path()
+            cv_state.set_capture_count(c.camera_name, 0)
+        marker = cv_state.state_marker_path()
         if marker.is_file():
             marker.unlink()
-        state.set_phase("needs_calibration")
-        return state.to_dict()
+        cv_state.set_phase("needs_calibration")
+        return cv_state.to_dict()
 
     # Serve a captured pair frame for wizard preview thumbnails. Reuses
     # the same path safety check pattern as the snapshot endpoint.
 
     @app.get("/api/v1/calibration/captures/{camera}/{name}")
     def calibration_capture_image(camera: str, name: str) -> FileResponse:
-        target = (state.captures_dir(camera) / name).resolve()
-        if not str(target).startswith(str(state.captures_dir(camera).resolve())):
+        target = (cv_state.captures_dir(camera) / name).resolve()
+        if not str(target).startswith(str(cv_state.captures_dir(camera).resolve())):
             raise HTTPException(status_code=400, detail="bad path")
         if not target.is_file():
             raise HTTPException(status_code=404, detail="not found")
