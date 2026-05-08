@@ -332,6 +332,24 @@
     fetch('/api/wall/wake', { method: 'POST' }).catch(() => {});
   });
 
+  // ─── Cursor idle-hide ───────────────────────────────────────────────
+  // Cursor is visible by default; hide it after CURSOR_IDLE_MS of no
+  // pointer movement so the wall display is clean for distance viewing.
+  // Any movement reveals it again.
+  const CURSOR_IDLE_MS = 3 * 60 * 1000;   // 3 minutes
+  let cursorIdleTimer = null;
+  function resetCursorIdle() {
+    document.body.classList.remove('cursor-idle');
+    clearTimeout(cursorIdleTimer);
+    cursorIdleTimer = setTimeout(() => {
+      document.body.classList.add('cursor-idle');
+    }, CURSOR_IDLE_MS);
+  }
+  // pointermove fires for both mouse and pen; touch is left alone since
+  // the kiosk's touch input shouldn't keep the cursor visible.
+  window.addEventListener('mousemove', resetCursorIdle, { passive: true });
+  resetCursorIdle();
+
   // ─── Boot ───────────────────────────────────────────────────────────
   loadInitialSets();
   loadCameras();
