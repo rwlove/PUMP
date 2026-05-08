@@ -123,6 +123,12 @@ func pumpCVProxyHandler(c *gin.Context) {
 	if ct := c.Request.Header.Get("Content-Type"); ct != "" {
 		req.Header.Set("Content-Type", ct)
 	}
+	// Server-side auth to pump-cv. The browser never carries this — pump
+	// and pump-cv share API_KEY / PUMP_API_KEY (same 1Password field), so
+	// pump signs the upstream call on the kiosk's behalf.
+	if k := os.Getenv("API_KEY"); k != "" {
+		req.Header.Set("X-Api-Key", k)
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -213,6 +219,9 @@ func uploadReferenceClipHandler(c *gin.Context) {
 		return
 	}
 	req.Header.Set("Content-Type", w.FormDataContentType())
+	if k := os.Getenv("API_KEY"); k != "" {
+		req.Header.Set("X-Api-Key", k)
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

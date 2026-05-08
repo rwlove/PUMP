@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import shutil
 import tempfile
 from dataclasses import dataclass
@@ -67,6 +68,28 @@ def build_app(
     runner: Any = None,                # PipelineRunner; typed loosely to avoid import cycle
 ) -> FastAPI:
     app = FastAPI(title="pump-cv", docs_url=None, redoc_url=None)
+
+    # Authenticate /api/v1/* with X-Api-Key when PUMP_API_KEY is set.
+    # Probes (/healthz, /readyz) and /metrics stay open so kubelet and
+    # Prometheus don't need to know the secret. Pump's reverse proxy
+    # injects the header server-side from its own API_KEY env var, so
+    # the browser kiosk never needs to carry the secret itself.
+    @app.middleware("http")
+    async def _require_api_key_mw(request, call_next):
+        if request.url.path.startswith("/api/v1/"):
+            expected = os.getenv("PUMP_API_KEY") or ""
+            if expected and request.headers.get("x-api-key") != expected:
+                logger.warning(
+                    "rejected request: missing or invalid API key",
+                    path=request.url.path,
+                    method=request.method,
+                )
+                return Response(
+                    content='{"detail":"unauthorized"}',
+                    status_code=401,
+                    media_type="application/json",
+                )
+        return await call_next(request)
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
