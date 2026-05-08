@@ -149,19 +149,6 @@ class YOLOPoseSource:
             self._connected = False
             cap.release()
 
-
-# Module-level camera registry — pose sources self-register on construction;
-# healthd reads the list to render the admin "Cameras" tab.
-_CAMERA_REGISTRY: list = []
-
-
-def register_camera(source) -> None:
-    _CAMERA_REGISTRY.append(source)
-
-
-def registered_cameras() -> list:
-    return list(_CAMERA_REGISTRY)
-
     def _results_to_poses(self, results, ts: float) -> list[Pose]:
         poses: list[Pose] = []
         for r in results:
@@ -188,3 +175,16 @@ def registered_cameras() -> list:
                     )
                 )
         return poses
+
+
+# Module-level camera registry — pose sources self-register on construction;
+# healthd reads the list to render the admin "Cameras" tab.
+_CAMERA_REGISTRY: list = []
+
+
+def register_camera(source) -> None:
+    _CAMERA_REGISTRY.append(source)
+
+
+def registered_cameras() -> list:
+    return list(_CAMERA_REGISTRY)
