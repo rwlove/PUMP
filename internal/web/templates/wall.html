@@ -40,6 +40,16 @@
   <div class="wall-sleep-msg">Standby</div>
 </div>
 
+<!-- Set-recording modal. Tapping a set on the grid opens this; tap
+     outside (or the × button) to dismiss. wall.js fills in either a
+     looping <video> for the set's clip or an empty-state message. -->
+<div class="wall-clip-modal" id="wallClipModal" hidden>
+  <div class="wall-clip-modal-box">
+    <button class="wall-clip-close" id="wallClipClose" aria-label="Close">×</button>
+    <div class="wall-clip-body" id="wallClipBody"></div>
+  </div>
+</div>
+
 <!-- Status pip in the corner -->
 <div class="wall-status" id="wallStatus" data-state="connecting">
   <span class="wall-status-dot"></span>

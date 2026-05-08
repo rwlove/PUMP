@@ -23,6 +23,9 @@
     status:   document.getElementById('wallStatus'),
     statusLabel: document.getElementById('wallStatusLabel'),
     sleep:    document.querySelector('.wall-sleep'),
+    clipModal: document.getElementById('wallClipModal'),
+    clipBody:  document.getElementById('wallClipBody'),
+    clipClose: document.getElementById('wallClipClose'),
   };
 
   // ─── Header date + clock ────────────────────────────────────────────
@@ -71,6 +74,18 @@
       i = j;
     }
     els.sets.innerHTML = html;
+
+    // Wire row taps → open clip modal. Pending-set confirm/reject
+    // buttons stop propagation below so they don't double-trigger.
+    els.sets.querySelectorAll('.wall-set').forEach(node => {
+      node.addEventListener('click', (ev) => {
+        // Skip if the user tapped one of the action buttons.
+        if (ev.target.closest('.wall-set-btn')) return;
+        const id = parseInt(node.dataset.setId, 10);
+        const s = sets.get(id);
+        if (s) openClipModal(s);
+      });
+    });
 
     // Wire confirm/reject buttons.
     els.sets.querySelectorAll('.wall-set').forEach(node => {
@@ -233,6 +248,47 @@
   }
 
   function escapeHTML(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  // ─── Set-recording modal ────────────────────────────────────────────
+  function openClipModal(s) {
+    if (s && s.ClipPath) {
+      els.clipBody.innerHTML =
+        `<video class="wall-clip-video" src="/clips/${escapeAttr(s.ClipPath)}" ` +
+        `autoplay loop muted playsinline controls></video>` +
+        `<div class="wall-clip-caption">${escapeHTML(s.Name)} — ` +
+        `${formatWeight(s.Weight)} lb × ${s.Reps} reps</div>`;
+    } else {
+      els.clipBody.innerHTML =
+        `<div class="wall-clip-empty">` +
+          `<div class="wall-clip-empty-icon">⊘</div>` +
+          `<div class="wall-clip-empty-msg">No recording captured for this set.</div>` +
+        `</div>` +
+        `<div class="wall-clip-caption">${escapeHTML(s.Name)} — ` +
+        `${formatWeight(s.Weight)} lb × ${s.Reps} reps</div>`;
+    }
+    els.clipModal.hidden = false;
+  }
+  function closeClipModal() {
+    els.clipModal.hidden = true;
+    // Stop the video so it doesn't keep playing audio/network in the
+    // background; clearing innerHTML detaches the <video>.
+    els.clipBody.innerHTML = '';
+  }
+  // Click outside the box closes; click on the close button closes.
+  els.clipModal.addEventListener('click', (ev) => {
+    if (ev.target === els.clipModal) closeClipModal();
+  });
+  els.clipClose.addEventListener('click', closeClipModal);
+  // Escape key also closes (laptop convenience).
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && !els.clipModal.hidden) closeClipModal();
+  });
+  // Limited HTML attribute escape for the clip src.
+  function escapeAttr(s) {
     return String(s).replace(/[&<>"']/g, c => ({
       '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
     }[c]));
