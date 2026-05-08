@@ -9,6 +9,11 @@ description = "Camera-based exercise auto-detection sidecar for PUMP."
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115",
+    # FastAPI needs python-multipart to construct any Form()/UploadFile route
+    # at app build time. healthd has /api/v1/reference (file upload), so without
+    # it FastAPI raises during build_app() and uvicorn never binds — the admin
+    # /wall page silently sees connection refused.
+    "python-multipart>=0.0.9",
     "httpx>=0.27",
     "httpx-sse>=0.4",
     "numpy>=1.26",

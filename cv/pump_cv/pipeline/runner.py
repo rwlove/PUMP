@@ -262,7 +262,12 @@ class PipelineRunner:
             "Reps": int(rep_count),
             "Source": "cv",
             "Confidence": round(confidence, 3),
-            "Pending": pending,
+            # `pending` arrives here as numpy.bool_ when computed from a
+            # numpy comparison upstream (e.g. confidence < threshold on
+            # arrays). httpx's default JSON encoder rejects numpy scalars
+            # with "Object of type bool is not JSON serializable", and
+            # the whole set silently never reaches /api/sets. Coerce.
+            "Pending": bool(pending),
             "Note": note,
         }
         logger.info("set ended → POST /api/sets",
