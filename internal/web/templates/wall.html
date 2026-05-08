@@ -1,15 +1,9 @@
 {{ define "wall.html" }}
-<!doctype html>
-<html lang="en" data-bs-theme="dark">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<meta name="theme-color" content="#0a0a0c">
-<title>PUMP — Wall</title>
+{{/* header.html opens <html>/<head>/<body> + renders the navbar.
+     We append the wall-specific stylesheet+manifest into <body> via
+     a normal <link>; modern browsers accept this and render correctly. */}}
 <link rel="manifest" href="/fs/public/wall-manifest.json">
 <link rel="stylesheet" type="text/css" href="/fs/public/css/wall.css">
-</head>
-<body>
 
 <div class="wall-grid" id="wallRoot">
   <section class="wall-data">
@@ -92,6 +86,6 @@
   window._wallBuildSHA = {{ .Version | json }};
 </script>
 <script src="/fs/public/js/wall.js"></script>
-</body>
-</html>
+
+{{ template "footer.html" }}
 {{ end }}

@@ -74,6 +74,11 @@ def _build_pose_source(cfg: CVConfig):
     Single camera (or two-camera config without calibration paths) →
     one PoseSource. Two cameras with calibration → FusedPoseSource that
     pairs frames by timestamp and triangulates the athlete to 3D.
+
+    NOTE: this allocates new per-camera sources, which re-registers them
+    in the global camera registry. main.py's startup path uses
+    `_assemble_pose_source` instead, which reuses the sources created
+    pre-calibration so the registry stays at exactly N entries.
     """
     if not cfg.cameras:
         raise SystemExit("pump-cv: at least one camera must be configured")
@@ -87,6 +92,28 @@ def _build_pose_source(cfg: CVConfig):
         return FusedPoseSource(src_a, src_b, calib_a, calib_b)
 
     return _build_single_source(cfg.cameras[0], cfg)
+
+
+def _assemble_pose_source(cfg: CVConfig, sources: list):
+    """Wire up the right PoseSource using already-constructed singles.
+
+    Used when main.py has pre-built per-camera sources to populate the
+    camera registry for the wizard previews; after calibration completes
+    we wrap those same instances in FusedPoseSource so we don't double-
+    register cameras or open the RTSP stream twice.
+    """
+    if not cfg.cameras or not sources:
+        raise SystemExit("pump-cv: at least one camera must be configured")
+    if (
+        len(cfg.cameras) >= 2
+        and cfg.cameras[0].calibration_path
+        and cfg.cameras[1].calibration_path
+        and len(sources) >= 2
+    ):
+        calib_a = load_camera(Path(cfg.cameras[0].calibration_path))
+        calib_b = load_camera(Path(cfg.cameras[1].calibration_path))
+        return FusedPoseSource(sources[0], sources[1], calib_a, calib_b)
+    return sources[0]
 
 
 async def _amain() -> None:
@@ -113,6 +140,13 @@ async def _amain() -> None:
             for c in cfg.cameras
         )
     )
+    # Single per-camera sources are constructed regardless of calibration
+    # state — YOLOPoseSource.__init__ self-registers in the global camera
+    # registry, which the wall wizard's previews and /api/v1/cameras
+    # depend on. The fused pose source (if needed) is assembled below
+    # AFTER the wizard finishes, reusing these same instances.
+    single_sources = [_build_single_source(c, cfg) for c in cfg.cameras]
+
     if needs_cal:
         state.set_phase("needs_calibration")
         logger.info("pump-cv: holding for calibration",
@@ -120,7 +154,26 @@ async def _amain() -> None:
     else:
         state.set_phase("ready")
 
-    pose_source = _build_pose_source(cfg) if state.is_ready() else None
+    # Drain tasks decode frames into each source's `latest_frame` attribute
+    # so the wizard's per-camera preview tiles have something to show. We
+    # only spawn these while held for calibration; once the runner takes
+    # over, IT consumes the (possibly-fused) source's poses().
+    drain_tasks: list[asyncio.Task] = []
+    if not state.is_ready():
+        async def _drain(src):
+            try:
+                async for _ in src.poses():
+                    pass
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning("drain task crashed", error=str(e))
+        for src in single_sources:
+            drain_tasks.append(asyncio.create_task(_drain(src)))
+
+    pose_source = None
+    if state.is_ready():
+        pose_source = _assemble_pose_source(cfg, single_sources)
 
     # Load any prototypes the operator has recorded so far. Empty list is
     # fine — runner falls back to the default exercise name.
@@ -163,21 +216,27 @@ async def _amain() -> None:
             # If we held for calibration, wait for the wizard to flip the
             # state to "ready" before starting the pose loop. The wizard
             # endpoints write the .npz files and call state.set_phase.
-            # They also re-construct the pose_source via this branch on
-            # the next loop iteration.
-            while True:
-                await state.wait_for_ready()
-                if pose_source is None:
-                    pose_source = _build_pose_source(load())
-                await runner.run(pose_source.poses())
-                # runner.run only returns on a finite source (video file)
-                # or fatal upstream error — break out of the gate loop
-                # in either case so we don't spin.
-                break
+            await state.wait_for_ready()
+            # Cancel the drain tasks before the runner takes over; the
+            # runner consumes the source itself and we don't want two
+            # generators racing on the same VideoCapture.
+            for t in drain_tasks:
+                t.cancel()
+            if drain_tasks:
+                await asyncio.gather(*drain_tasks, return_exceptions=True)
+            if pose_source is None:
+                # Re-load config because the wizard may have written
+                # calibration files since startup; reuse the existing
+                # single sources so we don't double-register cameras.
+                pose_source = _assemble_pose_source(load(), single_sources)
+            await runner.run(pose_source.poses())
         finally:
+            for t in drain_tasks:
+                t.cancel()
             health_task.cancel()
             retention_task.cancel()
-            await asyncio.gather(health_task, retention_task, return_exceptions=True)
+            await asyncio.gather(health_task, retention_task, *drain_tasks,
+                                 return_exceptions=True)
 
     logger.info("pump-cv: pose stream ended")
 
