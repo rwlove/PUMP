@@ -13,7 +13,8 @@ Runs alongside the pipeline via asyncio. Exposes:
   DELETE /api/v1/prototypes         — delete one (path query param)
   GET    /api/v1/snapshots          — list per-set debug snapshots
   GET    /api/v1/snapshots/{path}   — serve one snapshot file
-  GET    /api/v1/cameras            — camera health (stub for now)
+  GET    /api/v1/cameras            — list cameras + per-camera health
+  GET    /api/v1/cameras/{name}/snapshot — latest decoded frame (JPEG)
 """
 
 from __future__ import annotations
@@ -197,12 +198,36 @@ def build_app(
             raise HTTPException(status_code=404, detail="not found")
         return FileResponse(target)
 
-    # ─── admin panel: cameras (stub for now) ──────────────────────────
+    # ─── admin panel + wall preview: cameras ──────────────────────────
 
     @app.get("/api/v1/cameras")
     def list_cameras() -> list[dict]:
         from .pose.yolo import registered_cameras
         return [c.stats() for c in registered_cameras()]
+
+    @app.get("/api/v1/cameras/{name}/snapshot")
+    def camera_snapshot(name: str, q: int = Query(75, ge=1, le=95)) -> Response:
+        """Return the most recent decoded BGR frame from `name` as JPEG.
+
+        Used by the wall page's live-preview tiles, which poll this
+        endpoint every ~1s. 404 if the camera isn't registered or hasn't
+        produced a frame yet (cold start / disconnected)."""
+        import cv2
+        from .pose.yolo import registered_cameras
+        for c in registered_cameras():
+            if c.camera_name == name:
+                frame = c.latest_frame()
+                if frame is None:
+                    raise HTTPException(status_code=404, detail="no frame yet")
+                ok, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, q])
+                if not ok:
+                    raise HTTPException(status_code=500, detail="jpeg encode failed")
+                return Response(
+                    content=jpg.tobytes(),
+                    media_type="image/jpeg",
+                    headers={"Cache-Control": "no-store"},
+                )
+        raise HTTPException(status_code=404, detail="unknown camera")
 
     # ─── admin panel: HSV mask preview ────────────────────────────────
 
