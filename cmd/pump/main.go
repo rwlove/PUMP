@@ -3,7 +3,6 @@ package main
 import (
 	"log/slog"
 	"os"
-	"strings"
 	_ "time/tzdata"
 
 	"github.com/gin-gonic/gin"
@@ -31,7 +30,8 @@ func envOr(key, def string) string {
 //	PORT               listen port                           (default: 8080)
 //	HOST               listen address                        (default: 0.0.0.0)
 //	POSTGRES_DSN       PostgreSQL connection string          (required)
-//	API_KEY            optional X-Api-Key for API routes
+//	API_KEY            sent as X-Api-Key when proxying to pump-cv (server-to-server only;
+//	                   no inbound auth — pump itself is gated by oauth2-proxy on the gateway)
 //	NODE_PATH          path to local node_modules            (default: "", use CDN)
 //	CVAUTOLOG          accept set writes from pump-cv        (default: false; toggleable in UI)
 //	PUSHOVER_USER_KEY  Pushover user key for notifications   (env-only, not in UI)
@@ -46,7 +46,6 @@ func main() {
 	cfg := conf.GetFromEnv()
 	port := envOr("PORT", "8080")
 	host := envOr("HOST", "0.0.0.0")
-	apiKey := os.Getenv("API_KEY")
 	nodePath := os.Getenv("NODE_PATH")
 
 	slog.Info("PUMP monolith starting",
@@ -57,7 +56,6 @@ func main() {
 		slog.Int("pagestep", cfg.PageStep),
 		slog.Int("frequency_days", cfg.FrequencyDays),
 		slog.Int("display_days", cfg.DisplayDays),
-		slog.Bool("api_key_set", apiKey != ""),
 		slog.Bool("cv_autolog", cfg.CVAutoLog),
 		slog.Bool("pushover_configured", cfg.PushoverConfigured()),
 	)
@@ -87,22 +85,6 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(logger.GinMiddleware())
-
-	if apiKey != "" {
-		// Scope API key enforcement to /api/ routes only.
-		// Web UI routes (/, /set/, /weight/, etc.) are served by the same
-		// process but are browser-facing and must remain accessible without
-		// a key — the browser never sends X-Api-Key.
-		mw := api.APIKeyMiddleware(apiKey)
-		r.Use(func(c *gin.Context) {
-			if strings.HasPrefix(c.Request.URL.Path, "/api/") {
-				mw(c)
-			} else {
-				c.Next()
-			}
-		})
-		slog.Info("API key authentication enabled (applies to /api/ routes)")
-	}
 
 	cfg.NodePath = nodePath
 	pushover := &notify.Pushover{

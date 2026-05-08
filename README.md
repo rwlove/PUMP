@@ -33,7 +33,7 @@ There is no separate API or frontend port — all traffic goes through `:8080`.
 | `/` | Web UI (HTML, CSS, JS) |
 | `/api/` | JSON REST API (used by `pump-cv` and other in-cluster integrations) |
 
-Use image `ghcr.io/rwlove/pump`. Set `POSTGRES_DSN` and optionally `API_KEY`.
+Use image `ghcr.io/rwlove/pump`. Set `POSTGRES_DSN`. Front the deployment with an OIDC reverse proxy (e.g. `oauth2-proxy`) on the gateway — pump itself ships with no inbound auth.
 
 ### Optional: pump-cv camera sidecar
 
@@ -50,7 +50,7 @@ All configuration is via environment variables. No config file is required.
 | `PORT` | Listen port | `8080` |
 | `HOST` | Listen address | `0.0.0.0` |
 | `POSTGRES_DSN` | PostgreSQL connection string **(required)** | — |
-| `API_KEY` | Require this value on every `X-Api-Key` request header; empty = no auth | `""` |
+| `API_KEY` | Sent as `X-Api-Key` when proxying to `pump-cv` (server-to-server only — pump has no inbound auth) | `""` |
 | `LOG_LEVEL` | Log verbosity: `debug`, `info`, `warn`, `error` | `info` |
 | `COLOR` | UI color mode: `light` or `dark` | `dark` |
 | `PAGESTEP` | Rows per page on the body weight log | `10` |
