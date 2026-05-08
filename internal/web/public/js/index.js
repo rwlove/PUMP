@@ -160,6 +160,10 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
     if (meta.confidence !== undefined) entry.dataset.confidence = meta.confidence;
 
     var safeColor = color || '#6c757d';
+    // Stored on the entry so refreshSetBadges() can read it when wrapping
+    // contiguous same-name entries in a .workout-entry-group (the group
+    // owns the visible color stripe — no per-entry strip element).
+    entry.dataset.exerciseColor = safeColor;
 
     // Determine which set number this will be (1-indexed).
     var setNum = countExistingEntries(name) + 1;
@@ -216,7 +220,6 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
 
     entry.innerHTML = `
         <div class="entry-main">
-            <div class="entry-color-strip" style="background-color:${safeColor};"></div>
             <div class="entry-body">
                 <div class="entry-header">
                     <input type="hidden" name="name" value="${name}" data-exname="${name}">
@@ -437,16 +440,40 @@ function refreshSetBadges() {
         }
     });
 
-    // Mark consecutive same-name entries as group-tails so only the head of
-    // each contiguous run shows the color strip.
-    var prevName = null;
-    entries.forEach(function(entry) {
-        var hidden = entry.querySelector('input[data-exname]');
-        if (!hidden) return;
-        var name = hidden.getAttribute('data-exname');
-        entry.classList.toggle('entry-group-tail', name === prevName);
-        prevName = name;
+    // Wrap consecutive same-name entries in a .workout-entry-group so the
+    // group owns the per-exercise color stripe (a single ::before painted
+    // along its full height) instead of each entry painting its own.
+    // Entries keep their identity — we only re-parent them, never recreate
+    // them, so attached event listeners survive.
+    var flat = [];
+    entries.forEach(function(e) { flat.push(e); });
+    // Hoist all entries flat under the container so we can re-wrap cleanly.
+    flat.forEach(function(e) { container.appendChild(e); });
+    // Drop any now-empty wrappers left over from the previous pass.
+    container.querySelectorAll('.workout-entry-group').forEach(function(w) {
+        if (!w.querySelector('.workout-entry')) w.remove();
     });
+    // Walk in order; wrap each contiguous same-name run in one group.
+    var i = 0;
+    while (i < flat.length) {
+        var first = flat[i];
+        var hidden = first.querySelector('input[data-exname]');
+        if (!hidden) { i++; continue; }
+        var name = hidden.getAttribute('data-exname');
+        var j = i + 1;
+        while (j < flat.length) {
+            var nextHidden = flat[j].querySelector('input[data-exname]');
+            if (!nextHidden || nextHidden.getAttribute('data-exname') !== name) break;
+            j++;
+        }
+        var group = document.createElement('div');
+        group.className = 'workout-entry-group';
+        group.style.setProperty('--exercise-color',
+            first.dataset.exerciseColor || '#6c757d');
+        container.insertBefore(group, first);
+        for (var k = i; k < j; k++) group.appendChild(flat[k]);
+        i = j;
+    }
 }
 
 function updateEmptyState() {

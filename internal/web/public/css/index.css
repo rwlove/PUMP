@@ -333,44 +333,48 @@
   font-size: 0.875rem;
 }
 
-/* Workout entry row.
- *
- * Sets of the same exercise are rendered as adjacent rows; we visually
- * merge them into one group so the per-exercise color strip on the left
- * reads as a single span across the whole exercise. .entry-group-tail
- * is added to any row whose predecessor is the same exercise — that
- * row drops its top border / radius. The :has() rule mirrors that on
- * the head of any group with tails (drops bottom border / radius). End
- * result: a contiguous run of rows looks like a single card.
+/* Workout entry rows are wrapped in a .workout-entry-group container
+ * (one per contiguous run of the same exercise). The group is the
+ * visual card; it owns the per-exercise color stripe via a ::before
+ * pseudo-element that paints the full height of the group as a single
+ * continuous bar. Individual rows inside lose their own border/margin/
+ * radius so the group reads as one unified card.
  */
+.workout-entry-group {
+  position: relative;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 10px;
+  margin-bottom: 8px;
+  background: var(--bs-body-bg);
+  overflow: hidden; /* clip the stripe ::before to the rounded corners */
+  padding-left: 6px; /* reserve room for the stripe */
+  transition: 0.15s ease;
+}
+.workout-entry-group::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: var(--exercise-color, #6c757d);
+}
+.workout-entry-group:hover {
+  border-color: var(--bs-primary-border-subtle);
+  box-shadow: 0 0 0 3px var(--bs-primary-bg-subtle);
+}
+
 .workout-entry {
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 8px 10px;
-  border: 1px solid var(--bs-border-color);
-  border-radius: 10px;
-  margin-bottom: 8px;
   background: var(--bs-body-bg);
   transition: 0.15s ease;
 }
-
-/* Tail rows: same exercise as the row above. Strip stays visible (so
-   the color spans the group); the row's own top edge dissolves into
-   the row above. */
-.workout-entry.entry-group-tail {
-  margin-top: 0;
-  border-top: 0;
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-}
-/* Head-of-group-with-tails: drops its bottom edge so the row below
-   can flow into it. */
-.workout-entry:has(+ .entry-group-tail) {
-  margin-bottom: 0;
-  border-bottom: 0;
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
+/* Subtle horizontal divider between rows in a multi-row group. */
+.workout-entry-group .workout-entry + .workout-entry {
+  border-top: 1px solid var(--bs-border-color);
 }
 
 .entry-main {
@@ -392,30 +396,6 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-}
-
-.workout-entry:hover {
-  border-color: var(--bs-primary-border-subtle);
-  box-shadow: 0 0 0 3px var(--bs-primary-bg-subtle);
-}
-
-.entry-color-strip {
-  width: 6px;
-  min-height: 38px;
-  border-radius: 3px;
-  flex-shrink: 0;
-  align-self: stretch;
-}
-
-/* Within a group, square off the strip ends that meet adjacent rows
-   so the strips visually concatenate into one continuous bar. */
-.entry-group-tail .entry-color-strip {
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-}
-.workout-entry:has(+ .entry-group-tail) .entry-color-strip {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
 }
 
 .entry-name {
@@ -497,6 +477,10 @@
 /* Pending (low-confidence) entries: greyed background, banner, ✓ / ✗ buttons */
 .workout-entry[data-pending="true"] {
   background: var(--bs-warning-bg-subtle);
+}
+/* If any row in a group is pending, the group's border picks up the
+   warning color so it's visible at the card level too. */
+.workout-entry-group:has(.workout-entry[data-pending="true"]) {
   border-color: var(--bs-warning-border-subtle);
 }
 

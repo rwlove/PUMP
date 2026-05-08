@@ -78,57 +78,56 @@ body {
 }
 
 /* Set cards — current/most-recent on top */
-/* Sets are grouped by exercise so the per-exercise color strip on the
- * left reads as a single span across all rows of that exercise.
- * .wall-set--group-tail rows drop their top edge to merge with the row
- * above; the head-of-group (matched via :has(+ .wall-set--group-tail))
- * drops its bottom edge so the group looks like one card. */
-.wall-set {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 16px;
-  align-items: center;
-  padding: 18px 16px;
+/* Sets are wrapped in a .wall-set-group container (one per contiguous
+ * run of the same exercise). The group is the visual card; it owns the
+ * per-exercise color stripe via a ::before pseudo-element painted full
+ * height, so the color reads as a single continuous bar across all rows
+ * of the exercise. Individual rows lose their card chrome so the group
+ * is visually unified. */
+.wall-set-group {
+  position: relative;
   margin-bottom: 12px;
   background: #1c1d22;
   border: 1px solid var(--wall-divider);
   border-radius: 14px;
+  overflow: hidden; /* clip the stripe ::before to the rounded corners */
+  padding-left: 6px; /* reserve room for the stripe */
   transition: 0.15s ease;
 }
-.wall-set.wall-set--group-tail {
-  margin-top: 0;
-  border-top: 0;
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
+.wall-set-group::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: var(--group-color, #6c757d);
 }
-.wall-set:has(+ .wall-set--group-tail) {
-  margin-bottom: 0;
-  border-bottom: 0;
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-}
-.wall-set.is-current {
+/* If any row in the group is pending or currently active, the group
+ * picks up the corresponding accent at the card level. */
+.wall-set-group:has(.wall-set.is-current) {
   border-color: var(--wall-accent);
   box-shadow: 0 0 0 3px rgba(39, 128, 227, 0.18);
 }
-.wall-set[data-pending="true"] {
-  background: var(--wall-pending-bg);
+.wall-set-group:has(.wall-set[data-pending="true"]) {
   border-color: var(--wall-pending);
 }
-.wall-set-color {
-  width: 6px;
-  align-self: stretch;
-  border-radius: 3px;
+
+.wall-set {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: center;
+  padding: 18px 16px;
+  background: transparent;
+  transition: 0.15s ease;
 }
-/* Square the strip ends that meet adjacent rows in the same group so
- * the strips visually concatenate into one continuous bar. */
-.wall-set--group-tail .wall-set-color {
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
+/* Subtle horizontal divider between rows in a multi-row group. */
+.wall-set-group .wall-set + .wall-set {
+  border-top: 1px solid var(--wall-divider);
 }
-.wall-set:has(+ .wall-set--group-tail) .wall-set-color {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
+.wall-set[data-pending="true"] {
+  background: var(--wall-pending-bg);
 }
 .wall-set-body {
   min-width: 0;
