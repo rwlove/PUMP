@@ -78,6 +78,11 @@ body {
 }
 
 /* Set cards — current/most-recent on top */
+/* Sets are grouped by exercise so the per-exercise color strip on the
+ * left reads as a single span across all rows of that exercise.
+ * .wall-set--group-tail rows drop their top edge to merge with the row
+ * above; the head-of-group (matched via :has(+ .wall-set--group-tail))
+ * drops its bottom edge so the group looks like one card. */
 .wall-set {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -89,6 +94,18 @@ body {
   border: 1px solid var(--wall-divider);
   border-radius: 14px;
   transition: 0.15s ease;
+}
+.wall-set.wall-set--group-tail {
+  margin-top: 0;
+  border-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.wall-set:has(+ .wall-set--group-tail) {
+  margin-bottom: 0;
+  border-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 .wall-set.is-current {
   border-color: var(--wall-accent);
@@ -102,6 +119,16 @@ body {
   width: 6px;
   align-self: stretch;
   border-radius: 3px;
+}
+/* Square the strip ends that meet adjacent rows in the same group so
+ * the strips visually concatenate into one continuous bar. */
+.wall-set--group-tail .wall-set-color {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.wall-set:has(+ .wall-set--group-tail) .wall-set-color {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 .wall-set-body {
   min-width: 0;

@@ -52,7 +52,12 @@
       return;
     }
 
-    els.sets.innerHTML = todays.map((s, i) => renderSetCard(s, i === 0)).join('');
+    // Mark contiguous same-exercise rows as group tails so CSS can
+    // visually merge their cards into one (continuous color strip).
+    els.sets.innerHTML = todays.map((s, i) => {
+      const isTail = i > 0 && todays[i - 1].Name === s.Name;
+      return renderSetCard(s, i === 0, isTail);
+    }).join('');
 
     // Wire confirm/reject buttons.
     els.sets.querySelectorAll('.wall-set').forEach(node => {
@@ -176,7 +181,7 @@
     return String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
   }
 
-  function renderSetCard(s, isCurrent) {
+  function renderSetCard(s, isCurrent, isTail) {
     const cv      = s.Source === 'cv';
     const pending = !!s.Pending;
     const color   = s.WorkoutColor || s.Color || '#6c757d';
@@ -189,9 +194,12 @@
            <button class="wall-set-btn reject"  title="Reject">✗</button>
          </div>`
       : '';
+    const cls = ['wall-set'];
+    if (isCurrent) cls.push('is-current');
+    if (isTail)    cls.push('wall-set--group-tail');
 
     return `
-      <article class="wall-set${isCurrent ? ' is-current' : ''}"
+      <article class="${cls.join(' ')}"
                data-set-id="${s.ID}" data-pending="${pending}">
         <div class="wall-set-color" style="background:${color}"></div>
         <div class="wall-set-body">

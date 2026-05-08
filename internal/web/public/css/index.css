@@ -333,7 +333,16 @@
   font-size: 0.875rem;
 }
 
-/* Workout entry row */
+/* Workout entry row.
+ *
+ * Sets of the same exercise are rendered as adjacent rows; we visually
+ * merge them into one group so the per-exercise color strip on the left
+ * reads as a single span across the whole exercise. .entry-group-tail
+ * is added to any row whose predecessor is the same exercise — that
+ * row drops its top border / radius. The :has() rule mirrors that on
+ * the head of any group with tails (drops bottom border / radius). End
+ * result: a contiguous run of rows looks like a single card.
+ */
 .workout-entry {
   display: flex;
   flex-direction: column;
@@ -344,6 +353,24 @@
   margin-bottom: 8px;
   background: var(--bs-body-bg);
   transition: 0.15s ease;
+}
+
+/* Tail rows: same exercise as the row above. Strip stays visible (so
+   the color spans the group); the row's own top edge dissolves into
+   the row above. */
+.workout-entry.entry-group-tail {
+  margin-top: 0;
+  border-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+/* Head-of-group-with-tails: drops its bottom edge so the row below
+   can flow into it. */
+.workout-entry:has(+ .entry-group-tail) {
+  margin-bottom: 0;
+  border-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 .entry-main {
@@ -373,18 +400,22 @@
 }
 
 .entry-color-strip {
-  width: 4px;
+  width: 6px;
   min-height: 38px;
   border-radius: 3px;
   flex-shrink: 0;
   align-self: stretch;
 }
 
-/* For consecutive sets of the same exercise, only the first entry shows the
-   color strip; subsequent entries keep the same width via visibility:hidden
-   so the body content stays aligned. */
+/* Within a group, square off the strip ends that meet adjacent rows
+   so the strips visually concatenate into one continuous bar. */
 .entry-group-tail .entry-color-strip {
-  visibility: hidden;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.workout-entry:has(+ .entry-group-tail) .entry-color-strip {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 .entry-name {
