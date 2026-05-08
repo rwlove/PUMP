@@ -236,6 +236,7 @@ def build_app(
         endpoint every ~1s. 404 if the camera isn't registered or hasn't
         produced a frame yet (cold start / disconnected)."""
         import cv2
+
         from .pose.yolo import registered_cameras
         for c in registered_cameras():
             if c.camera_name == name:
