@@ -52,12 +52,25 @@
       return;
     }
 
-    // Mark contiguous same-exercise rows as group tails so CSS can
-    // visually merge their cards into one (continuous color strip).
-    els.sets.innerHTML = todays.map((s, i) => {
-      const isTail = i > 0 && todays[i - 1].Name === s.Name;
-      return renderSetCard(s, i === 0, isTail);
-    }).join('');
+    // Wrap contiguous same-exercise runs in a .wall-set-group container
+    // so the group owns the per-exercise color stripe (one continuous
+    // ::before painted along its full height) instead of each row
+    // painting its own. Single-row groups still get wrapped — keeps
+    // visuals uniform.
+    let html = '';
+    let i = 0;
+    while (i < todays.length) {
+      const groupName = todays[i].Name;
+      const groupColor = todays[i].WorkoutColor || todays[i].Color || '#6c757d';
+      let j = i + 1;
+      while (j < todays.length && todays[j].Name === groupName) j++;
+      const rows = todays.slice(i, j)
+        .map((s, k) => renderSetCard(s, i + k === 0))
+        .join('');
+      html += `<div class="wall-set-group" style="--group-color: ${groupColor}">${rows}</div>`;
+      i = j;
+    }
+    els.sets.innerHTML = html;
 
     // Wire confirm/reject buttons.
     els.sets.querySelectorAll('.wall-set').forEach(node => {
@@ -181,10 +194,9 @@
     return String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
   }
 
-  function renderSetCard(s, isCurrent, isTail) {
+  function renderSetCard(s, isCurrent) {
     const cv      = s.Source === 'cv';
     const pending = !!s.Pending;
-    const color   = s.WorkoutColor || s.Color || '#6c757d';
 
     const cvBadge = cv ? '<span class="wall-set-cvbadge" title="Detected by camera">CV</span>' : '';
     const note    = s.Note ? `<div class="wall-set-meta">${escapeHTML(s.Note)}</div>` : '';
@@ -196,12 +208,10 @@
       : '';
     const cls = ['wall-set'];
     if (isCurrent) cls.push('is-current');
-    if (isTail)    cls.push('wall-set--group-tail');
 
     return `
       <article class="${cls.join(' ')}"
                data-set-id="${s.ID}" data-pending="${pending}">
-        <div class="wall-set-color" style="background:${color}"></div>
         <div class="wall-set-body">
           <div class="wall-set-name">${escapeHTML(s.Name)} ${cvBadge}</div>
           <div class="wall-set-numbers">
