@@ -16,14 +16,13 @@
 | ![Stats Body Weight](assets/screenshot-stats-weight.png) | ![Config](assets/screenshot-config.png) | |
 
 - [Architecture](#architecture)
-- [Android App](#android-app)
 - [Configuration](#configuration)
 
 ## Architecture
 
 ```
-Browser / Android app ──▶ pump  :8080  ──▶ PostgreSQL
-                          (UI + API)
+Browser ──▶ pump  :8080  ──▶ PostgreSQL
+            (UI + API)
 ```
 
 The `pump` monolith serves both the web UI and the JSON API on a **single port (default `8080`)**.
@@ -32,40 +31,13 @@ There is no separate API or frontend port — all traffic goes through `:8080`.
 | Path prefix | Purpose |
 |---|---|
 | `/` | Web UI (HTML, CSS, JS) |
-| `/api/` | JSON REST API (used by the Android app and direct integrations) |
+| `/api/` | JSON REST API (used by `pump-cv` and other in-cluster integrations) |
 
 Use image `ghcr.io/rwlove/pump`. Set `POSTGRES_DSN` and optionally `API_KEY`.
 
 ### Optional: pump-cv camera sidecar
 
 A separate Python service under [`cv/`](cv/) watches gym cameras, detects exercises/reps/sets, and writes them to PUMP via the per-set REST API. Disabled by default — enable on the config page (`CVAutoLog`) once cameras are installed and the sidecar is running. See [`docs/cv-autolog-plan.md`](docs/cv-autolog-plan.md) for the full design and [`cv/README.md`](cv/README.md) for runtime details.
-
-## Android App
-
-The PUMP Android app provides the same workout logging experience as the web UI, connecting to any PUMP API server you specify.
-
-**Requires Android 16 (API 36) or later.**
-
-| Workout | Stats | Weight |
-|---|---|---|
-| *(screenshot coming soon)* | *(screenshot coming soon)* | *(screenshot coming soon)* |
-
-### Installation
-
-Scan to download the latest APK:
-
-<p align="center"><img src="assets/qr-android-install.png" width="180" alt="QR code — PUMP Android APK"></p>
-
-Or download directly from the [Releases page](https://github.com/rwlove/PUMP/releases). You may need to allow installation from unknown sources on your device.
-
-### Configuration
-
-On first launch, open **Settings** and enter:
-
-| Field | Description |
-|---|---|
-| API URL | Base URL of your PUMP API server (e.g. `http://192.168.1.10:8080`) |
-| API Key | Optional — must match `API_KEY` on the server |
 
 ## Configuration
 

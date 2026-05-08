@@ -112,7 +112,7 @@ func apiKeyMiddleware(key string) gin.HandlerFunc {
 	}
 }
 
-// getPing is an unauthenticated liveness probe used by Android clients
+// getPing is an unauthenticated liveness probe API clients can use
 // to verify connectivity before committing settings.
 func getPing(c *gin.Context) {
 	slog.Debug("ping", slog.String("ip", c.ClientIP()))

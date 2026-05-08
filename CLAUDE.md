@@ -7,7 +7,7 @@ The logo lives in two canonical locations:
 - `internal/web/public/logo.svg` — served by the web UI at `/fs/public/logo.svg`
 - `assets/logo.svg` — used by the README
 
-Whenever the logo SVG is changed, **all four of the following must be updated in the same commit**:
+Whenever the logo SVG is changed, **all three of the following must be updated in the same commit**:
 
 1. **`internal/web/public/logo.svg`** and **`assets/logo.svg`** — keep them identical.
 2. **`internal/web/public/favicon.svg`** — rebuild as a compact square (64×64 viewBox) version
@@ -15,14 +15,12 @@ Whenever the logo SVG is changed, **all four of the following must be updated in
    bottom with the raised-P style. Update `favicon.png` too if tooling is available.
 3. **`README.md`** — the `<img src="assets/logo.svg">` tag already references the file; verify
    it still renders correctly after any viewBox or size change.
-4. **Android** — replace `android/app/src/main/res/drawable/logo.svg` (or equivalent) with the
-   new logo and rebuild the app icon / splash assets as needed.
 
 ## Release tag conventions
 
 Two independent tag lines, each driving its own CI:
 
-- `pump-vX.Y.Z` → publishes `ghcr.io/rwlove/pump:vX.Y.Z` (the Go server image) and the Android APK
+- `pump-vX.Y.Z` → publishes `ghcr.io/rwlove/pump:vX.Y.Z` (the Go server image)
 - `pump-cv-vA.B.C` → publishes `ghcr.io/rwlove/pump-cv:vA.B.C` (the Python sidecar image)
 
 The `pump-` / `pump-cv-` prefixes are stripped before tagging the image
@@ -33,24 +31,6 @@ remain as historical markers — they no longer trigger any CI.
 ## Before applying any new pump-v* tag
 
 Complete all steps in order before running `git tag`:
-
-### 0. Android APK QR code (automated — do not update manually)
-
-`assets/qr-android-install.png` is now regenerated automatically by the
-`android-publish.yml` CI workflow **after** the APK is successfully uploaded
-to the GitHub release. Do not update it manually before tagging.
-
-### 0b. Android screenshots (if Android changes were made)
-
-If any Android source files under `android/` changed since the last tag, take fresh screenshots using an Android emulator or connected device:
-
-```
-adb shell screencap -p /sdcard/pump_workout.png && adb pull /sdcard/pump_workout.png assets/screenshot-android-workout.png
-adb shell screencap -p /sdcard/pump_stats.png   && adb pull /sdcard/pump_stats.png   assets/screenshot-android-stats.png
-adb shell screencap -p /sdcard/pump_weight.png  && adb pull /sdcard/pump_weight.png  assets/screenshot-android-weight.png
-```
-
-Update the Android screenshot table in README.md to reference the new images. If no Android changes were made, skip this step (but step 0 — QR code — still applies).
 
 ### 1. Regenerate screenshots
 

@@ -62,7 +62,7 @@ func GinMiddleware() gin.HandlerFunc {
 			slog.Warn("http", attrs...)
 		case isAPI || debug:
 			// Always log successful API calls at Info so the server log
-			// shows every request the Android app (or any API client) makes.
+			// shows every request any API client makes.
 			slog.Info("http", attrs...)
 		}
 	}
