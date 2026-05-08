@@ -13,7 +13,6 @@ from collections.abc import AsyncIterator, Sequence
 
 from .types import FrameAndPoses, Keypoint, Pose
 
-
 # Skeleton topology used to back-compute (x, y) keypoint positions from
 # joint angles. We model a side-on view of a squat: hips at a fixed
 # height, knees flex/extend through the rep cycle, ankles fixed.

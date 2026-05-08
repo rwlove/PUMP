@@ -19,7 +19,6 @@ import numpy as np
 
 from .pose.types import Pose
 
-
 # COCO-17 skeleton edges (pairs of keypoint indices).
 _SKELETON_EDGES = (
     (5, 7), (7, 9),       # left arm

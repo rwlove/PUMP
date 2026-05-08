@@ -37,7 +37,6 @@ from ..pose.types import (
 )
 from .dtw import dtw_distance
 
-
 # (a_idx, b_idx, c_idx) triples — joint angle at b. Picked to be roughly
 # exhaustive across upper and lower body; the classifier doesn't need to
 # know which exercise uses which joint, just that the vector is the same

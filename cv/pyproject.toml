@@ -44,4 +44,9 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
-ignore = ["E501"]
+ignore = [
+  "E501",
+  # FastAPI's idiomatic dependency-injection markers (File/Form/Query/...)
+  # are intentionally function calls in defaults; B008 fires on every one.
+  "B008",
+]
