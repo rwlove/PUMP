@@ -115,8 +115,11 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ github.ref_name }}
-          cache-from: type=gha,scope=pump
-          cache-to: type=gha,mode=max,scope=pump
+          # Registry cache co-located with the image is faster than GHA
+          # storage and avoids the 10 GB GHA cap. The cache image lives
+          # under the same repo, separate :buildcache tag.
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
+          cache-to:   type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
 
       # ══ Path B: retag existing image (manifest copy only) ════════════════
       - name: Retag existing image

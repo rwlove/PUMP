@@ -11,6 +11,7 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   IMAGE: ghcr.io/${{ github.repository_owner }}/pump-cv
+  BASE_IMAGE: ghcr.io/${{ github.repository_owner }}/pump-cv-base
 
 jobs:
   build:
@@ -81,6 +82,25 @@ jobs:
         if: steps.check.outputs.needs_rebuild == 'true'
         uses: docker/setup-buildx-action@v3
 
+      # Resolve the pump-cv-base :latest tag to its immutable digest and
+      # pass it as a build-arg. Pinning prevents a mid-build base-image
+      # swap from producing an inconsistent runtime image, even though
+      # :latest is mutable.
+      - name: Resolve base image digest
+        if: steps.check.outputs.needs_rebuild == 'true'
+        id: base
+        run: |
+          DIGEST=$(docker buildx imagetools inspect "${BASE_IMAGE}:latest" \
+                     --format '{{ json .Manifest }}' \
+                     | python3 -c "import json,sys; print(json.load(sys.stdin)['digest'])")
+          if [ -z "$DIGEST" ]; then
+            echo "Failed to resolve ${BASE_IMAGE}:latest — has cv-base-publish ever run?"
+            exit 1
+          fi
+          PINNED="${BASE_IMAGE}@${DIGEST}"
+          echo "base image: ${PINNED}"
+          echo "pinned=${PINNED}" >> "$GITHUB_OUTPUT"
+
       - name: Extract metadata
         if: steps.check.outputs.needs_rebuild == 'true'
         id: meta
@@ -103,8 +123,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=pump-cv
-          cache-to: type=gha,mode=max,scope=pump-cv
+          build-args: |
+            BASE=${{ steps.base.outputs.pinned }}
+          # Registry cache co-located with the image: faster pull/push
+          # than GHA storage, and no 10 GB GHA cap.
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
+          cache-to:   type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
 
       # ══ Path B: retag existing image (manifest copy only) ═════════════════
       - name: Retag existing image

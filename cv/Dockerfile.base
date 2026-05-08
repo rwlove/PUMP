@@ -1,0 +1,69 @@
+# pump-cv runtime base image — heavy deps only.
+#
+# This is everything pump-cv needs to run *except* the pump-cv source
+# itself. Splitting it out means a code-only change in cv/pump_cv/...
+# rebuilds the runtime image in well under a minute — the heavy layers
+# (CUDA, torch, ultralytics, opencv) are pulled from this base instead
+# of redownloaded from PyPI on every tag bump.
+#
+# Tagged by:
+#   - the git SHA that built it (immutable, stable for runtime pins)
+#   - :latest (mutable, points at HEAD's most recent build)
+#
+# Triggered by `.github/workflows/cv-base-publish.yml`, which re-runs
+# whenever cv/Dockerfile.base or cv/pyproject.toml's dependency list
+# changes. Manual rebuilds are available via that workflow's
+# workflow_dispatch trigger.
+#
+# Notes on pinning:
+#   - PyTorch is forced to 2.5.1+cu121 specifically so the cu121
+#     wheel's sm_61 (Pascal/P40) stays in the wheel's arch list.
+#     PyTorch 2.6+ on PyPI ships cu126 which dropped sm_60/sm_61.
+#     The +cu121 local-version qualifier is required; --extra-index-url
+#     alone isn't enough since pip still sees PyPI for the version pick.
+#   - Ubuntu 22.04 base — nvidia/cuda doesn't publish a 12.4.1 ubuntu24.04
+#     variant. 22.04 ships python3.10 system-wide which is enough.
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Apt cache mounts persist /var/cache/apt and /var/lib/apt/lists across
+# builds so the .deb downloads don't get re-fetched on every base
+# rebuild. `sharing=locked` is fine for a single-arch build.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+        python3 \
+        python3-venv \
+        python3-pip \
+        ffmpeg \
+        libgl1 \
+        libglib2.0-0
+
+WORKDIR /app
+COPY pyproject.toml ./
+
+# Install everything pump-cv depends on, but not pump-cv itself
+# (the source is layered in by the runtime Dockerfile).
+#
+# Approach: read [project.dependencies] out of pyproject.toml via tomli
+# and pip-install from the resulting requirements list. Keeps this image
+# in lockstep with the package manifest without needing a separate
+# requirements.txt to maintain.
+#
+# pip cache mount preserves wheel downloads across base rebuilds —
+# saves another minute or two when only one dep was bumped.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip tomli \
+    && pip install --extra-index-url https://download.pytorch.org/whl/cu121 \
+        "torch==2.5.1+cu121" "torchvision==0.20.1+cu121" \
+    && python3 -c "import tomli; deps = tomli.load(open('pyproject.toml','rb'))['project']['dependencies']; open('/tmp/req.txt','w').write('\n'.join(deps))" \
+    && pip install -r /tmp/req.txt \
+    && rm /tmp/req.txt
+
+# Sanity check: torch sees Pascal/P40 (sm_61) in its compiled arch
+# list. Costs nothing at build time and catches a wheel regression
+# before the runtime image inherits a broken base.
+RUN python3 -c "import torch; archs = torch.cuda.get_arch_list(); print('torch:', torch.__version__, 'archs:', archs); assert 'sm_61' in archs, f'sm_61 not in {archs}'"

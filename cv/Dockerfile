@@ -1,45 +1,29 @@
-# pump-cv runtime image.
+# pump-cv runtime image. Heavy deps live in pump-cv-base
+# (built by .github/workflows/cv-base-publish.yml from Dockerfile.base
+# whenever pyproject.toml's deps or Dockerfile.base itself changes).
+# This image is intentionally tiny — code-only tag bumps ship in
+# under a minute because nothing here is more than a few hundred KB.
 #
-# Targets a CUDA-capable Linux node. The runtime base image carries CUDA
-# 12.x and cuDNN; PyTorch and its CUDA wheels are installed via pip on top.
-#
-# PyTorch is pinned to 2.5.1+cu121 to keep Pascal (sm_61, e.g. Tesla P40)
-# in the wheel's arch list. PyTorch 2.6+ on PyPI ships the cu126 build,
-# which dropped sm_60/sm_61. Using --extra-index-url alone is not enough:
-# pip still sees PyPI and picks the higher version, so the +cu121 local
-# version qualifier is required to force the cu121 wheel.
-#
-# Ubuntu 22.04 base — nvidia/cuda doesn't publish a 12.4.1 ubuntu24.04
-# variant (we tried). 22.04 ships python3.10 system-wide, which is
-# everything our code actually needs (we use 3.10+ features, none
-# 3.12-specific).
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS runtime
+# The cv-publish workflow resolves pump-cv-base:latest to its sha256
+# digest at build time and passes it via the BASE arg, pinning this
+# image's FROM line for reproducibility even though :latest is mutable.
 
-ENV DEBIAN_FRONTEND=noninteractive \
-    PYTHONUNBUFFERED=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3 \
-        python3-venv \
-        python3-pip \
-        ffmpeg \
-        libgl1 \
-        libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
+ARG BASE=ghcr.io/rwlove/pump-cv-base:latest
+FROM ${BASE}
 
 WORKDIR /app
 
-# Install Python deps first to keep layers cacheable.
+# pyproject.toml is needed for pip install --no-deps to resolve the
+# package metadata. The deps are already in the base.
 COPY pyproject.toml ./
-RUN pip install --upgrade pip \
-    && pip install --extra-index-url https://download.pytorch.org/whl/cu121 \
-        "torch==2.5.1+cu121" "torchvision==0.20.1+cu121" \
-    && pip install .
-
 COPY pump_cv ./pump_cv
 COPY configs ./configs
+
+# Install pump-cv itself with --no-deps; the deps are already in the
+# base image and we don't want pip to second-guess them. pip cache
+# mount is cheap and saves a few seconds on metadata fetch.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-deps .
 
 ENV PUMP_CV_CONFIG=/app/configs/default.yaml
 

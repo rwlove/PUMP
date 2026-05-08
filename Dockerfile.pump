@@ -3,10 +3,22 @@ FROM golang:alpine AS builder
 ARG VERSION=dev
 
 RUN apk add --no-cache build-base
-COPY . /src
-RUN cd /src && CGO_ENABLED=0 go build \
-    -ldflags "-X github.com/rwlove/PUMP/internal/web.Version=${VERSION}" \
-    -o /pump ./cmd/pump
+
+WORKDIR /src
+
+# Copy module manifests first so `go mod download` is cacheable across
+# code-only changes.
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
+
+COPY . .
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build \
+        -ldflags "-X github.com/rwlove/PUMP/internal/web.Version=${VERSION}" \
+        -o /pump ./cmd/pump
 
 FROM scratch
 
