@@ -31,7 +31,14 @@ body {
   font-size: 18px;
   -webkit-user-select: none;
   user-select: none;
-  cursor: none;          /* hide cursor on the kiosk; touch only */
+  /* Cursor is visible by default; wall.js sets body.cursor-idle after
+     3 minutes of no pointer movement to hide it on the kiosk. */
+}
+body.cursor-idle {
+  cursor: none;
+}
+body.cursor-idle * {
+  cursor: none !important;
 }
 
 /* ─── Grid ─────────────────────────────────────────────────────────────── */
