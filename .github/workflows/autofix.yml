@@ -5,7 +5,6 @@ on:
   workflow_run:
     workflows:
       - "Publish Container Images"
-      - "Binary-release"
     types: [completed]
 
 env:
