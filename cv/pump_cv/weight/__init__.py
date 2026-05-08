@@ -2,8 +2,8 @@ from .plate_color import (
     PLATE_COLORS,
     DetectedPlate,
     PlateColor,
-    estimate_barbell_load,
     detect_plates,
+    estimate_barbell_load,
 )
 
 __all__ = [

@@ -19,6 +19,7 @@
     date:     document.getElementById('wallDate'),
     clock:    document.getElementById('wallClock'),
     sets:     document.getElementById('wallSets'),
+    cams:     document.getElementById('wallCams'),
     status:   document.getElementById('wallStatus'),
     statusLabel: document.getElementById('wallStatusLabel'),
     sleep:    document.querySelector('.wall-sleep'),
@@ -48,7 +49,6 @@
 
     if (todays.length === 0) {
       els.sets.innerHTML = '<div class="wall-empty">No sets yet today.</div>';
-      renderVideo(null);
       return;
     }
 
@@ -62,27 +62,118 @@
       if (confirmBtn) confirmBtn.addEventListener('click', () => confirmSet(id));
       if (rejectBtn)  rejectBtn.addEventListener('click',  () => rejectSet(id));
     });
-
-    // Show the most recent set's clip in the video pane (if it has one).
-    renderVideo(todays[0]);
   }
 
-  // Tracks the currently-mounted clip src so we don't tear down + recreate
-  // the <video> on every set update.
-  let _videoSrc = null;
-  function renderVideo(set) {
-    const pane = document.querySelector('.wall-video');
-    const desired = (set && set.ClipPath) ? '/clips/' + set.ClipPath : null;
-    if (desired === _videoSrc) return;
-    _videoSrc = desired;
-    if (!desired) {
-      pane.innerHTML = '<div class="wall-video-placeholder" id="wallVideoPlaceholder">'
-                     + '<i class="wall-video-icon">▶</i>'
-                     + '<div class="wall-video-msg">Last-set replay shows here<br><small>(no clip yet)</small></div>'
-                     + '</div>';
-    } else {
-      pane.innerHTML = `<video class="wall-video-el" src="${desired}" autoplay loop muted playsinline></video>`;
+  // ─── Live camera previews ───────────────────────────────────────────
+  // Fetches the camera list from pump-cv (via pump's /api/cv/* proxy)
+  // and renders one tile per camera with a per-camera on/off toggle.
+  // When on, the tile polls the snapshot endpoint every CAM_POLL_MS
+  // and swaps the <img> src. Toggle state persists in localStorage so
+  // the kiosk remembers across reloads. The capture loop in pump-cv
+  // runs regardless of toggle state — this is purely a viewer toggle.
+  const CAM_POLL_MS = 1000;
+  const CAM_LS_KEY  = 'pump.wall.cams.enabled';
+  const camTimers   = new Map();   // name → setInterval handle
+  let camsLoaded    = false;
+
+  function loadCamPrefs() {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(CAM_LS_KEY) || '[]'));
+    } catch (_) { return new Set(); }
+  }
+  function saveCamPrefs(set) {
+    try { localStorage.setItem(CAM_LS_KEY, JSON.stringify(Array.from(set))); }
+    catch (_) { /* private mode etc — ignore */ }
+  }
+
+  async function loadCameras() {
+    if (camsLoaded) return;
+    try {
+      const r = await fetch('/api/cv/api/v1/cameras');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const cams = await r.json();
+      renderCams(cams || []);
+      camsLoaded = true;
+    } catch (e) {
+      console.warn('wall: camera list unavailable', e);
+      els.cams.innerHTML =
+        '<div class="wall-video-placeholder">' +
+        '<div class="wall-video-msg">Cameras unavailable<br><small>pump-cv unreachable</small></div>' +
+        '</div>';
     }
+  }
+
+  function renderCams(cams) {
+    if (!cams.length) {
+      els.cams.innerHTML =
+        '<div class="wall-video-placeholder">' +
+        '<div class="wall-video-msg">No cameras configured</div>' +
+        '</div>';
+      return;
+    }
+    const enabled = loadCamPrefs();
+    els.cams.innerHTML = cams.map(c => `
+      <div class="wall-cam" data-cam="${escapeHTML(c.name)}">
+        <div class="wall-cam-header">
+          <span class="wall-cam-name">${escapeHTML(c.name)}</span>
+          <label class="wall-cam-toggle">
+            <input type="checkbox" ${enabled.has(c.name) ? 'checked' : ''}>
+            <span class="wall-cam-toggle-slider"></span>
+          </label>
+        </div>
+        <div class="wall-cam-frame">
+          <img class="wall-cam-img" alt="${escapeHTML(c.name)} preview" hidden>
+          <div class="wall-cam-off">off</div>
+        </div>
+      </div>
+    `).join('');
+
+    cams.forEach(c => {
+      const tile  = els.cams.querySelector(`.wall-cam[data-cam="${cssEscape(c.name)}"]`);
+      const cbox  = tile.querySelector('input[type=checkbox]');
+      cbox.addEventListener('change', () => {
+        if (cbox.checked) startCam(c.name); else stopCam(c.name);
+        const cur = loadCamPrefs();
+        if (cbox.checked) cur.add(c.name); else cur.delete(c.name);
+        saveCamPrefs(cur);
+      });
+      if (enabled.has(c.name)) startCam(c.name);
+    });
+  }
+
+  function startCam(name) {
+    if (camTimers.has(name)) return;
+    const tile = els.cams.querySelector(`.wall-cam[data-cam="${cssEscape(name)}"]`);
+    if (!tile) return;
+    const img = tile.querySelector('.wall-cam-img');
+    const off = tile.querySelector('.wall-cam-off');
+    img.hidden = false;
+    off.hidden = true;
+    const tick = () => {
+      // Cache-buster — the snapshot endpoint sends Cache-Control: no-store
+      // anyway, but `?t=` defends against any intermediate caching layer.
+      img.src = `/api/cv/api/v1/cameras/${encodeURIComponent(name)}/snapshot?t=${Date.now()}`;
+    };
+    tick();
+    camTimers.set(name, setInterval(tick, CAM_POLL_MS));
+  }
+
+  function stopCam(name) {
+    const handle = camTimers.get(name);
+    if (handle) { clearInterval(handle); camTimers.delete(name); }
+    const tile = els.cams.querySelector(`.wall-cam[data-cam="${cssEscape(name)}"]`);
+    if (!tile) return;
+    const img = tile.querySelector('.wall-cam-img');
+    const off = tile.querySelector('.wall-cam-off');
+    img.hidden = true;
+    img.removeAttribute('src');
+    off.hidden = false;
+  }
+
+  // CSS.escape isn't on every kiosk browser; trivial escape covers
+  // our camera-name charset (alphanumeric + dash + underscore).
+  function cssEscape(s) {
+    return String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
   }
 
   function renderSetCard(s, isCurrent) {
@@ -225,6 +316,7 @@
 
   // ─── Boot ───────────────────────────────────────────────────────────
   loadInitialSets();
+  loadCameras();
   openSetsStream();
   openWallStream();
 

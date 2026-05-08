@@ -12,7 +12,7 @@
 // Versioning: bump CACHE_NAME when the shell changes meaningfully so
 // older caches get evicted on next activation.
 
-const CACHE_NAME = "pump-wall-v1";
+const CACHE_NAME = "pump-wall-v2";
 const SHELL = [
   "/wall/",
   "/fs/public/css/wall.css",
@@ -42,6 +42,11 @@ self.addEventListener("fetch", (event) => {
   // SSE streams must always go to network — caching them would be a
   // disaster (think: replaying yesterday's events forever).
   if (url.pathname.endsWith("/stream")) return;
+
+  // Live camera snapshots: pure passthrough to the network. Each poll
+  // carries a different ?t= cache-buster, so caching every response
+  // would grow the cache unboundedly with effectively-duplicate images.
+  if (url.pathname.includes("/cameras/") && url.pathname.endsWith("/snapshot")) return;
 
   // /api/: network-first, fall back to cache only for safe reads.
   if (url.pathname.startsWith("/api/")) {

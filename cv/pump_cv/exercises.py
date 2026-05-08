@@ -20,7 +20,6 @@ from .pose.types import (
     LEFT_WRIST,
 )
 
-
 _DEFAULT_SPECS: dict[str, ExerciseSpec] = {
     # Lower-body — knee flexion drives the rep
     "Squat":         ExerciseSpec("Squat",         LEFT_HIP, LEFT_KNEE, LEFT_ANKLE),

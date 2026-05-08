@@ -25,7 +25,6 @@ from typing import Protocol, TypeAlias
 
 import numpy as np
 
-
 # Named indices into Pose.keypoints
 NOSE = 0
 LEFT_SHOULDER = 5

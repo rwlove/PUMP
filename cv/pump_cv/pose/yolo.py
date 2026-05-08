@@ -54,6 +54,10 @@ class YOLOPoseSource:
         from collections import deque
         self._frame_times: deque[float] = deque(maxlen=60)
         self._connected: bool = False
+        # Most-recent decoded BGR frame, exposed via healthd for the
+        # wall-page live preview. Single-writer (capture loop), reader
+        # tolerates stale frames so no lock is needed.
+        self._latest_frame = None
         register_camera(self)
 
     # ─── admin introspection ─────────────────────────────────────────
@@ -75,7 +79,13 @@ class YOLOPoseSource:
             "source": self._source,
             "fps": round(fps, 1),
             "connected": self._connected,
+            "has_frame": self._latest_frame is not None,
         }
+
+    def latest_frame(self):
+        """Return the most recent decoded BGR frame, or None if the
+        capture loop hasn't produced one yet (or has disconnected)."""
+        return self._latest_frame
 
     def _ensure_model(self) -> None:
         if self._model is None:
@@ -136,6 +146,7 @@ class YOLOPoseSource:
                 ts = frame_idx * frame_period if is_file else time.time()
                 frame_idx += 1
                 self._frame_times.append(time.time())
+                self._latest_frame = frame
 
                 results = await asyncio.to_thread(
                     self._model.predict,
@@ -147,6 +158,7 @@ class YOLOPoseSource:
                 yield frame, self._results_to_poses(results, ts)
         finally:
             self._connected = False
+            self._latest_frame = None
             cap.release()
 
     def _results_to_poses(self, results, ts: float) -> list[Pose]:

@@ -8,12 +8,10 @@ fused stream.
 
 from __future__ import annotations
 
-import asyncio
-
 import numpy as np
 import pytest
 
-from pump_cv.fusion import CameraCalibration, make_pose_from_3d
+from pump_cv.fusion import CameraCalibration
 from pump_cv.pose.fused import FusedPoseSource
 from pump_cv.pose.mock import MockPoseSource
 

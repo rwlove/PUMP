@@ -341,9 +341,9 @@ Deliverables:
 - **Driver path on Pascal.** P40 is supported by current NVIDIA drivers
   and CUDA 12.x, but verify the K8s node image and device plugin
   combination at the start of Phase 1.
-- **API auth surface widening.** Adding `pump-cv` as a second API client
-  doubles the blast radius of a key leak. Consider a dedicated key for
-  `pump-cv` distinct from the Android client's key.
+- **API auth surface widening.** `pump-cv` as a server-to-server API
+  client widens the blast radius of a key leak. Consider a dedicated
+  key for `pump-cv` rather than reusing the server's primary `API_KEY`.
 
 ## Decisions log
 

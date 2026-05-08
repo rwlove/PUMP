@@ -86,7 +86,7 @@ def failing_workflow_file() -> str | None:
     """
     Return the repo-relative path of the workflow file that failed,
     passed in via the FAILED_WORKFLOW_PATH env var set by the workflow step.
-    E.g. ".github/workflows/android-publish.yml"
+    E.g. ".github/workflows/container-publish.yml"
     """
     path = os.environ.get("FAILED_WORKFLOW_PATH", "").strip()
     if not path:

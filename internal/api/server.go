@@ -47,12 +47,6 @@ func SetConfig(cfg models.Conf) {
 	)
 }
 
-// APIKeyMiddleware returns Gin middleware that requires the given key in the
-// X-Api-Key header. Exported for use by cmd/pump (monolith).
-func APIKeyMiddleware(key string) gin.HandlerFunc {
-	return apiKeyMiddleware(key)
-}
-
 // registerRoutes mounts all API routes on r. Shared by Start() and RegisterRoutes().
 func registerRoutes(r *gin.Engine) {
 	// Health / connectivity probe (no auth required)
@@ -93,26 +87,7 @@ func registerRoutes(r *gin.Engine) {
 	r.POST("/api/notify/test", postNotifyTest)
 }
 
-// ─── middleware ───────────────────────────────────────────────────────────────
-
-func apiKeyMiddleware(key string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		provided := c.GetHeader("X-Api-Key")
-		if provided != key {
-			slog.Warn("rejected request: missing or invalid API key",
-				slog.String("ip", c.ClientIP()),
-				slog.String("method", c.Request.Method),
-				slog.String("path", c.Request.URL.Path),
-				slog.Bool("key_provided", provided != ""),
-			)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-			return
-		}
-		c.Next()
-	}
-}
-
-// getPing is an unauthenticated liveness probe used by Android clients
+// getPing is an unauthenticated liveness probe API clients can use
 // to verify connectivity before committing settings.
 func getPing(c *gin.Context) {
 	slog.Debug("ping", slog.String("ip", c.ClientIP()))

@@ -64,7 +64,7 @@ def triangulate_pose(
     pts_a = []
     pts_b = []
     keep = []
-    for i, (ka, kb) in enumerate(zip(pose_a.keypoints, pose_b.keypoints, strict=False)):
+    for _i, (ka, kb) in enumerate(zip(pose_a.keypoints, pose_b.keypoints, strict=False)):
         if ka.confidence < min_keypoint_confidence or kb.confidence < min_keypoint_confidence:
             keep.append(False)
             pts_a.append([0.0, 0.0])

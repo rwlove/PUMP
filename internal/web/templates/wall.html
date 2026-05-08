@@ -23,11 +23,17 @@
     </div>
   </section>
 
-  <!-- Right: video / snapshot pane (phase 2 will fill the loop here) -->
+  <!-- Right: video / snapshot pane. Live previews of the configured
+       cameras (one tile per camera) are populated by wall.js once it
+       fetches /api/cv/api/v1/cameras. Each tile has a toggle that
+       starts/stops the snapshot polling loop; state persists in
+       localStorage. -->
   <section class="wall-video">
-    <div class="wall-video-placeholder" id="wallVideoPlaceholder">
-      <i class="wall-video-icon">▶</i>
-      <div class="wall-video-msg">Last-set replay shows here<br><small>(phase 2)</small></div>
+    <div class="wall-cams" id="wallCams">
+      <div class="wall-video-placeholder" id="wallVideoPlaceholder">
+        <i class="wall-video-icon">▶</i>
+        <div class="wall-video-msg">Loading cameras…</div>
+      </div>
     </div>
   </section>
 </div>
