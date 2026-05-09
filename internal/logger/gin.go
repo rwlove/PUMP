@@ -9,14 +9,15 @@ import (
 
 // GinMiddleware returns a Gin handler that logs every request.
 //
-//   - DEBUG level: all requests (method, path, query, status, latency, client IP, bytes)
-//   - INFO  level: 4xx/5xx responses on any route; all /api/ responses
+//   - DEBUG level: every successful request (the wall page polls
+//                   /api/cv/api/v1/cameras/<name>/snapshot at 1 Hz, so
+//                   API success at INFO would drown the log; use DEBUG
+//                   if you want to see them)
 //   - WARN  level: 4xx responses
 //   - ERROR level: 5xx responses
 //
 // Use this instead of gin.Default()'s built-in logger.
 func GinMiddleware() gin.HandlerFunc {
-	debug := IsDebug()
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
@@ -60,10 +61,8 @@ func GinMiddleware() gin.HandlerFunc {
 			slog.Error("http", attrs...)
 		case status >= 400:
 			slog.Warn("http", attrs...)
-		case isAPI || debug:
-			// Always log successful API calls at Info so the server log
-			// shows every request any API client makes.
-			slog.Info("http", attrs...)
+		default:
+			slog.Debug("http", attrs...)
 		}
 	}
 }
