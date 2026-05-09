@@ -45,9 +45,15 @@ body.cursor-idle * {
 .wall-grid {
   display: grid;
   grid-template-columns: 1fr;
-  height: 100vh;
+  /* The shared navbar (header.html) sits above the grid. Take the
+     viewport height minus the navbar's rendered height so the bottom
+     of the set list isn't clipped by the body's overflow:hidden. */
+  height: calc(100vh - var(--wall-navbar-h, 56px));
   gap: 0;
 }
+/* Stop the navbar from getting in the way — the kiosk's user-select:none
+   on body would otherwise apply here too. */
+.navbar { user-select: text; -webkit-user-select: text; }
 
 /* ─── Data column (full width since the right video pane was removed) ─── */
 .wall-data {

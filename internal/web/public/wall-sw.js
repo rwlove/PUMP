@@ -12,7 +12,7 @@
 // Versioning: bump CACHE_NAME when the shell changes meaningfully so
 // older caches get evicted on next activation.
 
-const CACHE_NAME = "pump-wall-v2";
+const CACHE_NAME = "pump-wall-v3";
 const SHELL = [
   "/wall/",
   "/fs/public/css/wall.css",
