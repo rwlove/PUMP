@@ -182,7 +182,7 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
     var safeNote   = note || '';
     var priorNote  = (prior && prior.Note) ? prior.Note : '';
 
-    var setBadge = '<span class="set-badge">S' + setNum + '</span>';
+    var setBadge = '<span class="set-badge">Set ' + setNum + '</span>';
 
     var speechSupported = ('webkitSpeechRecognition' in window) || ('SpeechRecognition' in window);
     var micBtn = speechSupported
@@ -321,6 +321,7 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
     container.appendChild(entry);
     refreshSetBadges();
     updateEmptyState();
+    refreshWeekStreak();
     // Mark new (no server id yet) entries dirty so the next autosave POSTs them.
     if (!meta.id) markDirty(entry);
     scheduleAutosave();
@@ -335,7 +336,23 @@ function removeEntry(entry, viaApi) {
     entry.remove();
     updateEmptyState();
     refreshSetBadges();
+    refreshWeekStreak();
     if (!viaApi) scheduleAutosave();
+}
+
+// refreshWeekStreak recomputes the "Last 7 days" panel using a snapshot
+// that overrides the currently-viewed date with the live #todayEx count.
+// This keeps the today bubble in sync the moment a set is added or
+// removed, without needing the autosave roundtrip to mutate _allSets.
+function refreshWeekStreak() {
+    var dom = document.getElementById('todayEx');
+    var domCount = dom ? dom.querySelectorAll('.workout-entry').length : 0;
+    var historical = (window._allSets || []).filter(function(s) {
+        return s.Date !== today;
+    });
+    var stubs = [];
+    for (var i = 0; i < domCount; i++) stubs.push({ Date: today });
+    renderWeekStreak(historical.concat(stubs));
 }
 
 // confirmEntry collects current values and POSTs them to the confirm endpoint.
@@ -418,7 +435,7 @@ function refreshSetBadges() {
         var name = hidden.getAttribute('data-exname');
         counters[name] = (counters[name] || 0) + 1;
         var badge = entry.querySelector('.set-badge');
-        if (badge) badge.textContent = 'S' + counters[name];
+        if (badge) badge.textContent = 'Set ' + counters[name];
     });
 
     // Count total occurrences per name so we know when to show/hide the badge.
