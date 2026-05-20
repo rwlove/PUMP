@@ -341,7 +341,6 @@ def build_app(
         """Run intrinsics-per-camera + stereo extrinsics on the captured
         pairs, write the .npz files, transition state to ready."""
         from .calibration import calibrate_intrinsics, calibrate_stereo, save_camera
-
         from .pose.yolo import registered_cameras
         cams = list(registered_cameras())
         if len(cams) < 2:
@@ -400,7 +399,7 @@ def build_app(
         except Exception as e:
             logger.warning("calibration compute failed", error=str(e))
             cv_state.set_phase("error", error=str(e))
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e)) from e
 
         return cv_state.to_dict()
 
