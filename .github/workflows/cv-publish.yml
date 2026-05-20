@@ -79,6 +79,21 @@ jobs:
       # Multi-arch (linux/amd64 + linux/arm64) — pump-cv-base is now on
       # nvcr.io/nvidia/pytorch which publishes both arches, so the GPU
       # sidecar can schedule on the arm64 Spark/GB10 node.
+      #
+      # Same disk-space caveat as cv-base-publish: the nvcr.io base is
+      # ~10 GB per arch and the runtime image stacks on top. Free
+      # ~50 GB before the build to avoid OOM-disk.
+      - name: Free disk space
+        if: steps.check.outputs.needs_rebuild == 'true'
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: false
+
       - name: Set up QEMU
         if: steps.check.outputs.needs_rebuild == 'true'
         uses: docker/setup-qemu-action@v3
