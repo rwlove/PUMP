@@ -15,29 +15,31 @@
 # changes. Manual rebuilds are available via that workflow's
 # workflow_dispatch trigger.
 #
-# Notes on pinning:
-#   - PyTorch is forced to 2.5.1+cu121 specifically so the cu121
-#     wheel's sm_61 (Pascal/P40) stays in the wheel's arch list.
-#     PyTorch 2.6+ on PyPI ships cu126 which dropped sm_60/sm_61.
-#     The +cu121 local-version qualifier is required; --extra-index-url
-#     alone isn't enough since pip still sees PyPI for the version pick.
-#   - Ubuntu 22.04 base — nvidia/cuda doesn't publish a 12.4.1 ubuntu24.04
-#     variant. 22.04 ships python3.10 system-wide which is enough.
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+# Base image notes:
+#   - `nvcr.io/nvidia/pytorch:25.04-py3` is multi-arch (linux/amd64 +
+#     linux/arm64) and ships PyTorch 2.7 + CUDA 12.9 with
+#     TORCH_CUDA_ARCH_LIST covering Blackwell (sm_120 / GB10 / Spark).
+#     This replaces the prior nvidia/cuda:12.4.1 + cu121 wheel approach,
+#     which was amd64-only — pytorch.org's cu* wheel channels don't
+#     publish aarch64.
+#   - Trade-off: dropping cu121 also drops Pascal (sm_61 / P40)
+#     compatibility. The cu121 pin was kept specifically so the P40 stayed
+#     supported; the move to the nvcr.io stack starts at Volta (sm_70) and
+#     is the right call now that pump-cv is moving to the Spark/GB10 node.
+#   - Image is large (~10 GB) but heavy layers stay in the ZOT pull-through
+#     cache; code-only tag bumps still ship in ~1 min via the runtime image.
+FROM nvcr.io/nvidia/pytorch:25.04-py3
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Apt cache mounts persist /var/cache/apt and /var/lib/apt/lists across
-# builds so the .deb downloads don't get re-fetched on every base
-# rebuild. `sharing=locked` is fine for a single-arch build.
+# Runtime deps the nvcr.io base doesn't already ship: ffmpeg (video I/O),
+# libgl1 + libglib2.0-0 (OpenCV runtime). Python + pip + torch are
+# pre-installed in the base.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
-        python3 \
-        python3-venv \
-        python3-pip \
         ffmpeg \
         libgl1 \
         libglib2.0-0
@@ -48,24 +50,20 @@ COPY pyproject.toml ./
 # Install everything pump-cv depends on, but not pump-cv itself
 # (the source is layered in by the runtime Dockerfile).
 #
-# Approach: read [project.dependencies] out of pyproject.toml via tomli
-# and pip-install from the resulting requirements list. Keeps this image
-# in lockstep with the package manifest without needing a separate
-# requirements.txt to maintain.
+# The nvcr.io base ships torch + torchvision pre-built for both arches
+# already; ultralytics and the other deps declare torch>=X and pip's
+# resolver accepts the base's pre-installed torch (no --upgrade flag,
+# no version bump triggered).
 #
-# pip cache mount preserves wheel downloads across base rebuilds —
-# saves another minute or two when only one dep was bumped.
+# pip cache mount preserves wheel downloads across base rebuilds.
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --upgrade pip tomli \
-    && pip install --extra-index-url https://download.pytorch.org/whl/cu121 \
-        "torch==2.5.1+cu121" "torchvision==0.20.1+cu121" \
     && python3 -c "import tomli; deps = tomli.load(open('pyproject.toml','rb'))['project']['dependencies']; open('/tmp/req.txt','w').write('\n'.join(deps))" \
     && pip install -r /tmp/req.txt \
     && rm /tmp/req.txt
 
 # Diagnostic: print the compiled arch list so a future regression is
-# visible in build logs. We don't assert on a specific arch — cu121
-# may list sm_60 (which covers sm_61 via cubin compat) or include PTX
-# that JITs onto Pascal at runtime, both of which work on the P40
-# even though the literal string 'sm_61' doesn't appear.
+# visible in build logs. With the nvcr.io base on 25.04, expect sm_70
+# through sm_120 (Volta through Blackwell). Pascal (sm_61) is not
+# expected — see the Trade-off note in the base image comments above.
 RUN python3 -c "import torch; print('torch:', torch.__version__, 'archs:', torch.cuda.get_arch_list())"

@@ -23,10 +23,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass, field, asdict
+import os
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
-
 
 Phase = Literal["needs_calibration", "calibrating", "ready", "error"]
 
@@ -96,8 +96,6 @@ def is_ready() -> bool:
 # All artifacts live under one root so pump-cv only needs one mounted
 # volume to persist calibration. Default matches the home-ops
 # ``cache`` PVC mount; tests override via PUMP_CV_CACHE_DIR.
-
-import os
 
 
 def cache_root() -> Path:
