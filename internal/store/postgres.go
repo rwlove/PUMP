@@ -258,10 +258,17 @@ func (s *PostgresStore) BulkReplaceSetsByDate(date string, sets []models.Set) er
 
 // ─── weight ───────────────────────────────────────────────────────────────────
 
+// SelectW returns one BodyWeight per distinct date — the latest by
+// recorded_at — sorted oldest-first. Raw per-reading rows persist in the
+// table; this query just collapses to one-displayed-per-date so the UI
+// can show "today's weight" and the chart plots one point per day.
+// Delete the displayed row to reveal the next-latest reading for that date.
 func (s *PostgresStore) SelectW() ([]models.BodyWeight, error) {
 	slog.Debug("db: SelectW")
 	rows, err := s.pool.Query(context.Background(),
-		"SELECT id, date::text, weight::text FROM weight ORDER BY id ASC")
+		`SELECT DISTINCT ON (date) id, date::text, recorded_at::text, weight::text
+		 FROM weight
+		 ORDER BY date, recorded_at DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -271,7 +278,7 @@ func (s *PostgresStore) SelectW() ([]models.BodyWeight, error) {
 	for rows.Next() {
 		var w models.BodyWeight
 		var weightStr string
-		if err := rows.Scan(&w.ID, &w.Date, &weightStr); err != nil {
+		if err := rows.Scan(&w.ID, &w.Date, &w.RecordedAt, &weightStr); err != nil {
 			return nil, err
 		}
 		w.Weight, _ = decimal.NewFromString(weightStr)
@@ -281,11 +288,19 @@ func (s *PostgresStore) SelectW() ([]models.BodyWeight, error) {
 	return ws, rows.Err()
 }
 
+// InsertW persists one raw weight reading. If RecordedAt is empty the DB
+// default (NOW()) is used — covers the manual web-form path where the
+// browser hasn't supplied a precise instant. Scale clients (ESPHome) send
+// the precise reading time.
 func (s *PostgresStore) InsertW(w models.BodyWeight) error {
-	slog.Debug("db: InsertW", slog.String("date", w.Date), slog.String("weight", w.Weight.String()))
+	slog.Debug("db: InsertW", slog.String("date", w.Date), slog.String("recorded_at", w.RecordedAt), slog.String("weight", w.Weight.String()))
+	var recordedAt interface{}
+	if w.RecordedAt != "" {
+		recordedAt = w.RecordedAt
+	}
 	_, err := s.pool.Exec(context.Background(),
-		"INSERT INTO weight (date, weight) VALUES ($1::date, $2)",
-		w.Date, w.Weight.String())
+		"INSERT INTO weight (date, recorded_at, weight) VALUES ($1::date, COALESCE($2::timestamptz, NOW()), $3)",
+		w.Date, recordedAt, w.Weight.String())
 	return err
 }
 

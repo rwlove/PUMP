@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +22,11 @@ var (
 	dataStore store.Store
 	pushover  *notify.Pushover // may be nil; safe to invoke either way
 	publicURL string           // base URL for deep-links in notifications
+	// weightIngestKey, when non-empty, requires POST /api/weight callers to
+	// present a matching X-Api-Key header. Empty preserves the legacy
+	// no-inbound-auth posture for in-cluster callers and the manual
+	// web-form path (which goes through /wadd/, not /api/weight).
+	weightIngestKey string
 )
 
 // RegisterRoutes mounts all API routes on r using the provided store and
@@ -34,8 +40,10 @@ func RegisterRoutes(r *gin.Engine, s store.Store, cfg models.Conf, p *notify.Pus
 	dataStore = s
 	pushover = p
 	publicURL = pubURL
+	weightIngestKey = os.Getenv("WEIGHT_INGEST_KEY")
 	registerRoutes(r)
-	slog.Debug("api routes registered")
+	slog.Debug("api routes registered",
+		slog.Bool("weight_ingest_key_configured", weightIngestKey != ""))
 }
 
 // SetConfig updates the in-memory appConfig. Called by the monolith web layer
@@ -71,7 +79,7 @@ func registerRoutes(r *gin.Engine) {
 
 	// Body weight
 	r.GET("/api/weight", getWeight)
-	r.POST("/api/weight", postWeight)
+	r.POST("/api/weight", weightIngestAuth(), postWeight)
 	r.DELETE("/api/weight/:id", deleteWeight)
 
 	// Config
@@ -519,13 +527,39 @@ func getWeight(c *gin.Context) {
 	c.JSON(http.StatusOK, ws)
 }
 
+// weightIngestAuth gates POST /api/weight when WEIGHT_INGEST_KEY is set.
+// Off-cluster callers (e.g. the BLE-scale ESPHome firmware) reach this
+// endpoint via a path-scoped Route that bypasses oauth2-proxy; this header
+// check is the only auth in that path. When the key is unset the middleware
+// is a no-op, preserving the in-cluster-only posture.
+func weightIngestAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if weightIngestKey == "" {
+			c.Next()
+			return
+		}
+		if c.GetHeader("X-Api-Key") != weightIngestKey {
+			slog.Warn("weight ingest: rejected",
+				slog.String("ip", c.ClientIP()),
+				slog.Bool("header_present", c.GetHeader("X-Api-Key") != ""))
+			c.AbortWithStatusJSON(http.StatusUnauthorized,
+				gin.H{"error": "invalid or missing X-Api-Key"})
+			return
+		}
+		c.Next()
+	}
+}
+
 func postWeight(c *gin.Context) {
 	var w models.BodyWeight
 	if err := c.ShouldBindJSON(&w); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	slog.Debug("postWeight", slog.String("date", w.Date), slog.String("weight", w.Weight.String()))
+	slog.Debug("postWeight",
+		slog.String("date", w.Date),
+		slog.String("recorded_at", w.RecordedAt),
+		slog.String("weight", w.Weight.String()))
 	if err := dataStore.InsertW(w); err != nil {
 		slog.Error("postWeight: InsertW failed", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

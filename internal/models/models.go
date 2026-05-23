@@ -78,11 +78,15 @@ type AllExData struct {
 	Weight []BodyWeight
 }
 
-// BodyWeight - store weight
+// BodyWeight - store weight. RecordedAt is the precise instant the reading
+// was taken (ISO8601 with TZ). Date is the logical day the reading belongs
+// to and is what the UI groups/displays by — multiple readings can share a
+// date and the latest recorded_at wins for display.
 type BodyWeight struct {
-	ID     int             `db:"ID"`
-	Date   string          `db:"DATE"`
-	Weight decimal.Decimal `db:"WEIGHT"`
+	ID         int             `db:"ID"`
+	Date       string          `db:"DATE"`
+	RecordedAt string          `db:"RECORDED_AT"`
+	Weight     decimal.Decimal `db:"WEIGHT"`
 }
 
 // GuiData - web gui data

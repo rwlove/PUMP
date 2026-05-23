@@ -92,6 +92,17 @@ ALTER TABLE sets ALTER COLUMN confidence TYPE DOUBLE PRECISION;
 ALTER TABLE sets ADD COLUMN IF NOT EXISTS clip_path TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		Version:     7,
+		Description: "add recorded_at to weight; one displayed row per date (latest wins)",
+		SQL: `
+ALTER TABLE weight ADD COLUMN IF NOT EXISTS recorded_at TIMESTAMPTZ;
+UPDATE weight SET recorded_at = (date::text || ' 12:00:00')::timestamptz WHERE recorded_at IS NULL;
+ALTER TABLE weight ALTER COLUMN recorded_at SET NOT NULL;
+ALTER TABLE weight ALTER COLUMN recorded_at SET DEFAULT NOW();
+CREATE INDEX IF NOT EXISTS weight_date_recorded_at_idx ON weight (date, recorded_at DESC);
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any

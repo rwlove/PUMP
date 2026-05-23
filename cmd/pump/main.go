@@ -32,6 +32,10 @@ func envOr(key, def string) string {
 //	POSTGRES_DSN       PostgreSQL connection string          (required)
 //	API_KEY            sent as X-Api-Key when proxying to pump-cv (server-to-server only;
 //	                   no inbound auth — pump itself is gated by oauth2-proxy on the gateway)
+//	WEIGHT_INGEST_KEY  when set, POST /api/weight requires header X-Api-Key matching this
+//	                   value. Enables off-cluster ingest (e.g. an ESPHome BLE-scale device
+//	                   reaching pump-api via an oauth2-bypassing internal Route scoped to
+//	                   /api/weight only). Unset preserves the in-cluster no-auth posture.
 //	NODE_PATH          path to local node_modules            (default: "", use CDN)
 //	CVAUTOLOG          accept set writes from pump-cv        (default: false; toggleable in UI)
 //	PUSHOVER_USER_KEY  Pushover user key for notifications   (env-only, not in UI)
