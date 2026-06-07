@@ -523,6 +523,11 @@ function setFormContent(sets, date) {
     var btn = document.getElementById('dateDisplayBtn');
     if (btn) btn.textContent = formatFriendlyDate(date);
 
+    // Mark the matching "Last 7 days" dot as selected (if the date is in range).
+    document.querySelectorAll('.week-dot-item').forEach(function(it) {
+        it.classList.toggle('is-selected', it.getAttribute('data-date') === date);
+    });
+
     if (sets) {
         for (var i = 0; i < sets.length; i++) {
             if (sets[i].Date == date) {
@@ -700,12 +705,17 @@ function renderWeekStreak(sets) {
         var isToday = i === 0;
         var hasWorkout = sets && sets.some(function(s) { return s.Date === dateStr; });
         if (hasWorkout) activeCount++;
-        items.push({ label: dayLetters[d.getDay()], active: hasWorkout, today: isToday });
+        items.push({ label: dayLetters[d.getDay()], active: hasWorkout, today: isToday, date: dateStr });
     }
     var dotsHtml = items.map(function(item) {
         var dotCls = 'week-dot' + (item.active ? ' has-workout' : '') + (item.today ? ' is-today' : '');
         var lblCls = 'week-dot-label' + (item.today ? ' is-today' : '');
-        return '<div class="week-dot-item"><div class="' + dotCls + '"></div><span class="' + lblCls + '">' + item.label + '</span></div>';
+        // Click a day to jump the workout view to it (same path as prev/next).
+        return '<div class="week-dot-item" role="button" tabindex="0" title="' + item.date + '"' +
+            ' style="cursor:pointer" data-date="' + item.date + '"' +
+            ' onclick="setFormContent(window._allSets, \'' + item.date + '\')"' +
+            ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();setFormContent(window._allSets,\'' + item.date + '\');}">' +
+            '<div class="' + dotCls + '"></div><span class="' + lblCls + '">' + item.label + '</span></div>';
     }).join('');
     el.innerHTML = '<div class="panel week-streak-panel"><div class="week-streak-inner">' +
         '<span class="week-streak-title">Last 7 days</span>' +
