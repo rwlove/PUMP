@@ -2,9 +2,11 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
@@ -308,4 +310,112 @@ func (s *PostgresStore) DeleteW(id int) error {
 	slog.Debug("db: DeleteW", slog.Int("id", id))
 	_, err := s.pool.Exec(context.Background(), "DELETE FROM weight WHERE id = $1", id)
 	return err
+}
+
+// ─── health records (Android Health Connect) ───────────────────────────────────
+
+// InsertHealthRecords persists a batch of wearable health records in one
+// transaction. Each row is deduped via ON CONFLICT on
+// (metric_type, start_time, end_time) DO NOTHING, so the HC Webhook bridge's
+// rolling-48h re-delivery collapses to no-ops. Returns the count inserted
+// (excludes conflicts). end_time is expected non-NULL (the parser sets it to
+// start_time for instantaneous samples) so dedupe works with standard
+// NULL-distinct semantics.
+func (s *PostgresStore) InsertHealthRecords(recs []models.HealthRecord) (int, error) {
+	slog.Debug("db: InsertHealthRecords", slog.Int("count", len(recs)))
+	if len(recs) == 0 {
+		return 0, nil
+	}
+	ctx := context.Background()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx)
+
+	inserted := 0
+	for _, r := range recs {
+		var endTime interface{}
+		if r.EndTime != nil {
+			endTime = *r.EndTime
+		}
+		var value interface{}
+		if r.Value != nil {
+			value = r.Value.String()
+		}
+		var extra interface{}
+		if len(r.Extra) > 0 {
+			extra = []byte(r.Extra)
+		}
+		source := r.Source
+		if source == "" {
+			source = "health-connect"
+		}
+		ct, err := tx.Exec(ctx,
+			`INSERT INTO health_record (metric_type, start_time, end_time, value, unit, extra, source)
+			 VALUES ($1, $2, $3, $4::numeric, $5, $6::jsonb, $7)
+			 ON CONFLICT ON CONSTRAINT health_record_dedupe DO NOTHING`,
+			r.MetricType, r.StartTime, endTime, value, r.Unit, extra, source)
+		if err != nil {
+			slog.Debug("db: InsertHealthRecords row failed",
+				slog.String("type", r.MetricType), slog.Any("error", err))
+			return inserted, err
+		}
+		inserted += int(ct.RowsAffected())
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return inserted, err
+	}
+	slog.Debug("db: InsertHealthRecords committed",
+		slog.Int("received", len(recs)), slog.Int("inserted", inserted))
+	return inserted, nil
+}
+
+// SelectHealthRecords returns records at or after since, newest first.
+// metricType "" returns all types. Capped at 5000 rows to bound the
+// response for the UI.
+func (s *PostgresStore) SelectHealthRecords(metricType string, since time.Time) ([]models.HealthRecord, error) {
+	slog.Debug("db: SelectHealthRecords",
+		slog.String("type", metricType), slog.Time("since", since))
+
+	q := `SELECT id, metric_type, start_time, end_time, value::text, unit, extra, source, ingested_at
+	      FROM health_record
+	      WHERE start_time >= $1`
+	args := []any{since}
+	if metricType != "" {
+		q += ` AND metric_type = $2`
+		args = append(args, metricType)
+	}
+	q += ` ORDER BY start_time DESC LIMIT 5000`
+
+	rows, err := s.pool.Query(context.Background(), q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.HealthRecord
+	for rows.Next() {
+		var r models.HealthRecord
+		var endTime *time.Time
+		var valueStr *string
+		var extra []byte
+		if err := rows.Scan(&r.ID, &r.MetricType, &r.StartTime, &endTime,
+			&valueStr, &r.Unit, &extra, &r.Source, &r.IngestedAt); err != nil {
+			return nil, err
+		}
+		r.EndTime = endTime
+		if valueStr != nil {
+			if d, err := decimal.NewFromString(*valueStr); err == nil {
+				r.Value = &d
+			}
+		}
+		if len(extra) > 0 {
+			r.Extra = json.RawMessage(extra)
+		}
+		out = append(out, r)
+	}
+	slog.Debug("db: SelectHealthRecords complete", slog.Int("rows", len(out)))
+	return out, rows.Err()
 }

@@ -52,6 +52,7 @@ All configuration is via environment variables. No config file is required.
 | `POSTGRES_DSN` | PostgreSQL connection string **(required)** | — |
 | `API_KEY` | Sent as `X-Api-Key` when proxying to `pump-cv` (server-to-server only — pump has no inbound auth) | `""` |
 | `WEIGHT_INGEST_KEY` | When set, `POST /api/weight` requires header `X-Api-Key` matching this value. Enables off-cluster ingest (e.g. a BLE-scale ESPHome device) via an oauth2-bypassing internal Route scoped to `/api/weight`. Unset preserves the legacy no-inbound-auth posture. | `""` |
+| `HEALTH_INGEST_KEY` | When set, `POST /api/health` requires header `X-Api-Key` matching this value. Enables off-cluster wearable-metrics ingest from Android Health Connect (via the HC Webhook bridge app) over a path-scoped internal Route. The endpoint accepts a Health Connect envelope (per-type arrays: steps, heart_rate, sleep, exercise, …) and stores each datum in `health_record`, deduped on `(metric_type, start_time, end_time)`. Unset preserves the no-inbound-auth posture. | `""` |
 | `LOG_LEVEL` | Log verbosity: `debug`, `info`, `warn`, `error` | `info` |
 | `COLOR` | UI color mode: `light` or `dark` | `dark` |
 | `PAGESTEP` | Rows per page on the body weight log | `10` |

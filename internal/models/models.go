@@ -1,6 +1,9 @@
 package models
 
 import (
+	"encoding/json"
+	"time"
+
 	"github.com/shopspring/decimal"
 )
 
@@ -87,6 +90,25 @@ type BodyWeight struct {
 	Date       string          `db:"DATE"`
 	RecordedAt string          `db:"RECORDED_AT"`
 	Weight     decimal.Decimal `db:"WEIGHT"`
+}
+
+// HealthRecord is one wearable health datum ingested from Android Health
+// Connect via the HC Webhook bridge. It is deliberately generic so new
+// Health Connect types ingest without a schema change: scalar readings land
+// in Value+Unit, and anything non-scalar (sleep stages, exercise distance/
+// cadence, or fields of an unmapped type) lands in Extra as raw JSON. The
+// store dedupes on (MetricType, StartTime, EndTime); EndTime is always set
+// (instantaneous samples use EndTime == StartTime).
+type HealthRecord struct {
+	ID         int64            `db:"ID" json:"ID"`
+	MetricType string           `db:"METRIC_TYPE" json:"MetricType"` // "steps","heart_rate","resting_heart_rate","sleep","exercise",...
+	StartTime  time.Time        `db:"START_TIME" json:"StartTime"`
+	EndTime    *time.Time       `db:"END_TIME" json:"EndTime,omitempty"`
+	Value      *decimal.Decimal `db:"VALUE" json:"Value,omitempty"` // count/bpm/duration; nil when only Extra carries data
+	Unit       string           `db:"UNIT" json:"Unit,omitempty"`   // "steps","bpm","seconds",...
+	Extra      json.RawMessage  `db:"EXTRA" json:"Extra,omitempty"` // stages[], distance, cadence, unmapped fields
+	Source     string           `db:"SOURCE" json:"Source,omitempty"`
+	IngestedAt time.Time        `db:"INGESTED_AT" json:"IngestedAt,omitempty"`
 }
 
 // GuiData - web gui data

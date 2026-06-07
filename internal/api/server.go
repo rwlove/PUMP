@@ -41,9 +41,14 @@ func RegisterRoutes(r *gin.Engine, s store.Store, cfg models.Conf, p *notify.Pus
 	pushover = p
 	publicURL = pubURL
 	weightIngestKey = os.Getenv("WEIGHT_INGEST_KEY")
+	healthIngestKey = os.Getenv("HEALTH_INGEST_KEY")
+	// Health ingest/read is monolith-only; nil in split-frontend mode.
+	healthStore, _ = s.(store.HealthStore)
 	registerRoutes(r)
 	slog.Debug("api routes registered",
-		slog.Bool("weight_ingest_key_configured", weightIngestKey != ""))
+		slog.Bool("weight_ingest_key_configured", weightIngestKey != ""),
+		slog.Bool("health_ingest_key_configured", healthIngestKey != ""),
+		slog.Bool("health_store_available", healthStore != nil))
 }
 
 // SetConfig updates the in-memory appConfig. Called by the monolith web layer
@@ -81,6 +86,12 @@ func registerRoutes(r *gin.Engine) {
 	r.GET("/api/weight", getWeight)
 	r.POST("/api/weight", weightIngestAuth(), postWeight)
 	r.DELETE("/api/weight/:id", deleteWeight)
+
+	// Wearable health (Android Health Connect via the HC Webhook bridge).
+	// POST is gated by HEALTH_INGEST_KEY for off-cluster ingest, mirroring
+	// the /api/weight path-scoped Route.
+	r.GET("/api/health", getHealth)
+	r.POST("/api/health", healthIngestAuth(), postHealth)
 
 	// Config
 	r.GET("/api/config", getConfig)
