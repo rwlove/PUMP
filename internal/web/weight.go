@@ -3,7 +3,6 @@ package web
 import (
 	"log/slog"
 	"net/http"
-	"sort"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -26,7 +25,7 @@ func addWeightHandler(c *gin.Context) {
 
 	ref := c.Request.Referer()
 	if ref == "" {
-		ref = "/weight/"
+		ref = "/stats/"
 	}
 	c.Redirect(http.StatusFound, ref)
 }
@@ -41,25 +40,9 @@ func deleteWeightHandler(c *gin.Context) {
 		return
 	}
 
-	c.Redirect(http.StatusFound, "/weight/")
-}
-
-func weightHandler(c *gin.Context) {
-	weights, err := dataStore.SelectW()
-	if err != nil {
-		slog.Error("weightHandler: SelectW failed", slog.Any("error", err))
-		c.Status(http.StatusInternalServerError)
-		return
+	ref := c.Request.Referer()
+	if ref == "" {
+		ref = "/stats/"
 	}
-
-	sort.Slice(weights, func(i, j int) bool {
-		return weights[i].Date < weights[j].Date
-	})
-
-	var guiData models.GuiData
-	guiData.Config = appConfig
-	guiData.ExData.Weight = weights
-
-	c.HTML(http.StatusOK, "header.html", guiData)
-	c.HTML(http.StatusOK, "weight.html", guiData)
+	c.Redirect(http.StatusFound, ref)
 }

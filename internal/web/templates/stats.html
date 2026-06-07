@@ -2,6 +2,7 @@
 <head>
     <script src="/fs/public/js/stats.js"></script>
     <script src="/fs/public/js/weight-chart.js"></script>
+    <script src="/fs/public/js/weight.js"></script>
     <link rel="stylesheet" type="text/css" href="/fs/public/css/index.css" />
 </head>
 <body>
@@ -149,11 +150,46 @@
       <div class="tab-pane fade" id="tab-weight" role="tabpanel">
         <div class="container-xl py-4">
           <div class="row g-4">
-            <div class="col-12">
+            <div class="col-12 col-lg-8">
               <div class="panel">
                 <div class="panel-header"><span class="panel-title">Body Weight</span></div>
                 <div class="panel-body">
                   <canvas id="stats-body-weight" style="max-height:300px;"></canvas>
+                </div>
+              </div>
+            </div>
+            <div class="col-12 col-lg-4">
+              <div class="panel">
+                <div class="panel-header"><span class="panel-title">Log</span></div>
+                <div class="panel-body p-0">
+                  <table class="table table-borderless table-sm mb-0">
+                    <thead>
+                      <tr>
+                        <th class="ps-3" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--bs-secondary-color);">#</th>
+                        <th style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--bs-secondary-color);">Date</th>
+                        <th style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--bs-secondary-color);">Weight (lbs)</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="weightList"></tbody>
+                  </table>
+                  <div class="d-flex gap-2 px-3 pb-2 pt-2">
+                    <button onclick='setWeights(window._allWeight, window._chartColor, 1, {{ .Config.PageStep }});'
+                      class="btn btn-sm btn-outline-secondary rounded-3 flex-fill">
+                      <i class="bi bi-arrow-left"></i> Older
+                    </button>
+                    <button onclick='setWeights(window._allWeight, window._chartColor, -1, {{ .Config.PageStep }});'
+                      class="btn btn-sm btn-outline-secondary rounded-3 flex-fill">
+                      Newer <i class="bi bi-arrow-right"></i>
+                    </button>
+                  </div>
+                  <form action="/weight/" method="post" class="d-flex gap-2 flex-wrap px-3 pb-3 pt-1">
+                    <input name="date" type="date" class="form-control form-control-sm rounded-3" id="todayDate" style="max-width:150px;">
+                    <input name="weight" type="number" step="any" min="0" class="form-control form-control-sm rounded-3" placeholder="Weight (lbs)" style="max-width:130px;">
+                    <button type="submit" class="btn btn-sm btn-primary rounded-3">
+                      <i class="bi bi-plus me-1"></i>Add
+                    </button>
+                  </form>
                 </div>
               </div>
             </div>
@@ -309,6 +345,13 @@
     window._allWeight   = {{ .ExData.Weight }};
     window._chartColor  = getComputedStyle(document.documentElement).getPropertyValue('--bs-primary').trim() || '#2780e3';
     window._serverDate = {{ .ServerDate | json | safeJS }};
+
+    // Body Weight Log table (under the Body Weight tab). Rendered up-front even
+    // though the tab is hidden; setToday()/setWeights() just populate the DOM.
+    if (window._allWeight) {
+        setToday();
+        setWeights(window._allWeight, window._chartColor, 0, {{ .Config.PageStep }});
+    }
 
     // Init all displays with default period
     setGlobalPeriod('weekly');

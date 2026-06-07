@@ -44,5 +44,9 @@ function setWeights(weights, wcolor, off, step) {
         ws.push(weights[i].Weight);
         addWeight(i + 1, weights[i].Date, weights[i].Weight, weights[i].ID);
     }
-    weightChart('weight-chart', dates, ws, wcolor, true);
+    // The standalone weight page had its own mini-chart; the Stats page renders
+    // the body-weight chart separately (#stats-body-weight). Only draw if present.
+    if (document.getElementById('weight-chart')) {
+        weightChart('weight-chart', dates, ws, wcolor, true);
+    }
 }
