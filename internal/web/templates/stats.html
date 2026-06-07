@@ -3,10 +3,12 @@
     <script src="/fs/public/js/stats.js"></script>
     <script src="/fs/public/js/weight-chart.js"></script>
     <script src="/fs/public/js/weight.js"></script>
+    <script src="/fs/public/js/health-charts.js"></script>
     <link rel="stylesheet" type="text/css" href="/fs/public/css/index.css" />
 </head>
 <body>
     <script>window.exercises = {{ .ExData.Exs | json | safeJS }};</script>
+    <script>window.healthData = {{ .Health | json | safeJS }};</script>
 
     <!-- ── Stats Tab Bar ─────────────────────────────────────────────────── -->
     <div class="stats-tabs-bar">
@@ -50,6 +52,26 @@
           <li class="nav-item" role="presentation">
             <button class="page-tab-btn" id="tab-recovery-btn" data-bs-toggle="tab" data-bs-target="#tab-recovery" type="button" role="tab">
               <i class="bi bi-arrow-repeat me-2"></i>Recovery
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="page-tab-btn" id="tab-steps-btn" data-bs-toggle="tab" data-bs-target="#tab-steps" type="button" role="tab">
+              <i class="bi bi-activity me-2"></i>Steps
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="page-tab-btn" id="tab-hr-btn" data-bs-toggle="tab" data-bs-target="#tab-hr" type="button" role="tab">
+              <i class="bi bi-heart-pulse me-2"></i>Heart Rate
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="page-tab-btn" id="tab-sleep-btn" data-bs-toggle="tab" data-bs-target="#tab-sleep" type="button" role="tab">
+              <i class="bi bi-moon-stars me-2"></i>Sleep
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="page-tab-btn" id="tab-cardio-btn" data-bs-toggle="tab" data-bs-target="#tab-cardio" type="button" role="tab">
+              <i class="bi bi-bicycle me-2"></i>Cardio
             </button>
           </li>
         </ul>
@@ -338,6 +360,118 @@
         </div>
       </div>
 
+      <!-- ── Steps ─────────────────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="tab-steps" role="tabpanel">
+        <div class="container-xl py-4">
+          <div class="row g-4">
+            <div class="col-12">
+              <div class="panel">
+                <div class="panel-header"><span class="panel-title">Daily Steps</span></div>
+                <div class="panel-body">
+                  <div class="row g-2 mb-3">
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Today</div><div id="steps-today" class="fw-bold fs-4">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">7-day avg</div><div id="steps-avg" class="fw-bold fs-4">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Best day</div><div id="steps-best" class="fw-bold fs-4">–</div></div></div>
+                  </div>
+                  <canvas id="steps-chart" style="max-height:320px;"></canvas>
+                  <p class="text-center text-body-secondary mt-3 mb-0" id="steps-no-data" style="display:none;">No step data in this period yet.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Heart Rate ──────────────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="tab-hr" role="tabpanel">
+        <div class="container-xl py-4">
+          <div class="row g-4">
+            <div class="col-12">
+              <div class="panel">
+                <div class="panel-header">
+                  <span class="panel-title">Heart Rate</span>
+                  <small class="text-body-secondary" style="font-size:0.75em;">Resting trend with daily min–max range</small>
+                </div>
+                <div class="panel-body">
+                  <div class="row g-2 mb-3">
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Resting (latest)</div><div id="hr-resting" class="fw-bold fs-4">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Resting 7-day avg</div><div id="hr-resting-avg" class="fw-bold fs-4">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Range today</div><div id="hr-range" class="fw-bold fs-4">–</div></div></div>
+                  </div>
+                  <canvas id="hr-chart" style="max-height:320px;"></canvas>
+                  <p class="text-center text-body-secondary mt-3 mb-0" id="hr-no-data" style="display:none;">No heart-rate data in this period yet.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Sleep ───────────────────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="tab-sleep" role="tabpanel">
+        <div class="container-xl py-4">
+          <div class="row g-4">
+            <div class="col-12">
+              <div class="panel">
+                <div class="panel-header">
+                  <span class="panel-title">Sleep</span>
+                  <small class="text-body-secondary" style="font-size:0.75em;">Nightly duration &amp; stages</small>
+                </div>
+                <div class="panel-body">
+                  <div class="row g-2 mb-3">
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Last night</div><div id="sleep-last" class="fw-bold fs-4">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">7-day avg</div><div id="sleep-avg" class="fw-bold fs-4">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Deep (last)</div><div id="sleep-deep" class="fw-bold fs-4">–</div></div></div>
+                  </div>
+                  <canvas id="sleep-chart" style="max-height:320px;"></canvas>
+                  <p class="text-center text-body-secondary mt-3 mb-0" id="sleep-no-data" style="display:none;">No sleep data in this period yet.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Cardio ──────────────────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="tab-cardio" role="tabpanel">
+        <div class="container-xl py-4">
+          <div class="row g-4">
+            <div class="col-12 col-lg-7">
+              <div class="panel">
+                <div class="panel-header"><span class="panel-title">Cardio Sessions</span></div>
+                <div class="panel-body">
+                  <div class="row g-2 mb-3">
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Sessions</div><div id="cardio-count" class="fw-bold fs-4">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Total minutes</div><div id="cardio-mins" class="fw-bold fs-4">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Distance</div><div id="cardio-dist" class="fw-bold fs-4">–</div></div></div>
+                  </div>
+                  <canvas id="cardio-chart" style="max-height:300px;"></canvas>
+                  <p class="text-center text-body-secondary mt-3 mb-0" id="cardio-no-data" style="display:none;">No cardio sessions in this period yet.</p>
+                </div>
+              </div>
+            </div>
+            <div class="col-12 col-lg-5">
+              <div class="panel">
+                <div class="panel-header"><span class="panel-title">Recent Sessions</span></div>
+                <div class="panel-body p-0">
+                  <table class="table table-borderless table-sm mb-0">
+                    <thead>
+                      <tr>
+                        <th class="ps-3" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--bs-secondary-color);">Date</th>
+                        <th style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--bs-secondary-color);">Type</th>
+                        <th style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--bs-secondary-color);">Time</th>
+                        <th style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--bs-secondary-color);">Dist</th>
+                      </tr>
+                    </thead>
+                    <tbody id="cardio-list"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
 
 <script>
@@ -380,6 +514,20 @@
     document.getElementById('tab-recovery-btn').addEventListener('shown.bs.tab', function() {
         updateRecoveryTab(window.currentSets, window.exercises, currentPeriod);
     });
+
+    // Wearable tabs (Health Connect) — lazy-init on first show, current period.
+    document.getElementById('tab-steps-btn').addEventListener('shown.bs.tab', function() { renderStepsTab(currentPeriod); });
+    document.getElementById('tab-hr-btn').addEventListener('shown.bs.tab', function() { renderHRTab(currentPeriod); });
+    document.getElementById('tab-sleep-btn').addEventListener('shown.bs.tab', function() { renderSleepTab(currentPeriod); });
+    document.getElementById('tab-cardio-btn').addEventListener('shown.bs.tab', function() { renderCardioTab(currentPeriod); });
+
+    // Deep-link from the Health dashboard: /stats/#tab-steps opens that tab.
+    (function() {
+        var h = window.location.hash;
+        if (h && document.querySelector('[data-bs-target="' + h + '"]')) {
+            new bootstrap.Tab(document.querySelector('[data-bs-target="' + h + '"]')).show();
+        }
+    })();
 </script>
 
 {{ template "footer.html" }}
