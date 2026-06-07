@@ -210,8 +210,8 @@
   window._autoFill   = {{ .Config.AutoFill }};
   window._cvAutoLog  = {{ .Config.CVAutoLog }};
   window._serverDate = {{ .ServerDate | json }};
-  setFormDate(window._allSets);
   renderWeekStreak(window._allSets);
+  setFormDate(window._allSets);
   if (window._cvAutoLog) {
     openSetsStream();
   }

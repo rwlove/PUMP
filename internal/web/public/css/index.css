@@ -126,6 +126,20 @@
   box-shadow: 0 0 0 3px var(--bs-primary-bg-subtle);
 }
 
+/* Days are clickable to jump the workout view; show hover + selected state. */
+.week-dot-item:hover .week-dot {
+  transform: scale(1.12);
+}
+
+.week-dot-item.is-selected .week-dot {
+  box-shadow: 0 0 0 3px var(--bs-primary);
+}
+
+.week-dot-item.is-selected .week-dot-label {
+  color: var(--bs-primary);
+  font-weight: 700;
+}
+
 .week-dot-label {
   font-size: 0.62rem;
   color: var(--bs-secondary-color);
