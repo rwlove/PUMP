@@ -50,3 +50,11 @@ function setWeights(weights, wcolor, off, step) {
         weightChart('weight-chart', dates, ws, wcolor, true);
     }
 }
+
+// Render the log table for an already period-filtered weight set, resetting
+// paging to the newest page. Used by Stats so the log honors the selected
+// time period (the Older/Newer buttons then page within that filtered set).
+function renderWeightTable(weights, wcolor, step) {
+    offset = 0;
+    setWeights(weights, wcolor, 0, step || 10);
+}

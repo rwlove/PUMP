@@ -57,10 +57,13 @@ function setGlobalPeriod(period) {
         renderVolumeExerciseButtons(window.currentSets, window.exercises, period);
     }
 
-    // Refresh Body Weight if visible
+    // Refresh Body Weight (chart + log) if visible
     const wtTab = document.getElementById('tab-weight');
     if (wtTab && wtTab.classList.contains('show')) {
         generateWeightChart(filterWeightByPeriod(window._allWeight, period), window._chartColor, 0, 'stats-body-weight');
+        if (window.renderWeightTable) {
+            renderWeightTable(filterWeightByPeriod(window._allWeight, period), window._chartColor, window._pageStep);
+        }
     }
 
     // Refresh Personal Records if visible (updates NEW badge)
