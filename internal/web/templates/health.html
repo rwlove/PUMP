@@ -1,0 +1,138 @@
+{{ define "health.html" }}
+<head>
+    <script src="/fs/public/js/health-charts.js"></script>
+    <link rel="stylesheet" type="text/css" href="/fs/public/css/index.css" />
+    <style>
+      a.health-tile-link { text-decoration: none; color: inherit; display: block; }
+      a.health-tile-link .panel { transition: transform .12s ease, box-shadow .12s ease; }
+      a.health-tile-link:hover .panel { transform: translateY(-2px); box-shadow: 0 .35rem 1rem rgba(0,0,0,.18); }
+      .health-spark { height: 48px; }
+    </style>
+</head>
+<body>
+
+    <div class="container-xl py-4">
+      <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+        <h4 class="mb-0 d-flex align-items-center gap-2"><i class="bi bi-heart-pulse"></i>Overall Health</h4>
+        <small class="text-body-secondary">A one-page view across body weight, training, and your fitness tracker · {{ .ServerDate }}</small>
+      </div>
+
+      <div class="row g-4">
+
+        <!-- Body Weight -->
+        <div class="col-12 col-md-6 col-xl-4">
+          <a class="health-tile-link" href="/stats/#tab-weight">
+            <div class="panel h-100">
+              <div class="panel-body">
+                <div class="stat-label mb-1"><i class="bi bi-speedometer2 me-1"></i>Body Weight</div>
+                <div class="d-flex align-items-baseline gap-2 mb-2">
+                  <span id="hd-weight-val" class="fw-bold fs-2">–</span>
+                  <span class="text-body-secondary small">lb</span>
+                  <span id="hd-weight-delta" class="small fw-semibold ms-auto"></span>
+                </div>
+                <div class="health-spark"><canvas id="hd-weight-spark"></canvas></div>
+              </div>
+            </div>
+          </a>
+        </div>
+
+        <!-- Steps -->
+        <div class="col-12 col-md-6 col-xl-4">
+          <a class="health-tile-link" href="/stats/#tab-steps">
+            <div class="panel h-100">
+              <div class="panel-body">
+                <div class="stat-label mb-1"><i class="bi bi-activity me-1"></i>Steps Today</div>
+                <div class="d-flex align-items-baseline gap-2 mb-2">
+                  <span id="hd-steps-val" class="fw-bold fs-2">–</span>
+                  <span id="hd-steps-delta" class="small fw-semibold ms-auto"></span>
+                </div>
+                <div class="health-spark"><canvas id="hd-steps-spark"></canvas></div>
+              </div>
+            </div>
+          </a>
+        </div>
+
+        <!-- Resting HR -->
+        <div class="col-12 col-md-6 col-xl-4">
+          <a class="health-tile-link" href="/stats/#tab-hr">
+            <div class="panel h-100">
+              <div class="panel-body">
+                <div class="stat-label mb-1"><i class="bi bi-heart-pulse me-1"></i>Resting Heart Rate</div>
+                <div class="d-flex align-items-baseline gap-2 mb-2">
+                  <span id="hd-hr-val" class="fw-bold fs-2">–</span>
+                  <span class="text-body-secondary small">bpm</span>
+                  <span id="hd-hr-delta" class="small fw-semibold ms-auto"></span>
+                </div>
+                <div class="health-spark"><canvas id="hd-hr-spark"></canvas></div>
+              </div>
+            </div>
+          </a>
+        </div>
+
+        <!-- Sleep -->
+        <div class="col-12 col-md-6 col-xl-4">
+          <a class="health-tile-link" href="/stats/#tab-sleep">
+            <div class="panel h-100">
+              <div class="panel-body">
+                <div class="stat-label mb-1"><i class="bi bi-moon-stars me-1"></i>Sleep Last Night</div>
+                <div class="d-flex align-items-baseline gap-2 mb-2">
+                  <span id="hd-sleep-val" class="fw-bold fs-2">–</span>
+                  <span id="hd-sleep-sub" class="text-body-secondary small ms-auto"></span>
+                </div>
+                <div class="health-spark"><canvas id="hd-sleep-spark"></canvas></div>
+              </div>
+            </div>
+          </a>
+        </div>
+
+        <!-- Training this week -->
+        <div class="col-12 col-md-6 col-xl-4">
+          <a class="health-tile-link" href="/stats/#tab-activity">
+            <div class="panel h-100">
+              <div class="panel-body">
+                <div class="stat-label mb-1"><i class="bi bi-graph-up-arrow me-1"></i>Training This Week</div>
+                <div class="d-flex align-items-baseline gap-2 mb-2">
+                  <span id="hd-train-val" class="fw-bold fs-2">–</span>
+                  <span class="text-body-secondary small">sets</span>
+                  <span id="hd-train-sub" class="text-body-secondary small ms-auto"></span>
+                </div>
+                <div class="health-spark"><canvas id="hd-train-spark"></canvas></div>
+              </div>
+            </div>
+          </a>
+        </div>
+
+        <!-- Streak -->
+        <div class="col-12 col-md-6 col-xl-4">
+          <a class="health-tile-link" href="/stats/#tab-consistency">
+            <div class="panel h-100">
+              <div class="panel-body">
+                <div class="stat-label mb-1"><i class="bi bi-calendar3 me-1"></i>Current Streak</div>
+                <div class="d-flex align-items-baseline gap-2 mb-2">
+                  <span id="hd-streak-val" class="fw-bold fs-2">–</span>
+                  <span id="hd-streak-sub" class="text-body-secondary small">days</span>
+                  <span class="ms-auto fs-3">🔥</span>
+                </div>
+                <div class="text-body-secondary small">Consecutive days with a logged set.</div>
+              </div>
+            </div>
+          </a>
+        </div>
+
+      </div>
+
+      <p class="text-body-secondary small mt-4 mb-0">
+        <i class="bi bi-info-circle me-1"></i>Wearable metrics (steps, heart rate, sleep, cardio) sync from your fitness tracker via Android Health Connect. Tiles show <code>–</code> until data arrives. Tap any tile for the full chart.
+      </p>
+    </div>
+
+<script>
+    window.healthData  = {{ .Health | json | safeJS }};
+    window._allWeight  = {{ .ExData.Weight }};
+    window.currentSets = {{ .ExData.Sets }};
+    window._serverDate = {{ .ServerDate | json | safeJS }};
+    renderHealthDashboard();
+</script>
+
+{{ template "footer.html" }}
+{{ end }}

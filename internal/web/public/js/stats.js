@@ -95,6 +95,14 @@ function setGlobalPeriod(period) {
     if (consistencyTab && consistencyTab.classList.contains('show')) {
         updateConsistencyTab(window.currentSets, period);
     }
+
+    // Refresh wearable tabs (Health Connect) if visible — render fns live in health-charts.js
+    [['tab-steps', 'renderStepsTab'], ['tab-hr', 'renderHRTab'], ['tab-sleep', 'renderSleepTab'], ['tab-cardio', 'renderCardioTab']].forEach(function(p) {
+        const tab = document.getElementById(p[0]);
+        if (tab && tab.classList.contains('show') && typeof window[p[1]] === 'function') {
+            window[p[1]](period);
+        }
+    });
 }
 
 // ─── Period helpers for non-set data ─────────────────────────────────────────

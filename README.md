@@ -5,15 +5,23 @@
 
 <p align="center"><img src="assets/logo.svg" alt="PUMP" width="320"></p>
 
-**Please Use More Protein** — workout diary with daily set logging, body weight tracking, and training history stats.
+**Please Use More Protein** — workout diary with daily set logging, body weight tracking, training stats, and a whole-body **Health** dashboard fed by your fitness tracker via Android Health Connect.
 
-| Workout | Stats: Exercise Distribution | Stats: Weight Moved |
+| Overall Health | Workout | Stats: Exercise Distribution |
 |---|---|---|
-| ![Workout](assets/screenshot-workout.png) | ![Stats Exercise Distribution](assets/screenshot-stats-overview.png) | ![Stats Weight Moved](assets/screenshot-stats-activity.png) |
+| ![Overall Health](assets/screenshot-health.png) | ![Workout](assets/screenshot-workout.png) | ![Stats Exercise Distribution](assets/screenshot-stats-overview.png) |
 
-| Stats: Body Weight | Config | |
+| Stats: Weight Moved | Stats: Body Weight | Config |
 |---|---|---|
-| ![Stats Body Weight](assets/screenshot-stats-weight.png) | ![Config](assets/screenshot-config.png) | |
+| ![Stats Weight Moved](assets/screenshot-stats-activity.png) | ![Stats Body Weight](assets/screenshot-stats-weight.png) | ![Config](assets/screenshot-config.png) |
+
+| Stats: Steps | Stats: Heart Rate | Stats: Sleep |
+|---|---|---|
+| ![Stats Steps](assets/screenshot-stats-steps.png) | ![Stats Heart Rate](assets/screenshot-stats-hr.png) | ![Stats Sleep](assets/screenshot-stats-sleep.png) |
+
+| Stats: Cardio | | |
+|---|---|---|
+| ![Stats Cardio](assets/screenshot-stats-cardio.png) | | |
 
 - [Architecture](#architecture)
 - [Configuration](#configuration)
@@ -38,6 +46,12 @@ Use image `ghcr.io/rwlove/pump`. Set `POSTGRES_DSN`. Front the deployment with a
 ### Optional: pump-cv camera sidecar
 
 A separate Python service under [`cv/`](cv/) watches gym cameras, detects exercises/reps/sets, and writes them to PUMP via the per-set REST API. Disabled by default — enable on the config page (`CVAutoLog`) once cameras are installed and the sidecar is running. See [`docs/cv-autolog-plan.md`](docs/cv-autolog-plan.md) for the full design and [`cv/README.md`](cv/README.md) for runtime details.
+
+### Health dashboard & wearable metrics
+
+The **Health** page (`/health/`) is a one-page, whole-body view that pulls from every source PUMP tracks — body weight, strength training, and wearable metrics — as summary tiles (latest value, trend delta, sparkline) that deep-link into the matching Stats tab.
+
+Wearable data is ingested generically from **Android Health Connect** via the [HC Webhook](https://github.com/mcnaveen/health-connect-webhook) bridge app, which POSTs a Health Connect envelope to **`POST /api/health`** (gated by `HEALTH_INGEST_KEY`). Each datum is stored in the `health_record` table, deduped on `(metric_type, start_time, end_time)`. The known types (steps, heart rate, resting heart rate, sleep, exercise) are charted on dedicated Stats tabs — **Steps**, **Heart Rate**, **Sleep**, **Cardio** — and every other Health Connect type is preserved generically, so no schema change is needed to ingest new metrics.
 
 ## Configuration
 

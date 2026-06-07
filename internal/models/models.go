@@ -111,6 +111,56 @@ type HealthRecord struct {
 	IngestedAt time.Time        `db:"INGESTED_AT" json:"IngestedAt,omitempty"`
 }
 
+// ── Health dashboard aggregates ─────────────────────────────────────────────
+// Server-aggregated wearable + body metrics shared by the Health dashboard
+// page and the Stats wearable tabs. Built from []HealthRecord by the web
+// layer. All series are oldest-first; dates are YYYY-MM-DD in server TZ.
+
+// DayValue is a single dated scalar (daily step total, resting HR, …).
+type DayValue struct {
+	Date  string  `json:"Date"`
+	Value float64 `json:"Value"`
+}
+
+// DayRange is a dated min/avg/max (e.g. a day's heart-rate spread).
+type DayRange struct {
+	Date string  `json:"Date"`
+	Min  float64 `json:"Min"`
+	Avg  float64 `json:"Avg"`
+	Max  float64 `json:"Max"`
+}
+
+// SleepNight is one night keyed by wake date, with per-stage minutes (zero
+// when the source didn't report stages).
+type SleepNight struct {
+	Date    string  `json:"Date"`
+	Minutes float64 `json:"Minutes"`
+	Deep    float64 `json:"Deep"`
+	Light   float64 `json:"Light"`
+	REM     float64 `json:"REM"`
+	Awake   float64 `json:"Awake"`
+}
+
+// CardioSession is one band-tracked workout.
+type CardioSession struct {
+	Date    string  `json:"Date"`
+	Type    string  `json:"Type"`
+	Minutes float64 `json:"Minutes"`
+	Meters  float64 `json:"Meters"`
+}
+
+// HealthStats is the aggregated wearable view. Available is false when the
+// active store has no HealthStore (split-frontend mode) — the UI then shows
+// empty states instead of failing.
+type HealthStats struct {
+	Available  bool            `json:"Available"`
+	DailySteps []DayValue      `json:"DailySteps"`
+	RestingHR  []DayValue      `json:"RestingHR"`
+	DailyHR    []DayRange      `json:"DailyHR"`
+	Sleep      []SleepNight    `json:"Sleep"`
+	Cardio     []CardioSession `json:"Cardio"`
+}
+
 // GuiData - web gui data
 type GuiData struct {
 	Config     Conf
@@ -118,5 +168,6 @@ type GuiData struct {
 	GroupMap   []string // unique exercise groups, in display order
 	OneEx      Exercise
 	Version    string
-	ServerDate string // today's date in server timezone (YYYY-MM-DD)
+	ServerDate string      // today's date in server timezone (YYYY-MM-DD)
+	Health     HealthStats // wearable aggregates (Health page + Stats tabs)
 }
