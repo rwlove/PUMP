@@ -196,12 +196,12 @@
                     <tbody id="weightList"></tbody>
                   </table>
                   <div class="d-flex gap-2 px-3 pb-2 pt-2">
-                    <button onclick='setWeights(filterWeightByPeriod(window._allWeight, currentPeriod), window._chartColor, 1, window._pageStep);'
-                      class="btn btn-sm btn-outline-secondary rounded-3 flex-fill">
+                    <button id="weight-older-btn" onclick='setWeights(filterWeightByPeriod(window._allWeight, currentPeriod), window._chartColor, 1, window._pageStep);'
+                      class="btn btn-sm btn-outline-primary rounded-3 flex-fill">
                       <i class="bi bi-arrow-left"></i> Older
                     </button>
-                    <button onclick='setWeights(filterWeightByPeriod(window._allWeight, currentPeriod), window._chartColor, -1, window._pageStep);'
-                      class="btn btn-sm btn-outline-secondary rounded-3 flex-fill">
+                    <button id="weight-newer-btn" onclick='setWeights(filterWeightByPeriod(window._allWeight, currentPeriod), window._chartColor, -1, window._pageStep);'
+                      class="btn btn-sm btn-outline-primary rounded-3 flex-fill">
                       Newer <i class="bi bi-arrow-right"></i>
                     </button>
                   </div>
