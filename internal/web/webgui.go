@@ -64,7 +64,6 @@ func RegisterRoutes(r *gin.Engine, s store.Store, cfg models.Conf, onConfigSave 
 	r.GET("/exercise/", exerciseHandler)
 	r.GET("/stats/", statsHandler)
 	r.GET("/wall/", wallHandler)
-	r.GET("/weight/", weightHandler)
 
 	// Browser-facing proxy to pump-cv for the admin panel's live data.
 	r.Any("/api/cv/*path", pumpCVProxyHandler)
@@ -109,7 +108,6 @@ func startRouter(s store.Store, ac *store.APIClient, address string) {
 	router.GET("/exercise/", exerciseHandler)
 	router.GET("/stats/", statsHandler)
 	router.GET("/wall/", wallHandler)
-	router.GET("/weight/", weightHandler)
 
 	router.Any("/api/cv/*path", pumpCVProxyHandler)
 
@@ -119,6 +117,7 @@ func startRouter(s store.Store, ac *store.APIClient, address string) {
 	router.POST("/exdel/", deleteExerciseHandler)
 	router.POST("/set/", setHandler)
 	router.POST("/weight/", addWeightHandler)
+	router.POST("/wdel/", deleteWeightHandler)
 	if err := router.Run(address); err != nil {
 		slog.Error("router failed", slog.Any("error", err))
 		os.Exit(1)
