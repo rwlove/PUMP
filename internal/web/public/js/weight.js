@@ -49,6 +49,14 @@ function setWeights(weights, wcolor, off, step) {
     if (document.getElementById('weight-chart')) {
         weightChart('weight-chart', dates, ws, wcolor, true);
     }
+
+    // Grey out a paging button only when there's no further page that way:
+    // "Older" needs entries before the current window (start > 0); "Newer"
+    // needs a more-recent page (offset > 0).
+    var olderBtn = document.getElementById('weight-older-btn');
+    var newerBtn = document.getElementById('weight-newer-btn');
+    if (olderBtn) olderBtn.disabled = start <= 0;
+    if (newerBtn) newerBtn.disabled = offset <= 0;
 }
 
 // Render the log table for an already period-filtered weight set, resetting
