@@ -103,6 +103,25 @@ ALTER TABLE weight ALTER COLUMN recorded_at SET DEFAULT NOW();
 CREATE INDEX IF NOT EXISTS weight_date_recorded_at_idx ON weight (date, recorded_at DESC);
 `,
 	},
+	{
+		Version:     8,
+		Description: "create health_record table for Android Health Connect wearable metrics",
+		SQL: `
+CREATE TABLE IF NOT EXISTS health_record (
+    id          BIGSERIAL   PRIMARY KEY,
+    metric_type TEXT        NOT NULL,
+    start_time  TIMESTAMPTZ NOT NULL,
+    end_time    TIMESTAMPTZ,
+    value       NUMERIC(14,3),
+    unit        TEXT        NOT NULL DEFAULT '',
+    extra       JSONB,
+    source      TEXT        NOT NULL DEFAULT 'health-connect',
+    ingested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT health_record_dedupe UNIQUE (metric_type, start_time, end_time)
+);
+CREATE INDEX IF NOT EXISTS health_record_type_time_idx ON health_record (metric_type, start_time DESC);
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any

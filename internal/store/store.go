@@ -1,6 +1,10 @@
 package store
 
-import "github.com/rwlove/PUMP/internal/models"
+import (
+	"time"
+
+	"github.com/rwlove/PUMP/internal/models"
+)
 
 // Store abstracts data access so both the monolith (SQLite) and the
 // split frontend (HTTP API client) can satisfy the same interface.
@@ -27,4 +31,20 @@ type Store interface {
 	SelectW() ([]models.BodyWeight, error)
 	InsertW(w models.BodyWeight) error
 	DeleteW(id int) error
+}
+
+// HealthStore is an optional capability for stores that persist wearable
+// health records ingested from Android Health Connect (via the HC Webhook
+// bridge → POST /api/health). The Postgres store implements it; the HTTP
+// API client does not — health ingest is monolith-only. Callers type-assert:
+//
+//	hs, ok := s.(store.HealthStore)
+type HealthStore interface {
+	// InsertHealthRecords appends records, deduping on
+	// (MetricType, StartTime, EndTime) so the bridge's rolling 48h
+	// re-delivery window is idempotent. Returns the count actually inserted.
+	InsertHealthRecords(recs []models.HealthRecord) (inserted int, err error)
+	// SelectHealthRecords returns records at or after since, optionally
+	// filtered to a single metricType ("" = all), newest first.
+	SelectHealthRecords(metricType string, since time.Time) ([]models.HealthRecord, error)
 }
