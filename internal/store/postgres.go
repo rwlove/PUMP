@@ -306,9 +306,18 @@ func (s *PostgresStore) InsertW(w models.BodyWeight) error {
 	return err
 }
 
+// DeleteW removes the body-weight entry the log shows for the given reading's
+// day. The log is day-oriented — SelectW returns one row per date via
+// DISTINCT ON — but a single day can hold several raw rows: the bt-scale
+// gateway burst-posts the same reading several times and there is no
+// ingest-side dedup. Deleting only the targeted id would leave the day's
+// duplicates behind, so SelectW would surface the next one and the value would
+// appear unchanged ("delete didn't work"). Delete every row sharing that id's
+// date so the displayed entry actually disappears.
 func (s *PostgresStore) DeleteW(id int) error {
 	slog.Debug("db: DeleteW", slog.Int("id", id))
-	_, err := s.pool.Exec(context.Background(), "DELETE FROM weight WHERE id = $1", id)
+	_, err := s.pool.Exec(context.Background(),
+		"DELETE FROM weight WHERE date = (SELECT date FROM weight WHERE id = $1)", id)
 	return err
 }
 
