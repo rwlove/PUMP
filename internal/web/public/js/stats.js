@@ -90,7 +90,7 @@ function setGlobalPeriod(period) {
         updateRecoveryTab(window.currentSets, window.exercises, period);
     }
 
-    // Refresh Consistency stat boxes if visible (heatmap stays year-fixed for context)
+    // Refresh Consistency if visible (stat boxes + heatmap both scale to the period)
     const consistencyTab = document.getElementById('tab-consistency');
     if (consistencyTab && consistencyTab.classList.contains('show')) {
         updateConsistencyTab(window.currentSets, period);
@@ -635,6 +635,18 @@ function renderOverloadChart(allSets, exercises, period, exerciseName) {
 
 var _balanceChart = null;
 
+// Muscle-balance metric: 'sets' (default — number of sets per group) or
+// 'volume' (weight × reps). Toggled by the Sets/Volume buttons on the tab.
+var balanceMetric = 'sets';
+
+function setBalanceMetric(metric) {
+    balanceMetric = (metric === 'volume') ? 'volume' : 'sets';
+    document.querySelectorAll('#tab-balance [data-metric]').forEach(b => {
+        b.classList.toggle('active', b.dataset.metric === balanceMetric);
+    });
+    updateBalanceTab(window.currentSets, window.exercises, currentPeriod);
+}
+
 function updateBalanceTab(allSets, exercises, period) {
     const filtered = filterByPeriod(allSets, period);
     const exMap = {};
@@ -671,13 +683,24 @@ function updateBalanceTab(allSets, exercises, period) {
     const primaryColor = window._chartColor || '#2780e3';
     const labelColor = getComputedStyle(document.documentElement).getPropertyValue('--bs-body-color').trim() || '#e0e0e0';
 
+    const bySets = balanceMetric === 'sets';
+    const noun = bySets ? 'Sets' : 'Volume';
+    const metricVal = g => bySets ? (groupSets[g] || 0) : Math.round(groupVolume[g] || 0);
+    const fmtSets = g => `${groupSets[g] || 0} set${(groupSets[g] || 0) === 1 ? '' : 's'}`;
+    const fmtVol = g => groupVolume[g] ? `${Math.round(groupVolume[g]).toLocaleString()} lbs` : '— lbs';
+
+    const titleEl = document.getElementById('balance-title');
+    if (titleEl) titleEl.textContent = `${noun} by Muscle Group`;
+    const breakdownEl = document.getElementById('balance-breakdown-title');
+    if (breakdownEl) breakdownEl.textContent = `${noun} Breakdown`;
+
     _balanceChart = new Chart(ctx, {
         type: 'radar',
         data: {
             labels: groups,
             datasets: [{
-                label: 'Volume',
-                data: groups.map(g => Math.round(groupVolume[g] || 0)),
+                label: noun,
+                data: groups.map(metricVal),
                 backgroundColor: primaryColor + '33',
                 borderColor: primaryColor,
                 borderWidth: 2,
@@ -702,11 +725,10 @@ function updateBalanceTab(allSets, exercises, period) {
                     callbacks: {
                         label(ctx) {
                             const g = ctx.label;
-                            const sets = groupSets[g] || 0;
-                            const vol = ctx.raw
-                                ? `${ctx.raw.toLocaleString()} lbs`
-                                : '— lbs';
-                            return `${vol}  ·  ${sets} set${sets === 1 ? '' : 's'}`;
+                            // Lead with the selected metric; show the other as context.
+                            return bySets
+                                ? `${fmtSets(g)}  ·  ${fmtVol(g)}`
+                                : `${fmtVol(g)}  ·  ${fmtSets(g)}`;
                         }
                     }
                 }
@@ -717,14 +739,13 @@ function updateBalanceTab(allSets, exercises, period) {
     const summaryEl = document.getElementById('balance-summary');
     if (summaryEl) {
         summaryEl.innerHTML = groups.map(g => {
-            const vol = groupVolume[g]
-                ? `${Math.round(groupVolume[g]).toLocaleString()} lbs`
-                : '— lbs';
+            const primary = bySets ? fmtSets(g) : fmtVol(g);
+            const secondary = bySets ? fmtVol(g) : fmtSets(g);
             return `<div class="col-6 col-sm-4">
               <div class="p-3 rounded-3 bg-body-secondary text-center">
                 <div class="stat-label">${escapeHtml(g)}</div>
-                <div class="fw-bold">${groupSets[g]} set${groupSets[g] === 1 ? '' : 's'}</div>
-                <div class="stat-label">${vol}</div>
+                <div class="fw-bold">${primary}</div>
+                <div class="stat-label">${secondary}</div>
               </div>
             </div>`;
         }).join('');
@@ -748,8 +769,8 @@ function updateConsistencyTab(allSets, period) {
     const todayStr = getTodayStr();
     const today = parseDateStr(todayStr);
 
-    // All-time set of workout days (used by the heatmap, which always shows
-    // a fixed 1-year window for visual context).
+    // All-time set of workout days. The heatmap colours cells from this map;
+    // the visible window is scoped to the selected period below.
     const workoutDatesAll = {};
     allSets.forEach(s => { workoutDatesAll[s.Date] = (workoutDatesAll[s.Date] || 0) + 1; });
 
@@ -830,12 +851,16 @@ function updateConsistencyTab(allSets, period) {
 
     const { r: pr, g: pg, b: pb } = hexToRgb(window._chartColor || '#2780e3');
 
-    // Grid starts on the Sunday on or before (today - 364 days)
-    const gridStart = new Date(today);
-    gridStart.setDate(today.getDate() - 364);
+    // Window the heatmap to the selected period (previously fixed at 1 year).
+    // gridStart is the Sunday on or before the period's first day; the grid
+    // spans whole week-columns from there through the week containing today.
+    const windowStart = new Date(today);
+    windowStart.setDate(today.getDate() - (periodDays - 1));
+    const windowStartStr = windowStart.toLocaleDateString('en-CA');
+    const gridStart = new Date(windowStart);
     gridStart.setDate(gridStart.getDate() - gridStart.getDay()); // back to Sunday
 
-    const numWeeks = 53;
+    const numWeeks = Math.floor((today - gridStart) / (7 * 86400000)) + 1;
 
     const inner = document.createElement('div');
     inner.className = 'heatmap-inner';
@@ -890,20 +915,24 @@ function updateConsistencyTab(allSets, period) {
             const ds = cellDate.toLocaleDateString('en-CA');
             const count = workoutDatesAll[ds] || 0;
             const isFuture = ds > todayStr;
+            // Days in the leading partial week that fall before the period
+            // start are shown muted, so the grid reads as the selected window.
+            const beforeStart = ds < windowStartStr;
+            const outOfRange = isFuture || beforeStart;
 
             const cell = document.createElement('div');
             cell.className = 'heatmap-cell';
             if (ds === todayStr) cell.classList.add('heatmap-today');
 
-            if (!isFuture && count > 0) {
+            if (!outOfRange && count > 0) {
                 const opacity = count <= 2 ? 0.4 : count <= 4 ? 0.62 : count <= 7 ? 0.82 : 1.0;
                 cell.style.background = `rgba(${pr},${pg},${pb},${opacity})`;
                 cell.style.borderColor = `rgba(${pr},${pg},${pb},${Math.min(1, opacity * 1.3)})`;
-            } else if (isFuture) {
+            } else if (outOfRange) {
                 cell.classList.add('heatmap-future');
             }
 
-            cell.title = isFuture ? ds : `${ds}: ${count} set${count !== 1 ? 's' : ''}`;
+            cell.title = outOfRange ? ds : `${ds}: ${count} set${count !== 1 ? 's' : ''}`;
             col.appendChild(cell);
         }
         weeksEl.appendChild(col);

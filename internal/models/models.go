@@ -60,7 +60,7 @@ type Set struct {
 	Source       string          `db:"SOURCE" json:"Source"`         // "manual" | "cv"
 	Confidence   float64         `db:"CONFIDENCE" json:"Confidence"` // 0.0–1.0
 	Pending      bool            `db:"PENDING" json:"Pending"`
-	ClipPath     string          `db:"CLIP_PATH" json:"ClipPath"`    // path under PUMP_CLIPS_DIR, served at /clips/<...>
+	ClipPath     string          `db:"CLIP_PATH" json:"ClipPath"` // path under PUMP_CLIPS_DIR, served at /clips/<...>
 }
 
 // SetUpdate - partial update for one set. Only non-nil fields are applied.
@@ -153,12 +153,13 @@ type CardioSession struct {
 // active store has no HealthStore (split-frontend mode) — the UI then shows
 // empty states instead of failing.
 type HealthStats struct {
-	Available  bool            `json:"Available"`
-	DailySteps []DayValue      `json:"DailySteps"`
-	RestingHR  []DayValue      `json:"RestingHR"`
-	DailyHR    []DayRange      `json:"DailyHR"`
-	Sleep      []SleepNight    `json:"Sleep"`
-	Cardio     []CardioSession `json:"Cardio"`
+	Available      bool            `json:"Available"`
+	DailySteps     []DayValue      `json:"DailySteps"`
+	RestingHR      []DayValue      `json:"RestingHR"`
+	DailyHR        []DayRange      `json:"DailyHR"`
+	Sleep          []SleepNight    `json:"Sleep"`
+	Cardio         []CardioSession `json:"Cardio"`
+	ActiveCalories []DayValue      `json:"ActiveCalories"` // daily active-energy total (kcal)
 }
 
 // GuiData - web gui data
