@@ -300,8 +300,19 @@ func (s *PostgresStore) InsertW(w models.BodyWeight) error {
 	if w.RecordedAt != "" {
 		recordedAt = w.RecordedAt
 	}
+	// Dedup identical same-day readings. The bt-scale gateway burst-posts the
+	// same value several times as the reading settles/re-sends, which would
+	// otherwise pile up duplicate rows (the reason DeleteW deletes by date).
+	// A genuinely different value on the same day still inserts, so multiple
+	// distinct weigh-ins per day remain supported (latest recorded_at wins for
+	// display). NUMERIC comparison ignores decimal-string formatting, so
+	// "272.2" and "272.20" are treated as equal.
 	_, err := s.pool.Exec(context.Background(),
-		"INSERT INTO weight (date, recorded_at, weight) VALUES ($1::date, COALESCE($2::timestamptz, NOW()), $3)",
+		`INSERT INTO weight (date, recorded_at, weight)
+		 SELECT $1::date, COALESCE($2::timestamptz, NOW()), $3::numeric
+		 WHERE NOT EXISTS (
+		     SELECT 1 FROM weight WHERE date = $1::date AND weight = $3::numeric
+		 )`,
 		w.Date, recordedAt, w.Weight.String())
 	return err
 }
