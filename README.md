@@ -19,9 +19,9 @@
 |---|---|---|
 | ![Stats Steps](assets/screenshot-stats-steps.png) | ![Stats Heart Rate](assets/screenshot-stats-hr.png) | ![Stats Sleep](assets/screenshot-stats-sleep.png) |
 
-| Stats: Cardio | | |
+| Stats: Cardio | Stats: Muscle Balance | |
 |---|---|---|
-| ![Stats Cardio](assets/screenshot-stats-cardio.png) | | |
+| ![Stats Cardio](assets/screenshot-stats-cardio.png) | ![Stats Muscle Balance](assets/screenshot-stats-balance.png) | |
 
 - [Architecture](#architecture)
 - [Configuration](#configuration)
