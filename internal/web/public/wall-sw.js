@@ -12,7 +12,11 @@
 // Versioning: bump CACHE_NAME when the shell changes meaningfully so
 // older caches get evicted on next activation.
 
-const CACHE_NAME = "pump-wall-v3";
+// Bump on meaningful shell changes so the activate handler evicts the old
+// cache. v4: the /wall/ HTML shell is now served network-first (below), so a
+// stale shell can no longer be pinned on a long-lived kiosk — this bump also
+// flushes any v3 cache still holding the pre-navbar shell.
+const CACHE_NAME = "pump-wall-v4";
 const SHELL = [
   "/wall/",
   "/fs/public/css/wall.css",
@@ -62,7 +66,24 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // /fs/, /clips/, /wall/: cache-first, refresh in background.
+  // The /wall/ HTML shell: network-first so server-side changes (e.g. the
+  // shared navbar) always appear when online, falling back to cache only for
+  // offline boot. Cache-first here pins a stale shell on a long-lived kiosk
+  // that never re-navigates, so the background refresh never runs.
+  if (req.mode === "navigate" || url.pathname === "/wall/") {
+    event.respondWith(
+      fetch(req).then((resp) => {
+        if (resp && resp.ok) {
+          const copy = resp.clone();
+          caches.open(CACHE_NAME).then((c) => c.put("/wall/", copy)).catch(() => {});
+        }
+        return resp;
+      }).catch(() => caches.match(req).then((hit) => hit || caches.match("/wall/")))
+    );
+    return;
+  }
+
+  // /fs/, /clips/: cache-first, refresh in background.
   event.respondWith(
     caches.match(req).then((hit) => {
       const fetchPromise = fetch(req).then((resp) => {

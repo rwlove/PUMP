@@ -4,7 +4,7 @@
 // reuses filterByPeriod() from stats.js when present (Stats page); the
 // dashboard uses fixed recent windows and works standalone.
 
-var _stepsChart = null, _hrChart = null, _sleepChart = null, _cardioChart = null;
+var _stepsChart = null, _hrChart = null, _sleepChart = null, _cardioChart = null, _calChart = null;
 var _hdSparks = {};
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -192,6 +192,8 @@ function renderSleepTab(period) {
 // ─── Cardio tab ─────────────────────────────────────────────────────────────
 
 function renderCardioTab(period) {
+    renderActiveCalories(period);
+
     const data = hcByPeriod(hcData('Cardio'), period);
     hcSetText('cardio-count', data.length);
     hcSetText('cardio-mins', Math.round(data.reduce((a, b) => a + b.Minutes, 0)));
@@ -226,6 +228,36 @@ function renderCardioTab(period) {
     }
 }
 
+// renderActiveCalories draws the daily active-energy chart + tiles on the
+// Cardio tab. Separate from cardio sessions: this is daily total active kcal
+// (Health Connect ActiveCaloriesBurned), present even when no workout sessions
+// are recorded.
+function renderActiveCalories(period) {
+    const all = hcData('ActiveCalories');
+    const todayRow = all.find(d => d.Date === window._serverDate);
+    hcSetText('cal-today', todayRow ? Math.round(todayRow.Value).toLocaleString() : '–');
+
+    const data = hcByPeriod(all, period);
+    hcSetText('cal-avg', data.length ? Math.round(hcMean(data.map(d => d.Value))).toLocaleString() : '–');
+
+    const canvas = document.getElementById('cal-chart');
+    const noData = document.getElementById('cal-no-data');
+    if (!data.length) {
+        if (canvas) canvas.style.display = 'none';
+        if (noData) noData.style.display = 'block';
+        _calChart = hcDestroy(_calChart);
+        return;
+    }
+    if (canvas) canvas.style.display = ''; if (noData) noData.style.display = 'none';
+
+    _calChart = hcDestroy(_calChart);
+    _calChart = new Chart(canvas, {
+        type: 'bar',
+        data: { labels: data.map(d => d.Date), datasets: [{ label: 'Active kcal', data: data.map(d => Math.round(d.Value)), backgroundColor: '#fd7e14cc', borderRadius: 4 }] },
+        options: { responsive: true, scales: { x: hcAxisOpts.x, y: hcAxisOpts.yCount('kcal') }, plugins: { legend: { display: false } } }
+    });
+}
+
 // ─── Overall Health dashboard ─────────────────────────────────────────────────
 
 function renderHealthDashboard() {
@@ -248,6 +280,16 @@ function renderHealthDashboard() {
         hcDelta('hd-steps-delta', todayRow ? todayRow.Value : 0, avg7, false, '');
         hcSpark('hd-steps-spark', hcLast(steps, 30).map(d => d.Value));
     } else { hcSetText('hd-steps-val', '–'); }
+
+    // Active calories today + 30-day sparkline.
+    const cals = hcData('ActiveCalories');
+    if (cals.length) {
+        const todayRow = cals.find(d => d.Date === window._serverDate);
+        hcSetText('hd-cal-val', todayRow ? Math.round(todayRow.Value).toLocaleString() : '0');
+        const avg7 = hcMean(hcLast(cals, 7).map(d => d.Value));
+        hcDelta('hd-cal-delta', todayRow ? todayRow.Value : 0, avg7, false, '');
+        hcSpark('hd-cal-spark', hcLast(cals, 30).map(d => d.Value), '#fd7e14');
+    } else { hcSetText('hd-cal-val', '–'); }
 
     // Resting HR.
     const rhr = hcData('RestingHR');

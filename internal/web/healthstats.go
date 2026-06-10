@@ -41,6 +41,7 @@ func aggregateHealth(recs []models.HealthRecord) models.HealthStats {
 	out := models.HealthStats{Available: true}
 
 	stepsByDay := map[string]float64{}
+	caloriesByDay := map[string]float64{}
 	restingByDay := map[string][]float64{}
 	hrByDay := map[string][]float64{}
 	sleepByDay := map[string]*models.SleepNight{}
@@ -58,6 +59,8 @@ func aggregateHealth(recs []models.HealthRecord) models.HealthStats {
 		switch r.MetricType {
 		case "steps":
 			stepsByDay[day] += val(r)
+		case "active_calories":
+			caloriesByDay[day] += val(r)
 		case "resting_heart_rate":
 			restingByDay[day] = append(restingByDay[day], val(r))
 		case "heart_rate":
@@ -83,18 +86,29 @@ func aggregateHealth(recs []models.HealthRecord) models.HealthStats {
 	for d, v := range stepsByDay {
 		out.DailySteps = append(out.DailySteps, models.DayValue{Date: d, Value: v})
 	}
-	for d, vs := range restingByDay {
-		out.RestingHR = append(out.RestingHR, models.DayValue{Date: d, Value: mean(vs)})
+	for d, v := range caloriesByDay {
+		out.ActiveCalories = append(out.ActiveCalories, models.DayValue{Date: d, Value: v})
 	}
 	for d, vs := range hrByDay {
 		mn, av, mx := minAvgMax(vs)
 		out.DailyHR = append(out.DailyHR, models.DayRange{Date: d, Min: mn, Avg: av, Max: mx})
+		// Resting HR proxy: when a source only exports raw heart_rate (no
+		// dedicated resting_heart_rate samples), use the day's minimum as a
+		// resting estimate so the Resting HR tile/line aren't perpetually
+		// blank. A real resting_heart_rate record for the day always wins.
+		if _, ok := restingByDay[d]; !ok {
+			restingByDay[d] = []float64{mn}
+		}
+	}
+	for d, vs := range restingByDay {
+		out.RestingHR = append(out.RestingHR, models.DayValue{Date: d, Value: mean(vs)})
 	}
 	for _, n := range sleepByDay {
 		out.Sleep = append(out.Sleep, *n)
 	}
 
 	sortByDate(out.DailySteps)
+	sortByDate(out.ActiveCalories)
 	sortByDate(out.RestingHR)
 	sort.Slice(out.DailyHR, func(i, j int) bool { return out.DailyHR[i].Date < out.DailyHR[j].Date })
 	sort.Slice(out.Sleep, func(i, j int) bool { return out.Sleep[i].Date < out.Sleep[j].Date })
@@ -137,8 +151,12 @@ func minAvgMax(vs []float64) (mn, av, mx float64) {
 }
 
 // addSleepStages parses a sleep record's Extra ({"stages":[{stage,duration_seconds}]})
-// and accumulates per-stage minutes onto n. Unknown stage labels are ignored
-// (their time still counts toward Minutes from the session duration).
+// and accumulates per-stage minutes onto n. Unknown stages are ignored (their
+// time still counts toward Minutes from the session duration).
+//
+// Health Connect serialises the stage as the integer SleepSessionRecord.Stage
+// constant (e.g. "4", "5", "6"), not a label, so we map both the numeric codes
+// and the human labels — different export bridges emit one or the other.
 func addSleepStages(extra json.RawMessage, n *models.SleepNight) {
 	if len(extra) == 0 {
 		return
@@ -155,13 +173,13 @@ func addSleepStages(extra json.RawMessage, n *models.SleepNight) {
 	for _, s := range e.Stages {
 		m := s.DurationSeconds / 60.0
 		switch s.Stage {
-		case "DEEP":
+		case "DEEP", "5":
 			n.Deep += m
-		case "LIGHT":
+		case "LIGHT", "SLEEPING", "4", "2":
 			n.Light += m
-		case "REM":
+		case "REM", "6":
 			n.REM += m
-		case "AWAKE", "OUT_OF_BED", "AWAKE_IN_BED":
+		case "AWAKE", "OUT_OF_BED", "AWAKE_IN_BED", "1", "3", "7":
 			n.Awake += m
 		}
 	}

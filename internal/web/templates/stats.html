@@ -267,7 +267,13 @@
           <div class="row g-4">
             <div class="col-12 col-lg-7">
               <div class="panel">
-                <div class="panel-header"><span class="panel-title">Volume by Muscle Group</span></div>
+                <div class="panel-header">
+                  <span class="panel-title" id="balance-title">Sets by Muscle Group</span>
+                  <div class="btn-group btn-group-sm" role="group" aria-label="Balance metric">
+                    <button type="button" class="btn btn-sm btn-outline-secondary active" data-metric="sets" onclick="setBalanceMetric('sets')">Sets</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-metric="volume" onclick="setBalanceMetric('volume')">Volume</button>
+                  </div>
+                </div>
                 <div class="panel-body">
                   <canvas id="balance-chart" style="max-height:360px;"></canvas>
                   <p class="text-center text-body-secondary mt-3 mb-0" id="balance-no-data" style="display:none;">No data in this period.</p>
@@ -276,7 +282,7 @@
             </div>
             <div class="col-12 col-lg-5">
               <div class="panel">
-                <div class="panel-header"><span class="panel-title">Volume Breakdown</span></div>
+                <div class="panel-header"><span class="panel-title" id="balance-breakdown-title">Sets Breakdown</span></div>
                 <div class="panel-body">
                   <div class="row g-2" id="balance-summary"></div>
                 </div>
@@ -436,6 +442,22 @@
       <div class="tab-pane fade" id="tab-cardio" role="tabpanel">
         <div class="container-xl py-4">
           <div class="row g-4">
+            <div class="col-12">
+              <div class="panel">
+                <div class="panel-header">
+                  <span class="panel-title">Active Calories</span>
+                  <small class="text-body-secondary" style="font-size:0.75em;">Daily active energy from your tracker</small>
+                </div>
+                <div class="panel-body">
+                  <div class="row g-2 mb-3">
+                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Today</div><div id="cal-today" class="fw-bold fs-4">–</div></div></div>
+                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Daily avg</div><div id="cal-avg" class="fw-bold fs-4">–</div></div></div>
+                  </div>
+                  <canvas id="cal-chart" style="max-height:260px;"></canvas>
+                  <p class="text-center text-body-secondary mt-3 mb-0" id="cal-no-data" style="display:none;">No active-calorie data in this period.</p>
+                </div>
+              </div>
+            </div>
             <div class="col-12 col-lg-7">
               <div class="panel">
                 <div class="panel-header"><span class="panel-title">Cardio Sessions</span></div>
@@ -446,7 +468,7 @@
                     <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Distance</div><div id="cardio-dist" class="fw-bold fs-4">–</div></div></div>
                   </div>
                   <canvas id="cardio-chart" style="max-height:300px;"></canvas>
-                  <p class="text-center text-body-secondary mt-3 mb-0" id="cardio-no-data" style="display:none;">No cardio sessions in this period yet.</p>
+                  <p class="text-center text-body-secondary mt-3 mb-0" id="cardio-no-data" style="display:none;">No cardio sessions in this period yet. Per-session cardio appears here once workout sessions are recorded in Health Connect.</p>
                 </div>
               </div>
             </div>

@@ -52,6 +52,23 @@
           </a>
         </div>
 
+        <!-- Active Calories -->
+        <div class="col-12 col-md-6 col-xl-4">
+          <a class="health-tile-link" href="/stats/#tab-cardio">
+            <div class="panel h-100">
+              <div class="panel-body">
+                <div class="stat-label mb-1"><i class="bi bi-fire me-1"></i>Active Calories</div>
+                <div class="d-flex align-items-baseline gap-2 mb-2">
+                  <span id="hd-cal-val" class="fw-bold fs-2">–</span>
+                  <span class="text-body-secondary small">kcal</span>
+                  <span id="hd-cal-delta" class="small fw-semibold ms-auto"></span>
+                </div>
+                <div class="health-spark"><canvas id="hd-cal-spark"></canvas></div>
+              </div>
+            </div>
+          </a>
+        </div>
+
         <!-- Resting HR -->
         <div class="col-12 col-md-6 col-xl-4">
           <a class="health-tile-link" href="/stats/#tab-hr">
@@ -122,7 +139,7 @@
       </div>
 
       <p class="text-body-secondary small mt-4 mb-0">
-        <i class="bi bi-info-circle me-1"></i>Wearable metrics (steps, heart rate, sleep, cardio) sync from your fitness tracker via Android Health Connect. Tiles show <code>–</code> until data arrives. Tap any tile for the full chart.
+        <i class="bi bi-info-circle me-1"></i>Wearable metrics (steps, active calories, heart rate, sleep, cardio) sync from your fitness tracker via Android Health Connect. Tiles show <code>–</code> until data arrives. Tap any tile for the full chart.
       </p>
     </div>
 

@@ -183,6 +183,8 @@ func healthRecordFromElement(metricType string, el json.RawMessage) (models.Heal
 	switch metricType {
 	case "steps":
 		setScalar(&r, m, "count", "steps")
+	case "active_calories":
+		setScalar(&r, m, "calories", "calories")
 	case "heart_rate", "resting_heart_rate":
 		setScalar(&r, m, "bpm", "bpm")
 	case "sleep", "exercise":
