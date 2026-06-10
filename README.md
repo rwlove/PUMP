@@ -51,7 +51,9 @@ A separate Python service under [`cv/`](cv/) watches gym cameras, detects exerci
 
 The **Health** page (`/health/`) is a one-page, whole-body view that pulls from every source PUMP tracks — body weight, strength training, and wearable metrics — as summary tiles (latest value, trend delta, sparkline) that deep-link into the matching Stats tab.
 
-Wearable data is ingested generically from **Android Health Connect** via the [HC Webhook](https://github.com/mcnaveen/health-connect-webhook) bridge app, which POSTs a Health Connect envelope to **`POST /api/health`** (gated by `HEALTH_INGEST_KEY`). Each datum is stored in the `health_record` table, deduped on `(metric_type, start_time, end_time)`. The known types (steps, heart rate, resting heart rate, sleep, exercise) are charted on dedicated Stats tabs — **Steps**, **Heart Rate**, **Sleep**, **Cardio** — and every other Health Connect type is preserved generically, so no schema change is needed to ingest new metrics.
+Wearable data is ingested generically from **Android Health Connect** via the [HC Webhook](https://github.com/mcnaveen/health-connect-webhook) bridge app, which POSTs a Health Connect envelope to **`POST /api/health`** (gated by `HEALTH_INGEST_KEY`). Each datum is stored in the `health_record` table, deduped on `(metric_type, start_time, end_time)`. The known types (steps, active calories, heart rate, resting heart rate, sleep, exercise) are charted on dedicated Stats tabs — **Steps**, **Heart Rate**, **Sleep**, **Cardio** — and every other Health Connect type is preserved generically, so no schema change is needed to ingest new metrics.
+
+Notes on source coverage: sleep stages arrive as Health Connect numeric stage codes and are decoded into Deep/Light/REM/Awake minutes. When a source exports raw `heart_rate` but no `resting_heart_rate`, the day's minimum heart rate is used as a resting-HR estimate. The **Cardio** tab charts daily **active calories** (`active_calories`); per-session cardio also appears there once the bridge exports `ExerciseSession` records.
 
 ## Configuration
 
@@ -66,7 +68,7 @@ All configuration is via environment variables. No config file is required.
 | `POSTGRES_DSN` | PostgreSQL connection string **(required)** | — |
 | `API_KEY` | Sent as `X-Api-Key` when proxying to `pump-cv` (server-to-server only — pump has no inbound auth) | `""` |
 | `WEIGHT_INGEST_KEY` | When set, `POST /api/weight` requires header `X-Api-Key` matching this value. Enables off-cluster ingest (e.g. a BLE-scale ESPHome device) via an oauth2-bypassing internal Route scoped to `/api/weight`. Unset preserves the legacy no-inbound-auth posture. | `""` |
-| `HEALTH_INGEST_KEY` | When set, `POST /api/health` requires header `X-Api-Key` matching this value. Enables off-cluster wearable-metrics ingest from Android Health Connect (via the HC Webhook bridge app) over a path-scoped internal Route. The endpoint accepts a Health Connect envelope (per-type arrays: steps, heart_rate, sleep, exercise, …) and stores each datum in `health_record`, deduped on `(metric_type, start_time, end_time)`. Unset preserves the no-inbound-auth posture. | `""` |
+| `HEALTH_INGEST_KEY` | When set, `POST /api/health` requires header `X-Api-Key` matching this value. Enables off-cluster wearable-metrics ingest from Android Health Connect (via the HC Webhook bridge app) over a path-scoped internal Route. The endpoint accepts a Health Connect envelope (per-type arrays: steps, active_calories, heart_rate, sleep, exercise, …) and stores each datum in `health_record`, deduped on `(metric_type, start_time, end_time)`. Unset preserves the no-inbound-auth posture. | `""` |
 | `LOG_LEVEL` | Log verbosity: `debug`, `info`, `warn`, `error` | `info` |
 | `COLOR` | UI color mode: `light` or `dark` | `dark` |
 | `PAGESTEP` | Rows per page on the body weight log | `10` |
