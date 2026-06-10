@@ -40,8 +40,16 @@ func loadHealthStats() models.HealthStats {
 func aggregateHealth(recs []models.HealthRecord) models.HealthStats {
 	out := models.HealthStats{Available: true}
 
-	stepsByDay := map[string]float64{}
-	caloriesByDay := map[string]float64{}
+	// steps and active_calories arrive as cumulative daily-total snapshots:
+	// the bridge re-reports the running daily figure with the same midnight
+	// start_time and a growing end_time (and dedup keys on end_time, so every
+	// snapshot persists). Summing them multiplies the real total by the number
+	// of snapshots. Accumulate per (day, start_time) taking the MAX, then sum
+	// across distinct start_times per day — correct for both re-reported daily
+	// snapshots (one start ⇒ the final total) and genuine sub-day intervals
+	// (distinct starts ⇒ summed).
+	stepsByDay := map[string]map[int64]float64{}
+	caloriesByDay := map[string]map[int64]float64{}
 	restingByDay := map[string][]float64{}
 	hrByDay := map[string][]float64{}
 	sleepByDay := map[string]*models.SleepNight{}
@@ -58,9 +66,9 @@ func aggregateHealth(recs []models.HealthRecord) models.HealthStats {
 		day := r.StartTime.Local().Format("2006-01-02")
 		switch r.MetricType {
 		case "steps":
-			stepsByDay[day] += val(r)
+			addSnapshot(stepsByDay, day, r.StartTime.Unix(), val(r))
 		case "active_calories":
-			caloriesByDay[day] += val(r)
+			addSnapshot(caloriesByDay, day, r.StartTime.Unix(), val(r))
 		case "resting_heart_rate":
 			restingByDay[day] = append(restingByDay[day], val(r))
 		case "heart_rate":
@@ -83,11 +91,11 @@ func aggregateHealth(recs []models.HealthRecord) models.HealthStats {
 		}
 	}
 
-	for d, v := range stepsByDay {
-		out.DailySteps = append(out.DailySteps, models.DayValue{Date: d, Value: v})
+	for d, m := range stepsByDay {
+		out.DailySteps = append(out.DailySteps, models.DayValue{Date: d, Value: sumSnapshots(m)})
 	}
-	for d, v := range caloriesByDay {
-		out.ActiveCalories = append(out.ActiveCalories, models.DayValue{Date: d, Value: v})
+	for d, m := range caloriesByDay {
+		out.ActiveCalories = append(out.ActiveCalories, models.DayValue{Date: d, Value: sumSnapshots(m)})
 	}
 	for d, vs := range hrByDay {
 		mn, av, mx := minAvgMax(vs)
@@ -115,6 +123,27 @@ func aggregateHealth(recs []models.HealthRecord) models.HealthStats {
 	sort.Slice(out.Cardio, func(i, j int) bool { return out.Cardio[i].Date < out.Cardio[j].Date })
 
 	return out
+}
+
+// addSnapshot records v as the max seen for (day, start) — collapsing the
+// bridge's re-reported cumulative snapshots of the same interval to their
+// final value. See the comment in aggregateHealth.
+func addSnapshot(m map[string]map[int64]float64, day string, start int64, v float64) {
+	if m[day] == nil {
+		m[day] = map[int64]float64{}
+	}
+	if v > m[day][start] {
+		m[day][start] = v
+	}
+}
+
+// sumSnapshots totals the per-start maxima for a day.
+func sumSnapshots(m map[int64]float64) float64 {
+	var s float64
+	for _, v := range m {
+		s += v
+	}
+	return s
 }
 
 func sortByDate(s []models.DayValue) {

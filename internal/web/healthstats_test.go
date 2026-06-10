@@ -91,17 +91,41 @@ func TestAggregateHealthRestingHRRealWins(t *testing.T) {
 	}
 }
 
-// TestAggregateHealthActiveCalories verifies active_calories sums per day.
-func TestAggregateHealthActiveCalories(t *testing.T) {
+// TestAggregateHealthDistinctIntervalsSum verifies that genuine sub-day
+// intervals (distinct start_times) sum, for both steps and active calories.
+func TestAggregateHealthDistinctIntervalsSum(t *testing.T) {
 	d := time.Date(2026, 6, 8, 0, 0, 0, 0, time.Local)
 	out := aggregateHealth([]models.HealthRecord{
-		rec("active_calories", d, 174, `{"calories":174.0}`),
-		rec("active_calories", d.Add(time.Hour), 89, `{"calories":89.0}`),
+		rec("active_calories", d, 174, ""),
+		rec("active_calories", d.Add(time.Hour), 89, ""),
+		rec("steps", d, 1000, ""),
+		rec("steps", d.Add(time.Hour), 500, ""),
 	})
-	if len(out.ActiveCalories) != 1 {
-		t.Fatalf("want 1 active-calorie day, got %d", len(out.ActiveCalories))
+	if len(out.ActiveCalories) != 1 || out.ActiveCalories[0].Value != 263 {
+		t.Errorf("active calories distinct intervals: want 263 (174+89), got %+v", out.ActiveCalories)
 	}
-	if out.ActiveCalories[0].Value != 263 {
-		t.Errorf("active calories: want 263 (174+89), got %v", out.ActiveCalories[0].Value)
+	if len(out.DailySteps) != 1 || out.DailySteps[0].Value != 1500 {
+		t.Errorf("steps distinct intervals: want 1500 (1000+500), got %+v", out.DailySteps)
+	}
+}
+
+// TestAggregateHealthCumulativeSnapshots verifies that re-reported cumulative
+// daily snapshots (same midnight start, growing running total) collapse to the
+// day's MAX instead of summing — the bug that inflated steps ~9x.
+func TestAggregateHealthCumulativeSnapshots(t *testing.T) {
+	d := time.Date(2026, 6, 8, 0, 0, 0, 0, time.Local)
+	out := aggregateHealth([]models.HealthRecord{
+		rec("steps", d, 2660, ""),
+		rec("steps", d, 3146, ""),
+		rec("steps", d, 4607, ""),
+		rec("active_calories", d, 100, ""),
+		rec("active_calories", d, 263, ""),
+		rec("active_calories", d, 263, ""),
+	})
+	if len(out.DailySteps) != 1 || out.DailySteps[0].Value != 4607 {
+		t.Errorf("steps: want daily max 4607 (not summed), got %+v", out.DailySteps)
+	}
+	if len(out.ActiveCalories) != 1 || out.ActiveCalories[0].Value != 263 {
+		t.Errorf("active calories: want daily max 263 (not summed), got %+v", out.ActiveCalories)
 	}
 }
