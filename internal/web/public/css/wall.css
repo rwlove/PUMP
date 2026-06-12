@@ -276,6 +276,19 @@ body.cursor-idle * {
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
+/* Shown while a camera is on but pump-cv hasn't decoded a frame yet
+   (cold start / RTSP disconnected) — beats a broken-image icon. */
+.wall-cam-wait {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  color: #6a6a72;
+  letter-spacing: 0.04em;
+}
+.wall-cam-wait[hidden] { display: none; }
 /* Toggle switch — small, kiosk-friendly */
 .wall-cam-toggle {
   position: relative;
@@ -448,7 +461,14 @@ body.sleeping .wall-sleep { cursor: pointer; }
    Hidden by default; wall.js toggles `hidden` based on the state poll. */
 .wall-calib {
   position: fixed;
-  inset: 0;
+  /* Start below the shared navbar (header.html) so the kiosk operator can
+     still navigate away from the AI page while calibration is pending —
+     inset:0 here used to paint the overlay over the navbar entirely.
+     wall.js measures the real navbar height into --wall-navbar-h. */
+  top: var(--wall-navbar-h, 56px);
+  right: 0;
+  bottom: 0;
+  left: 0;
   background: var(--wall-bg, #0a0a0c);
   z-index: 1000;
   display: flex;
@@ -497,6 +517,12 @@ body.sleeping .wall-sleep { cursor: pointer; }
   height: 100%;
   object-fit: cover;
 }
+.wall-calib-prev-wait {
+  font-size: 0.9rem;
+  color: #6a6a72;
+  letter-spacing: 0.04em;
+}
+.wall-calib-prev-wait[hidden] { display: none; }
 .wall-calib-prev-label {
   position: absolute;
   top: 6px;
