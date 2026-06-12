@@ -63,14 +63,20 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     && rm /tmp/req.txt
 
 # The nvcr.io base ships its own OpenCV (pip package name `opencv`, built
-# WITHOUT FFmpeg) which shadows the opencv-python wheel from req.txt — the
-# imported cv2 ends up FFMPEG: NO, so cv2.VideoCapture can't open RTSP and
-# every camera open fails instantly. Drop the base build and force-reinstall
-# the pip wheel (FFMPEG: YES), then assert the backend is present so this
-# regression cannot return silently in a future base bump.
+# WITHOUT FFmpeg) that installs into the SAME site-packages `cv2/` directory
+# as the opencv-python wheel from req.txt and shadows it — `import cv2` loads
+# the headless build (FFMPEG: NO), so cv2.VideoCapture can't open RTSP and
+# every camera open fails instantly. A plain `pip uninstall` + reinstall is
+# not enough: the two packages share the cv2/ dir, so residual files keep
+# shadowing the wheel. Purge every opencv variant AND the leftover cv2/ dir,
+# then install the opencv-python wheel clean (FFmpeg-enabled on both amd64 and
+# arm64), and assert the backend is present so a future base bump can't
+# silently reintroduce the regression.
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip uninstall -y opencv opencv-python opencv-python-headless || true \
-    && pip install --force-reinstall --no-deps "opencv-python>=4.10" \
+    pip uninstall -y opencv opencv-python opencv-python-headless opencv-contrib-python || true \
+    && SITE="$(python3 -c 'import site; print(site.getsitepackages()[0])')" \
+    && rm -rf "$SITE/cv2" "$SITE"/opencv*.dist-info "$SITE"/opencv_python.libs \
+    && pip install --no-cache-dir "opencv-python>=4.10" \
     && python3 -c "import cv2; bi=cv2.getBuildInformation(); assert any('FFMPEG' in l and l.strip().endswith('YES') for l in bi.splitlines()), 'OpenCV FFMPEG backend missing — RTSP capture would fail'; print('cv2', cv2.__version__, 'FFMPEG: YES')"
 
 # Diagnostic: print the compiled arch list so a future regression is
