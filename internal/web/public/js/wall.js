@@ -28,6 +28,21 @@
     clipClose: document.getElementById('wallClipClose'),
   };
 
+  // ─── Navbar height → CSS var ────────────────────────────────────────
+  // The shared navbar (header.html) sits above the wall grid. Its real
+  // height depends on the logo size and font metrics, so measure it and
+  // publish it as --wall-navbar-h. Both the grid's height calc and the
+  // calibration overlay's top offset read this var; without it they fall
+  // back to a 56px guess that's ~25px short of the actual navbar.
+  function measureNavbar() {
+    const nav = document.querySelector('.navbar');
+    if (!nav) return;
+    const h = Math.round(nav.getBoundingClientRect().height);
+    if (h > 0) document.documentElement.style.setProperty('--wall-navbar-h', h + 'px');
+  }
+  measureNavbar();
+  window.addEventListener('resize', measureNavbar, { passive: true });
+
   // ─── Header date + clock ────────────────────────────────────────────
   function renderHeader() {
     const now = new Date();
@@ -156,6 +171,7 @@
         </div>
         <div class="wall-cam-frame">
           <img class="wall-cam-img" alt="${escapeHTML(c.name)} preview" hidden>
+          <div class="wall-cam-wait" hidden>waiting for camera…</div>
           <div class="wall-cam-off">off</div>
         </div>
       </div>
@@ -180,8 +196,16 @@
     if (!tile) return;
     const img = tile.querySelector('.wall-cam-img');
     const off = tile.querySelector('.wall-cam-off');
-    img.hidden = false;
+    const wait = tile.querySelector('.wall-cam-wait');
     off.hidden = true;
+    // Until the first frame decodes, show a "waiting" tile rather than a
+    // broken-image icon. pump-cv 404s the snapshot endpoint while a camera
+    // has no decoded frame yet (cold start / RTSP disconnected), so the
+    // <img> error fires every poll until the stream comes up.
+    img.hidden = true;
+    if (wait) wait.hidden = false;
+    img.onload = () => { img.hidden = false; if (wait) wait.hidden = true; };
+    img.onerror = () => { img.hidden = true; if (wait) wait.hidden = false; };
     const tick = () => {
       // Cache-buster — the snapshot endpoint sends Cache-Control: no-store
       // anyway, but `?t=` defends against any intermediate caching layer.
@@ -198,8 +222,11 @@
     if (!tile) return;
     const img = tile.querySelector('.wall-cam-img');
     const off = tile.querySelector('.wall-cam-off');
+    const wait = tile.querySelector('.wall-cam-wait');
+    img.onload = img.onerror = null;
     img.hidden = true;
     img.removeAttribute('src');
+    if (wait) wait.hidden = true;
     off.hidden = false;
   }
 
@@ -448,10 +475,21 @@
     calib.prevs.innerHTML = camNames.map(n => `
       <div class="wall-calib-prev" data-cam="${escapeHTML(n)}">
         <span class="wall-calib-prev-label">${escapeHTML(n)}</span>
-        <img alt="${escapeHTML(n)} preview">
+        <img alt="${escapeHTML(n)} preview" hidden>
+        <span class="wall-calib-prev-wait">waiting for camera…</span>
         <span class="wall-calib-prev-detect" hidden></span>
       </div>
     `).join('');
+    // Show the frame once it decodes; fall back to the "waiting" label
+    // whenever the snapshot 404s (no frame yet) instead of a broken image.
+    camNames.forEach(n => {
+      const tile = calib.prevs.querySelector(`.wall-calib-prev[data-cam="${cssEscape(n)}"]`);
+      if (!tile) return;
+      const img  = tile.querySelector('img');
+      const wait = tile.querySelector('.wall-calib-prev-wait');
+      img.onload  = () => { img.hidden = false; if (wait) wait.hidden = true; };
+      img.onerror = () => { img.hidden = true;  if (wait) wait.hidden = false; };
+    });
   }
 
   function calibStartPreviews(camNames) {

@@ -16,7 +16,10 @@
 // cache. v4: the /wall/ HTML shell is now served network-first (below), so a
 // stale shell can no longer be pinned on a long-lived kiosk — this bump also
 // flushes any v3 cache still holding the pre-navbar shell.
-const CACHE_NAME = "pump-wall-v4";
+// v5: wall.css/wall.js changed (calibration overlay no longer paints over the
+// navbar; navbar height measured into --wall-navbar-h) — flush the v4 precache
+// so the cache-first /fs/ handler stops serving the old shell assets.
+const CACHE_NAME = "pump-wall-v5";
 const SHELL = [
   "/wall/",
   "/fs/public/css/wall.css",
