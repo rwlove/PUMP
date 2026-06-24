@@ -55,6 +55,8 @@ Wearable data is ingested generically from **Android Health Connect** via the [H
 
 Notes on source coverage: sleep stages arrive as Health Connect numeric stage codes and are decoded into Deep/Light/REM/Awake minutes. When a source exports raw `heart_rate` but no `resting_heart_rate`, the day's minimum heart rate is used as a resting-HR estimate. The **Cardio** tab charts daily **active calories** (`active_calories`); per-session cardio also appears there once the bridge exports `ExerciseSession` records.
 
+Cardio sessions can also be captured **directly from the gym treadmill** with no wearable involved. The treadmill's Z-Wave metering smart plug publishes its wattage to MQTT (via `zwave-js-ui`); when `TREADMILL_MQTT_ENABLED` is set, PUMP subscribes to that feed, detects a workout with a wattage threshold + off-debounce state machine, and writes each session as an `exercise` record (duration only — a plug can't measure distance). These land on the **Cardio** tab alongside wearable sessions and dedupe on `(metric_type, start_time, end_time)` like every other health record. See the `TREADMILL_MQTT_*` settings below.
+
 ## Configuration
 
 All configuration is via environment variables. No config file is required.
@@ -82,6 +84,15 @@ All configuration is via environment variables. No config file is required.
 | `PUBLIC_URL` | Externally-reachable PUMP base URL; used to build deep-links in notifications | `""` |
 | `PUMP_CV_URL` | Where to forward reference-clip uploads (e.g. `http://pump-cv:8080`); empty disables the in-browser recorder | `""` |
 | `NODE_PATH` | Path to local `node_modules` directory; empty = use CDN for Bootstrap/Chart.js | `""` |
+| `TREADMILL_MQTT_ENABLED` | Enable treadmill cardio auto-capture: subscribe to the smart-plug wattage feed `zwave-js-ui` publishes to MQTT, detect each workout, and log it as a cardio session (no Home Assistant in the path). | `false` |
+| `TREADMILL_MQTT_BROKER` | MQTT broker URL, e.g. `tcp://emqx-headless.home.svc.cluster.local:1883` | `""` |
+| `TREADMILL_MQTT_USERNAME` | MQTT broker username | `""` |
+| `TREADMILL_MQTT_PASSWORD` | MQTT broker password | `""` |
+| `TREADMILL_MQTT_TOPIC` | Topic carrying the plug's instantaneous wattage (Z-Wave Meter CC) | `zwave/Gym/Treadmill/50/0/value/66049` |
+| `TREADMILL_WATTS_THRESHOLD` | Watts at/above which the treadmill counts as "in use" | `50` |
+| `TREADMILL_OFF_DEBOUNCE_SECONDS` | Sustained sub-threshold time before a session closes (ignores brief dips) | `60` |
+| `TREADMILL_MIN_SESSION_SECONDS` | Sessions shorter than this are discarded | `120` |
+| `TREADMILL_SESSION_TYPE` | Cardio type label stored with each session | `Treadmill` |
 | `TZ` | Timezone | `""` |
 
 `POSTGRES_DSN` must be set or the server will not start:
