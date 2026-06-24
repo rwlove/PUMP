@@ -13,9 +13,9 @@ import (
 	"github.com/rwlove/PUMP/internal/models"
 	"github.com/rwlove/PUMP/internal/notify"
 	"github.com/rwlove/PUMP/internal/store"
+	"github.com/rwlove/PUMP/internal/treadmill"
 	"github.com/rwlove/PUMP/internal/web"
 )
-
 
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
@@ -44,6 +44,19 @@ func envOr(key, def string) string {
 //	PUBLIC_URL         externally-reachable PUMP base URL    (used in notification deep-links)
 //	PUMP_CV_URL        where to forward reference-clip uploads (e.g. http://pump-cv:8080)
 //	PUMP_CLIPS_DIR     local directory holding per-set clip mp4s, served at /clips/
+//
+// Treadmill cardio auto-capture (subscribes to the Z-Wave smart-plug wattage
+// zwave-js-ui publishes to MQTT; detects a session and logs it as cardio):
+//
+//	TREADMILL_MQTT_ENABLED          turn the consumer on            (default: false)
+//	TREADMILL_MQTT_BROKER           broker URL (tcp://host:1883)
+//	TREADMILL_MQTT_USERNAME         broker username
+//	TREADMILL_MQTT_PASSWORD         broker password
+//	TREADMILL_MQTT_TOPIC            wattage topic (default: zwave/Gym/Treadmill/50/0/value/66049)
+//	TREADMILL_WATTS_THRESHOLD       watts at/above which it's "in use"  (default: 50)
+//	TREADMILL_OFF_DEBOUNCE_SECONDS  sub-threshold time before a session closes (default: 60)
+//	TREADMILL_MIN_SESSION_SECONDS   shorter sessions are ignored        (default: 120)
+//	TREADMILL_SESSION_TYPE          cardio type label                   (default: Treadmill)
 func main() {
 	logger.Init(os.Getenv("LOG_LEVEL"))
 
@@ -115,6 +128,22 @@ func main() {
 			slog.String("color", newCfg.Color),
 		)
 	})
+
+	// Treadmill cardio auto-capture: subscribe to the smart-plug wattage feed
+	// zwave-js-ui publishes to MQTT and log detected workouts as cardio. Inert
+	// unless TREADMILL_MQTT_ENABLED=true; never blocks startup.
+	if tmCfg := treadmill.ConfigFromEnv(); tmCfg.Enabled {
+		tc, err := treadmill.Start(tmCfg, pgStore)
+		if err != nil {
+			slog.Error("treadmill: consumer failed to start", slog.Any("error", err))
+		} else {
+			defer tc.Stop()
+			slog.Info("treadmill MQTT consumer started",
+				slog.String("broker", tmCfg.Broker),
+				slog.String("topic", tmCfg.Topic),
+				slog.Float64("watts_threshold", tmCfg.Threshold))
+		}
+	}
 
 	addr := host + ":" + port
 	slog.Info("PUMP ready", slog.String("addr", "http://"+addr))
