@@ -638,7 +638,10 @@ function setFormDate(sets) {
 }
 
 function goToToday() {
-    var date = window._serverDate || new Date().toLocaleDateString('en-CA');
+    // Compute the live local date rather than window._serverDate: that value is
+    // rendered server-side at page load, so a phone left open across midnight
+    // would otherwise send "Today" to yesterday. en-CA gives YYYY-MM-DD.
+    var date = new Date().toLocaleDateString('en-CA');
     setFormContent(window._allSets, date);
 }
 

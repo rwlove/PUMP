@@ -88,11 +88,13 @@ function renderStepsTab(period) {
     const today = window._serverDate;
     const todayRow = all.find(d => d.Date === today);
     hcSetText('steps-today', todayRow ? Math.round(todayRow.Value).toLocaleString() : '0');
-    const last7 = hcLast(all, 7).map(d => d.Value);
-    hcSetText('steps-avg', last7.length ? Math.round(hcMean(last7)).toLocaleString() : '–');
-    hcSetText('steps-best', all.length ? Math.round(Math.max(...all.map(d => d.Value))).toLocaleString() : '–');
 
     const data = hcByPeriod(all, period);
+    // Avg / best track the selected period, matching the chart below.
+    const vals0 = data.map(d => d.Value);
+    hcSetText('steps-avg', vals0.length ? Math.round(hcMean(vals0)).toLocaleString() : '–');
+    hcSetText('steps-best', vals0.length ? Math.round(Math.max(...vals0)).toLocaleString() : '–');
+
     const canvas = document.getElementById('steps-chart');
     const noData = document.getElementById('steps-no-data');
     if (!data.length) { if (canvas) canvas.style.display = 'none'; if (noData) noData.style.display = 'block'; _stepsChart = hcDestroy(_stepsChart); return; }
@@ -153,12 +155,15 @@ function renderSleepTab(period) {
     const all = hcData('Sleep');
     const last = all.length ? all[all.length - 1] : null;
     hcSetText('sleep-last', last ? hcFmtDur(last.Minutes) : '–');
-    const last7 = hcLast(all, 7).map(d => d.Minutes);
-    hcSetText('sleep-avg', last7.length ? hcFmtDur(hcMean(last7)) : '–');
-    const deepPct = last && last.Minutes > 0 ? Math.round(100 * last.Deep / last.Minutes) : null;
-    hcSetText('sleep-deep', deepPct != null && deepPct > 0 ? deepPct + '%' : '–');
 
     const data = hcByPeriod(all, period);
+    // Avg nightly sleep and deep-share track the selected period.
+    hcSetText('sleep-avg', data.length ? hcFmtDur(hcMean(data.map(d => d.Minutes))) : '–');
+    const periodMin = data.reduce((a, d) => a + d.Minutes, 0);
+    const periodDeep = data.reduce((a, d) => a + d.Deep, 0);
+    const deepPct = periodMin > 0 ? Math.round(100 * periodDeep / periodMin) : null;
+    hcSetText('sleep-deep', deepPct != null && deepPct > 0 ? deepPct + '%' : '–');
+
     const canvas = document.getElementById('sleep-chart');
     const noData = document.getElementById('sleep-no-data');
     if (!data.length) { if (canvas) canvas.style.display = 'none'; if (noData) noData.style.display = 'block'; _sleepChart = hcDestroy(_sleepChart); return; }
@@ -184,7 +189,22 @@ function renderSleepTab(period) {
         options: {
             responsive: true,
             scales: { x: Object.assign({ stacked: true }, hcAxisOpts.x), y: { stacked: true, beginAtZero: true, grid: { display: false }, title: { display: true, text: 'Hours', font: { size: 12 }, color: 'var(--bs-secondary-color)' }, ticks: { callback(v) { return v + 'h'; } } } },
-            plugins: { legend: { display: hasStages, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } }, tooltip: { callbacks: { label(c) { return c.dataset.label + ': ' + hcFmtDur(c.raw * 60); } } } }
+            plugins: {
+                legend: { display: hasStages, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+                // Hovering a bar shows every stage at that night plus the total.
+                tooltip: {
+                    mode: 'index', intersect: false,
+                    callbacks: {
+                        title(items) { return items.length ? items[0].label : ''; },
+                        label(c) { return c.dataset.label + ': ' + hcFmtDur(c.raw * 60); },
+                        footer(items) {
+                            if (!items.length) return '';
+                            const n = data[items[0].dataIndex];
+                            return n ? 'Total sleep: ' + hcFmtDur(n.Minutes) : '';
+                        }
+                    }
+                }
+            }
         }
     });
 }
