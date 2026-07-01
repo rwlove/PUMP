@@ -261,7 +261,7 @@ def call_claude(user_msg: str) -> dict:
 
     client = anthropic.Anthropic(auth_token=oauth_token)
     response = client.messages.create(
-        model="claude-opus-4-5",
+        model=os.environ.get("AUTOFIX_MODEL", "claude-opus-4-5"),
         max_tokens=16384,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_msg}],

@@ -85,7 +85,7 @@ jobs:
       # ~50 GB before the build to avoid OOM-disk.
       - name: Free disk space
         if: steps.check.outputs.needs_rebuild == 'true'
-        uses: jlumbroso/free-disk-space@main
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # pin of @main
         with:
           tool-cache: true
           android: true
