@@ -28,16 +28,23 @@ var cvProxyClient = &http.Client{Timeout: 30 * time.Second}
 var cvUploadClient = &http.Client{Timeout: 5 * time.Minute}
 
 func exerciseHandler(c *gin.Context) {
+	cfg := conf.Get()
+
 	exs, ok := selectExOr500(c, "exerciseHandler")
 	if !ok {
 		return
 	}
-	sets, ok := selectSetsOr500(c, "exerciseHandler")
+	// Sets are only used for the frequency sort — fetch just that window.
+	window := cfg.FrequencyDays
+	if window < 0 {
+		window = 0
+	}
+	fetchCutoff := time.Now().AddDate(0, 0, -window).Format("2006-01-02")
+	sets, ok := selectSetsSinceOr500(c, "exerciseHandler", fetchCutoff)
 	if !ok {
 		return
 	}
 
-	cfg := conf.Get()
 	sortExsByFrequency(exs, sets, cfg.FrequencyDays)
 
 	var guiData models.GuiData

@@ -12,11 +12,25 @@ import (
 )
 
 func indexHandler(c *gin.Context) {
+	cfg := conf.Get()
+
+	// The main page only needs sets covering the display window and the
+	// frequency-sort lookback — fetch just that span instead of all history.
+	days := cfg.DisplayDays
+	if days <= 0 {
+		days = 30
+	}
+	window := days
+	if cfg.FrequencyDays > window {
+		window = cfg.FrequencyDays
+	}
+	fetchCutoff := time.Now().AddDate(0, 0, -window).Format("2006-01-02")
+
 	exs, ok := selectExOr500(c, "indexHandler")
 	if !ok {
 		return
 	}
-	sets, ok := selectSetsOr500(c, "indexHandler")
+	sets, ok := selectSetsSinceOr500(c, "indexHandler", fetchCutoff)
 	if !ok {
 		return
 	}
@@ -34,14 +48,9 @@ func indexHandler(c *gin.Context) {
 		}
 	}
 
-	cfg := conf.Get()
 	sortExsByFrequency(exs, sets, cfg.FrequencyDays)
 
 	// Limit sets sent to the main page to the configured display window.
-	days := cfg.DisplayDays
-	if days <= 0 {
-		days = 30
-	}
 	cutoff := time.Now().AddDate(0, 0, -days).Format("2006-01-02")
 	var displaySets []models.Set
 	for _, s := range sets {
