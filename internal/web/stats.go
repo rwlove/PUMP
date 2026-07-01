@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rwlove/PUMP/internal/conf"
 	"github.com/rwlove/PUMP/internal/models"
 )
 
@@ -25,10 +26,11 @@ func statsHandler(c *gin.Context) {
 
 	sort.Slice(sets, func(i, j int) bool { return sets[i].Date < sets[j].Date })
 	sort.Slice(weights, func(i, j int) bool { return weights[i].Date < weights[j].Date })
-	sortExsByFrequency(exs, sets, appConfig.FrequencyDays)
+	cfg := conf.Get()
+	sortExsByFrequency(exs, sets, cfg.FrequencyDays)
 
 	var guiData models.GuiData
-	guiData.Config = appConfig
+	guiData.Config = cfg
 	guiData.ExData.Exs = exs
 	guiData.ExData.Sets = sets
 	guiData.ExData.Weight = weights

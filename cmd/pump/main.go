@@ -10,7 +10,6 @@ import (
 	"github.com/rwlove/PUMP/internal/conf"
 	"github.com/rwlove/PUMP/internal/db"
 	"github.com/rwlove/PUMP/internal/logger"
-	"github.com/rwlove/PUMP/internal/models"
 	"github.com/rwlove/PUMP/internal/notify"
 	"github.com/rwlove/PUMP/internal/store"
 	"github.com/rwlove/PUMP/internal/treadmill"
@@ -97,13 +96,14 @@ func main() {
 	r.Use(logger.GinMiddleware())
 
 	cfg.NodePath = nodePath
+	conf.Set(cfg)
 	pushover := &notify.Pushover{
 		UserKey:  cfg.PushoverUserKey,
 		AppToken: cfg.PushoverAppToken,
 		APIURL:   os.Getenv("PUSHOVER_API_URL"),
 	}
 	publicURL := os.Getenv("PUBLIC_URL")
-	api.RegisterRoutes(r, pgStore, cfg, pushover, publicURL)
+	api.RegisterRoutes(r, pgStore, pushover, publicURL)
 	// Broadcast the running build to any connected wall kiosk so it
 	// can self-reload when this Pod is replaced by a newer image.
 	api.SetBuildSHA(web.Version)
@@ -115,12 +115,7 @@ func main() {
 		r.Static("/clips", clipsDir)
 		slog.Info("serving CV clips", slog.String("from", clipsDir))
 	}
-	web.RegisterRoutes(r, pgStore, cfg, func(newCfg models.Conf) {
-		api.SetConfig(newCfg)
-		slog.Info("config updated via web UI",
-			slog.String("color", newCfg.Color),
-		)
-	})
+	web.RegisterRoutes(r, pgStore)
 
 	// Treadmill cardio auto-capture: subscribe to the smart-plug wattage feed
 	// zwave-js-ui publishes to MQTT and log detected workouts as cardio. Inert

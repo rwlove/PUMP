@@ -6,13 +6,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/rwlove/PUMP/internal/conf"
 	"github.com/rwlove/PUMP/internal/models"
 )
 
 func configHandler(c *gin.Context) {
 	var guiData models.GuiData
 
-	guiData.Config = appConfig
+	guiData.Config = conf.Get()
 	guiData.Version = Version
 
 	c.HTML(http.StatusOK, "header.html", guiData)
@@ -20,17 +21,14 @@ func configHandler(c *gin.Context) {
 }
 
 func saveConfigHandler(c *gin.Context) {
-	appConfig.Color = c.PostForm("color")
-	appConfig.PageStep, _ = strconv.Atoi(c.PostForm("pagestep"))
-	appConfig.FrequencyDays, _ = strconv.Atoi(c.PostForm("frequencydays"))
-	appConfig.DisplayDays, _ = strconv.Atoi(c.PostForm("displaydays"))
-	appConfig.AutoFill = c.PostForm("autofill") == "on"
-	appConfig.CVAutoLog = c.PostForm("cvautolog") == "on"
-
-	// Notify the API layer of the new config.
-	if configSaveHook != nil {
-		configSaveHook(appConfig)
-	}
+	cfg := conf.Get()
+	cfg.Color = c.PostForm("color")
+	cfg.PageStep, _ = strconv.Atoi(c.PostForm("pagestep"))
+	cfg.FrequencyDays, _ = strconv.Atoi(c.PostForm("frequencydays"))
+	cfg.DisplayDays, _ = strconv.Atoi(c.PostForm("displaydays"))
+	cfg.AutoFill = c.PostForm("autofill") == "on"
+	cfg.CVAutoLog = c.PostForm("cvautolog") == "on"
+	conf.Set(cfg)
 
 	c.Redirect(http.StatusFound, "/config")
 }

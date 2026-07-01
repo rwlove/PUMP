@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/rwlove/PUMP/internal/conf"
 	"github.com/rwlove/PUMP/internal/models"
 )
 
@@ -15,7 +16,7 @@ import (
 // page degrades gracefully (each tab shows its own "unavailable" state).
 func adminHandler(c *gin.Context) {
 	var guiData models.GuiData
-	guiData.Config = appConfig
+	guiData.Config = conf.Get()
 	guiData.Version = Version
 	c.HTML(http.StatusOK, "admin.html", guiData)
 }
