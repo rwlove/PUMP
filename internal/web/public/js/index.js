@@ -590,17 +590,14 @@ function openSetsStream() {
         if (wasPending !== isPending) {
             // Re-render the entry by replacing it. Easier than surgically
             // swapping confirm/reject buttons for a delete button.
-            var inserted = entry.previousElementSibling;
+            // Re-adds via addExercise's append-to-bottom; order may shift
+            // to bottom. Single-user gym: ordering is forgivable here.
             entry.remove();
-            // Reinsert in place by using addExercise's append-to-bottom and
-            // then moving back. Single-user gym: ordering is forgivable here.
             addExercise(
                 e.set.Name, e.set.Weight, e.set.Reps, e.set.WorkoutColor,
                 false, e.set.Note,
                 {id: e.id, source: e.set.Source, pending: isPending, confidence: e.set.Confidence}
             );
-            // (Order may shift to bottom; acceptable.)
-            void inserted; // silence unused
         }
     });
 

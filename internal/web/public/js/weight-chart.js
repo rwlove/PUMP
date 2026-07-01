@@ -1,9 +1,8 @@
 var wChart = null;
 
-function splitWeight(weight, show) {
+function splitWeight(weight) {
     var dates = [];
     var ws = [];
-    weight = weight.slice(show);
     for (let i = 0; i < weight.length; i++) {
         dates.push(weight[i].Date);
         ws.push(parseFloat(weight[i].Weight));
@@ -11,7 +10,7 @@ function splitWeight(weight, show) {
     return { dates, ws };
 }
 
-function weightChart(id, dates, ws, wcolor, xticks) {
+function weightChart(id, dates, ws, wcolor) {
     const ctx = document.getElementById(id);
     if (!ctx) return;
 
@@ -86,11 +85,9 @@ function weightChart(id, dates, ws, wcolor, xticks) {
     });
 }
 
-// generateWeightChart renders a weight line chart.
-// canvasId defaults to 'weight-chart' if not provided.
-function generateWeightChart(weight, wcolor, show, canvasId) {
+// generateWeightChart renders a weight line chart on the given canvas.
+function generateWeightChart(weight, wcolor, canvasId) {
     if (!weight) return;
-    var id = canvasId || 'weight-chart';
-    var { dates, ws } = splitWeight(weight, show);
-    weightChart(id, dates, ws, wcolor, false);
+    var { dates, ws } = splitWeight(weight);
+    weightChart(canvasId, dates, ws, wcolor);
 }

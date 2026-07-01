@@ -22,7 +22,7 @@ function addWeight(i, date, weight, id) {
     document.getElementById('weightList').insertAdjacentHTML('beforeend', row);
 }
 
-function setWeights(weights, wcolor, off, step) {
+function setWeights(weights, off, step) {
     offset = Math.max(0, offset + off);
 
     var len  = weights.length;
@@ -38,16 +38,8 @@ function setWeights(weights, wcolor, off, step) {
 
     document.getElementById('weightList').innerHTML = '';
 
-    var dates = [], ws = [];
     for (var i = start; i < end; i++) {
-        dates.push(weights[i].Date);
-        ws.push(weights[i].Weight);
         addWeight(i + 1, weights[i].Date, weights[i].Weight, weights[i].ID);
-    }
-    // The standalone weight page had its own mini-chart; the Stats page renders
-    // the body-weight chart separately (#stats-body-weight). Only draw if present.
-    if (document.getElementById('weight-chart')) {
-        weightChart('weight-chart', dates, ws, wcolor, true);
     }
 
     // Grey out a paging button only when there's no further page that way:
@@ -62,7 +54,7 @@ function setWeights(weights, wcolor, off, step) {
 // Render the log table for an already period-filtered weight set, resetting
 // paging to the newest page. Used by Stats so the log honors the selected
 // time period (the Older/Newer buttons then page within that filtered set).
-function renderWeightTable(weights, wcolor, step) {
+function renderWeightTable(weights, step) {
     offset = 0;
-    setWeights(weights, wcolor, 0, step || 10);
+    setWeights(weights, 0, step || 10);
 }

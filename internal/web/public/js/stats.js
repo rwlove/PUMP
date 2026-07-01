@@ -60,9 +60,9 @@ function setGlobalPeriod(period) {
     // Refresh Body Weight (chart + log) if visible
     const wtTab = document.getElementById('tab-weight');
     if (wtTab && wtTab.classList.contains('show')) {
-        generateWeightChart(filterWeightByPeriod(window._allWeight, period), window._chartColor, 0, 'stats-body-weight');
+        generateWeightChart(filterWeightByPeriod(window._allWeight, period), window._chartColor, 'stats-body-weight');
         if (window.renderWeightTable) {
-            renderWeightTable(filterWeightByPeriod(window._allWeight, period), window._chartColor, window._pageStep);
+            renderWeightTable(filterWeightByPeriod(window._allWeight, period), window._pageStep);
         }
     }
 
