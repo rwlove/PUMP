@@ -34,15 +34,21 @@ Complete all steps in order before running `git tag`:
 
 ### 1. Regenerate screenshots
 
-Take fresh screenshots of every page and tab at 1280×900 using the running preview server's CDP endpoint (see the Node.js CDP helper pattern established in this repo). Update all images in `assets/`:
+Take fresh screenshots of every page and tab at 1280×900 using the running preview server's CDP endpoint (see the Node.js CDP helper pattern established in this repo). Update all images in `assets/` — the authoritative set is whatever the README's screenshot table embeds; currently:
 
 - `screenshot-workout.png` — main workout page (`/`)
+- `screenshot-health.png` — Overall Health dashboard (`/health/`)
+- `screenshot-config.png` — Settings page (`/config/`)
 - `screenshot-stats-overview.png` — Stats › Exercise Distribution tab (`/stats/`)
 - `screenshot-stats-activity.png` — Stats › Weight Moved tab (click `#tab-activity-btn`)
 - `screenshot-stats-weight.png` — Stats › Body Weight tab (click `#tab-weight-btn`)
-- `screenshot-config.png` — Settings page (`/config/`)
+- `screenshot-stats-balance.png` — Stats › Muscle Balance tab (click `#tab-balance-btn`)
+- `screenshot-stats-steps.png` — Stats › Steps tab (click `#tab-steps-btn`)
+- `screenshot-stats-hr.png` — Stats › Heart Rate tab (click `#tab-hr-btn`)
+- `screenshot-stats-sleep.png` — Stats › Sleep tab (click `#tab-sleep-btn`)
+- `screenshot-stats-cardio.png` — Stats › Cardio tab (click `#tab-cardio-btn`)
 
-If a tab is added or removed, update this list and the README table to match.
+Shoot against a clean restore of the production dump — never against a database that test writes have touched. If a tab is added or removed, update this list and the README table to match.
 
 ### 2. Audit and update the README
 
