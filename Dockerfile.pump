@@ -22,7 +22,6 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 FROM scratch
 
-WORKDIR /data/PUMP
 WORKDIR /app
 
 COPY --from=builder /pump /app/
