@@ -1,5 +1,17 @@
-{{ define "header.html"}}
+{{/*
+    Shared page shell, in two halves so each page can add its own
+    stylesheets/meta between them (inside the real <head>):
 
+        {{ template "page-head" . }}
+        <link rel="stylesheet" href=".../page.css">
+        {{ template "page-body" . }}
+        ...page content...
+        {{ template "footer.html" }}
+
+    "page-head" opens the document and loads the assets every page needs;
+    "page-body" closes <head>, opens <body>, and renders the shared navbar.
+*/}}
+{{ define "page-head" }}
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="{{ .Config.Color }}">
 <head>
@@ -31,6 +43,9 @@
     {{ end }}
     <!-- Global custom styles -->
     <link rel="stylesheet" type="text/css" href="/fs/public/css/style.css">
+{{ end }}
+
+{{ define "page-body" }}
 </head>
 <body>
     <nav class="navbar navbar-expand-sm bg-body-tertiary border-bottom">

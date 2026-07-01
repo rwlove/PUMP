@@ -1,9 +1,8 @@
 {{ define "wall.html" }}
-{{/* header.html opens <html>/<head>/<body> + renders the navbar.
-     We append the wall-specific stylesheet+manifest into <body> via
-     a normal <link>; modern browsers accept this and render correctly. */}}
-<link rel="manifest" href="/fs/public/wall-manifest.json">
-<link rel="stylesheet" type="text/css" href="/fs/public/css/wall.css">
+{{ template "page-head" . }}
+    <link rel="manifest" href="/fs/public/wall-manifest.json">
+    <link rel="stylesheet" type="text/css" href="/fs/public/css/wall.css">
+{{ template "page-body" . }}
 
 <div class="wall-grid" id="wallRoot">
   <section class="wall-data">

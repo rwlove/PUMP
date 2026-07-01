@@ -1,13 +1,14 @@
 {{ define "config.html" }}
-<body>
+{{ template "page-head" . }}
+{{ template "page-body" . }}
     <div class="container-lg mt-4">
     <div class="row">
         <div class="col-md mb-4">
         <div class="card border-primary">
             <div class="card-header">Config</div>
         <div class="card-body table-responsive">
+        <form action="/config/" method="post">
         <table class="table table-borderless">
-            <form action="/config/" method="post">
                 <tr>
                     <td>Color mode</td>
                     <td><select name="color" class="form-select">
@@ -103,8 +104,8 @@
                     <td><button type="submit" class="btn btn-primary">Save</button></td>
                     <td></td>
                 </tr>
-            </form>
         </table>
+        </form>
         </div>
         </div>
         </div>
@@ -114,6 +115,7 @@
             <div class="card-body">
                 <p>PUMP — Please Use More Protein — open source workout tracker</p>
             </div>
+        </div>
         </div>
     </div>
     </div>

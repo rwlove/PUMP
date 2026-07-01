@@ -16,6 +16,5 @@ func wallHandler(c *gin.Context) {
 	var guiData models.GuiData
 	guiData.Config = conf.Get()
 	guiData.Version = Version
-	c.HTML(http.StatusOK, "header.html", guiData)
 	c.HTML(http.StatusOK, "wall.html", guiData)
 }
