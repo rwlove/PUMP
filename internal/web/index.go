@@ -27,9 +27,9 @@ func indexHandler(c *gin.Context) {
 
 	// Backfill colors for any exercise that lacks one (one-time operation).
 	if needsColorBackfill(exs) {
-		backfillColors(exs)
+		backfillColors(c.Request.Context(), exs)
 		// Reload so the template sees the updated colors.
-		if refreshed, err := dataStore.SelectEx(); err == nil {
+		if refreshed, err := dataStore.SelectEx(c.Request.Context()); err == nil {
 			exs = refreshed
 		}
 	}

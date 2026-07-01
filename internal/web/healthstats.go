@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"sort"
@@ -16,9 +17,9 @@ const healthLookbackDays = 400
 // loadHealthStats fetches and aggregates wearable records from the active
 // store. Returns an empty (Available:false) struct on error, so the page
 // degrades to empty states rather than failing.
-func loadHealthStats() models.HealthStats {
+func loadHealthStats(ctx context.Context) models.HealthStats {
 	since := time.Now().AddDate(0, 0, -healthLookbackDays)
-	recs, err := healthStore.SelectHealthRecords("", since)
+	recs, err := healthStore.SelectHealthRecords(ctx, "", since)
 	if err != nil {
 		slog.Error("loadHealthStats: SelectHealthRecords failed", slog.Any("error", err))
 		return models.HealthStats{}

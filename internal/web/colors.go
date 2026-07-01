@@ -1,8 +1,9 @@
 package web
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"math"
 
 	"github.com/rwlove/PUMP/internal/models"
@@ -51,7 +52,7 @@ func hslToHex(h, s, l float64) string {
 // backfillColors assigns colors to any exercise that has an empty Color field,
 // persisting the change to the store. Called lazily on the first page load that
 // finds exercises without colors.
-func backfillColors(exs []models.Exercise) {
+func backfillColors(ctx context.Context, exs []models.Exercise) {
 	// Collect the ordered list of already-assigned colors (preserving insertion
 	// order so the golden-angle sequence stays consistent across restarts).
 	assigned := make([]string, 0, len(exs))
@@ -67,8 +68,8 @@ func backfillColors(exs []models.Exercise) {
 		}
 		color := nextExerciseColor(assigned)
 		assigned = append(assigned, color)
-		if err := dataStore.UpdateExColor(ex.ID, color); err != nil {
-			log.Printf("WARN backfillColors: exercise %d (%s): %v", ex.ID, ex.Name, err)
+		if err := dataStore.UpdateExColor(ctx, ex.ID, color); err != nil {
+			slog.Warn("backfillColors failed", slog.Int("id", ex.ID), slog.String("name", ex.Name), slog.Any("error", err))
 		}
 	}
 }

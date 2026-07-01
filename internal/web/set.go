@@ -3,10 +3,8 @@ package web
 import (
 	"log/slog"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/shopspring/decimal"
 
 	"github.com/rwlove/PUMP/internal/models"
 )
@@ -15,7 +13,9 @@ func setHandler(c *gin.Context) {
 	var formData []models.Set
 	var oneSet models.Set
 
-	_ = c.PostFormMap("sets")
+	// Force form parsing so c.Request.PostForm is populated below (mirrors
+	// what gin's PostForm accessors do internally).
+	_ = c.Request.ParseMultipartForm(32 << 20)
 	formMap := c.Request.PostForm
 
 	formLen := len(formMap["name"])
@@ -28,8 +28,15 @@ func setHandler(c *gin.Context) {
 	for i := 0; i < formLen; i++ {
 		oneSet.Date = date
 		oneSet.Name = formMap["name"][i]
-		oneSet.Weight, _ = decimal.NewFromString(formMap["weight"][i])
-		oneSet.Reps, _ = strconv.Atoi(formMap["reps"][i])
+		var ok bool
+		if oneSet.Weight, ok = formDecimal(formMap["weight"][i]); !ok {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		if oneSet.Reps, ok = formInt(formMap["reps"][i]); !ok {
+			c.Status(http.StatusBadRequest)
+			return
+		}
 		if wc, ok := formMap["workout_color"]; ok && i < len(wc) {
 			oneSet.WorkoutColor = wc[i]
 		} else {
@@ -41,7 +48,7 @@ func setHandler(c *gin.Context) {
 		formData = append(formData, oneSet)
 	}
 
-	if err := dataStore.BulkReplaceSetsByDate(date, formData); err != nil {
+	if err := dataStore.BulkReplaceSetsByDate(c.Request.Context(), date, formData); err != nil {
 		slog.Error("setHandler: BulkReplaceSetsByDate failed",
 			slog.String("date", date), slog.Any("error", err))
 		c.Status(http.StatusInternalServerError)
