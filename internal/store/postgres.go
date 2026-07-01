@@ -3,11 +3,13 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 
@@ -78,6 +80,24 @@ func (s *PostgresStore) InsertEx(ctx context.Context, ex models.Exercise) error 
 		slog.Debug("db: InsertEx failed", slog.Any("error", err))
 	}
 	return err
+}
+
+// UpdateEx rewrites an existing exercise in place, preserving its id.
+// Returns false when no row has that id (caller may fall back to insert,
+// preserving the old delete+insert upsert semantics).
+func (s *PostgresStore) UpdateEx(ctx context.Context, ex models.Exercise) (bool, error) {
+	slog.Debug("db: UpdateEx", slog.Int("id", ex.ID), slog.String("name", ex.Name))
+	ct, err := s.pool.Exec(ctx,
+		`UPDATE exercises SET gr = $1, place = $2, name = $3, descr = $4,
+		        image = $5, color = $6, weight = $7, reps = $8
+		 WHERE id = $9`,
+		ex.Group, ex.Place, ex.Name, ex.Descr, ex.Image, ex.Color,
+		ex.Weight.String(), ex.Reps, ex.ID)
+	if err != nil {
+		slog.Debug("db: UpdateEx failed", slog.Int("id", ex.ID), slog.Any("error", err))
+		return false, err
+	}
+	return ct.RowsAffected() > 0, nil
 }
 
 func (s *PostgresStore) DeleteEx(ctx context.Context, id int) error {
@@ -165,7 +185,7 @@ func (s *PostgresStore) GetSet(ctx context.Context, id int) (models.Set, error) 
 	return scanSet(row)
 }
 
-func (s *PostgresStore) InsertSet(ctx context.Context, set models.Set) (int, error) {
+func (s *PostgresStore) InsertSet(ctx context.Context, set models.Set) (models.Set, error) {
 	slog.Debug("db: InsertSet",
 		slog.String("date", set.Date), slog.String("name", set.Name),
 		slog.String("source", set.Source))
@@ -179,22 +199,22 @@ func (s *PostgresStore) InsertSet(ctx context.Context, set models.Set) (int, err
 		confidence = 1.0
 	}
 
-	var id int
-	err := s.pool.QueryRow(ctx,
+	row := s.pool.QueryRow(ctx,
 		`INSERT INTO sets (date, name, color, workout_color, weight, reps,
 		                   note, source, confidence, pending, clip_path)
 		 VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-		 RETURNING id`,
+		 RETURNING `+setColumns,
 		set.Date, set.Name, set.Color, set.WorkoutColor,
 		set.Weight.String(), set.Reps, set.Note,
-		source, confidence, set.Pending, set.ClipPath).Scan(&id)
+		source, confidence, set.Pending, set.ClipPath)
+	stored, err := scanSet(row)
 	if err != nil {
 		slog.Debug("db: InsertSet failed", slog.Any("error", err))
 	}
-	return id, err
+	return stored, err
 }
 
-func (s *PostgresStore) UpdateSet(ctx context.Context, id int, upd models.SetUpdate) error {
+func (s *PostgresStore) UpdateSet(ctx context.Context, id int, upd models.SetUpdate) (models.Set, error) {
 	slog.Debug("db: UpdateSet", slog.Int("id", id))
 
 	cols := []string{}
@@ -227,27 +247,40 @@ func (s *PostgresStore) UpdateSet(ctx context.Context, id int, upd models.SetUpd
 	}
 
 	if len(cols) == 0 {
-		return nil
+		// Nothing to change; return the current row so callers can still
+		// publish an SSE payload.
+		return s.GetSet(ctx, id)
 	}
 
 	args = append(args, id)
-	q := fmt.Sprintf("UPDATE sets SET %s WHERE id = $%d",
-		strings.Join(cols, ", "), len(args))
+	q := fmt.Sprintf("UPDATE sets SET %s WHERE id = $%d RETURNING %s",
+		strings.Join(cols, ", "), len(args), setColumns)
 
-	_, err := s.pool.Exec(ctx, q, args...)
+	stored, err := scanSet(s.pool.QueryRow(ctx, q, args...))
+	if errors.Is(err, pgx.ErrNoRows) {
+		// No row with that id — same silent no-op as the previous UPDATE.
+		return models.Set{}, nil
+	}
 	if err != nil {
 		slog.Debug("db: UpdateSet failed", slog.Int("id", id), slog.Any("error", err))
 	}
-	return err
+	return stored, err
 }
 
-func (s *PostgresStore) DeleteSet(ctx context.Context, id int) error {
+// DeleteSet removes a set and returns its date so SSE events can carry it
+// without a separate lookup. Deleting a nonexistent id returns ("", nil).
+func (s *PostgresStore) DeleteSet(ctx context.Context, id int) (string, error) {
 	slog.Debug("db: DeleteSet", slog.Int("id", id))
-	_, err := s.pool.Exec(ctx, "DELETE FROM sets WHERE id = $1", id)
+	var date string
+	err := s.pool.QueryRow(ctx,
+		"DELETE FROM sets WHERE id = $1 RETURNING date::text", id).Scan(&date)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
 	if err != nil {
 		slog.Debug("db: DeleteSet failed", slog.Int("id", id), slog.Any("error", err))
 	}
-	return err
+	return date, err
 }
 
 func (s *PostgresStore) BulkReplaceSetsByDate(ctx context.Context, date string, sets []models.Set) error {
@@ -263,15 +296,24 @@ func (s *PostgresStore) BulkReplaceSetsByDate(ctx context.Context, date string, 
 	}
 	slog.Debug("db: deleted existing sets for date", slog.String("date", date))
 
-	for i, set := range sets {
-		if _, err := tx.Exec(ctx,
+	b := &pgx.Batch{}
+	for _, set := range sets {
+		b.Queue(
 			`INSERT INTO sets (date, name, color, workout_color, weight, reps, note)
 			 VALUES ($1::date, $2, $3, $4, $5, $6, $7)`,
 			set.Date, set.Name, set.Color, set.WorkoutColor,
-			set.Weight.String(), set.Reps, set.Note); err != nil {
+			set.Weight.String(), set.Reps, set.Note)
+	}
+	br := tx.SendBatch(ctx, b)
+	for i := range sets {
+		if _, err := br.Exec(); err != nil {
 			slog.Debug("db: insert set failed", slog.Int("index", i), slog.Any("error", err))
+			_ = br.Close()
 			return err
 		}
+	}
+	if err := br.Close(); err != nil {
+		return err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -375,7 +417,7 @@ func (s *PostgresStore) InsertHealthRecords(ctx context.Context, recs []models.H
 	}
 	defer tx.Rollback(ctx)
 
-	inserted := 0
+	b := &pgx.Batch{}
 	for _, r := range recs {
 		var endTime interface{}
 		if r.EndTime != nil {
@@ -393,17 +435,26 @@ func (s *PostgresStore) InsertHealthRecords(ctx context.Context, recs []models.H
 		if source == "" {
 			source = "health-connect"
 		}
-		ct, err := tx.Exec(ctx,
+		b.Queue(
 			`INSERT INTO health_record (metric_type, start_time, end_time, value, unit, extra, source)
 			 VALUES ($1, $2, $3, $4::numeric, $5, $6::jsonb, $7)
 			 ON CONFLICT ON CONSTRAINT health_record_dedupe DO NOTHING`,
 			r.MetricType, r.StartTime, endTime, value, r.Unit, extra, source)
+	}
+	br := tx.SendBatch(ctx, b)
+	inserted := 0
+	for _, r := range recs {
+		ct, err := br.Exec()
 		if err != nil {
 			slog.Debug("db: InsertHealthRecords row failed",
 				slog.String("type", r.MetricType), slog.Any("error", err))
+			_ = br.Close()
 			return inserted, err
 		}
 		inserted += int(ct.RowsAffected())
+	}
+	if err := br.Close(); err != nil {
+		return inserted, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {

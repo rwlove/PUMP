@@ -11,6 +11,9 @@ import (
 type Store interface {
 	SelectEx(ctx context.Context) ([]models.Exercise, error)
 	InsertEx(ctx context.Context, ex models.Exercise) error
+	// UpdateEx rewrites an existing exercise in place (id preserved);
+	// false means no row had that id.
+	UpdateEx(ctx context.Context, ex models.Exercise) (bool, error)
 	DeleteEx(ctx context.Context, id int) error
 	UpdateExColor(ctx context.Context, id int, color string) error
 
@@ -24,12 +27,16 @@ type Store interface {
 	BulkReplaceSetsByDate(ctx context.Context, date string, sets []models.Set) error
 
 	GetSet(ctx context.Context, id int) (models.Set, error)
-	// InsertSet appends a single set and returns its new ID. Empty Source is
-	// stored as "manual"; zero Confidence is stored as 1.0; Pending defaults
-	// to false. Other defaults come from the schema.
-	InsertSet(ctx context.Context, set models.Set) (int, error)
-	UpdateSet(ctx context.Context, id int, upd models.SetUpdate) error
-	DeleteSet(ctx context.Context, id int) error
+	// InsertSet appends a single set and returns the stored row. Empty
+	// Source is stored as "manual"; zero Confidence is stored as 1.0;
+	// Pending defaults to false. Other defaults come from the schema.
+	InsertSet(ctx context.Context, set models.Set) (models.Set, error)
+	// UpdateSet applies the non-nil fields and returns the updated row.
+	// A nonexistent id returns a zero-ID Set with a nil error.
+	UpdateSet(ctx context.Context, id int, upd models.SetUpdate) (models.Set, error)
+	// DeleteSet removes a set, returning its date ("" when the id did not
+	// exist) so event payloads don't need a separate lookup.
+	DeleteSet(ctx context.Context, id int) (string, error)
 
 	SelectW(ctx context.Context) ([]models.BodyWeight, error)
 	InsertW(ctx context.Context, w models.BodyWeight) error

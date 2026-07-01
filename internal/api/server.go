@@ -144,14 +144,20 @@ func putExercise(c *gin.Context) {
 	}
 	ex.ID = id
 	slog.Debug("putExercise", slog.Int("id", id), slog.String("name", ex.Name))
-	// Replace: delete old, insert new
-	if err := dataStore.DeleteEx(c.Request.Context(), id); err != nil {
-		slog.Warn("putExercise: DeleteEx failed (continuing)", slog.Int("id", id), slog.Any("error", err))
-	}
-	if err := dataStore.InsertEx(c.Request.Context(), ex); err != nil {
-		slog.Error("putExercise: InsertEx failed", slog.Any("error", err))
+	found, err := dataStore.UpdateEx(c.Request.Context(), ex)
+	if err != nil {
+		slog.Error("putExercise: UpdateEx failed", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+	if !found {
+		// Unknown id: create the exercise, preserving the old
+		// delete+insert upsert behavior (the row gets a fresh id).
+		if err := dataStore.InsertEx(c.Request.Context(), ex); err != nil {
+			slog.Error("putExercise: InsertEx failed", slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 	}
 	slog.Info("exercise updated", slog.Int("id", id), slog.String("name", ex.Name))
 	c.Status(http.StatusOK)
@@ -270,29 +276,24 @@ func postSet(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "CV auto-log is disabled"})
 		return
 	}
-	id, err := dataStore.InsertSet(c.Request.Context(), set)
+	stored, err := dataStore.InsertSet(c.Request.Context(), set)
 	if err != nil {
 		slog.Error("postSet: InsertSet failed", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	slog.Info("set inserted",
-		slog.Int("id", id),
-		slog.String("date", set.Date),
-		slog.String("name", set.Name),
-		slog.String("source", set.Source),
-		slog.Bool("pending", set.Pending),
+		slog.Int("id", stored.ID),
+		slog.String("date", stored.Date),
+		slog.String("name", stored.Name),
+		slog.String("source", stored.Source),
+		slog.Bool("pending", stored.Pending),
 	)
-	if stored, err := dataStore.GetSet(c.Request.Context(), id); err != nil {
-		slog.Warn("postSet: GetSet after insert failed; skipping SSE/notify",
-			slog.Int("id", id), slog.Any("error", err))
-	} else {
-		publishSetEvent(SetEvent{Type: SetEventAdd, ID: id, Date: stored.Date, Set: &stored})
-		if stored.Pending {
-			pushover.SendAsync(buildPendingSetMessage(stored))
-		}
+	publishSetEvent(SetEvent{Type: SetEventAdd, ID: stored.ID, Date: stored.Date, Set: &stored})
+	if stored.Pending {
+		pushover.SendAsync(buildPendingSetMessage(stored))
 	}
-	c.JSON(http.StatusCreated, gin.H{"id": id})
+	c.JSON(http.StatusCreated, gin.H{"id": stored.ID})
 }
 
 // buildPendingSetMessage formats a Pushover notification for a low-
@@ -325,16 +326,14 @@ func patchSet(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := dataStore.UpdateSet(c.Request.Context(), id, upd); err != nil {
+	stored, err := dataStore.UpdateSet(c.Request.Context(), id, upd)
+	if err != nil {
 		slog.Error("patchSet: UpdateSet failed", slog.Int("id", id), slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	slog.Debug("set updated", slog.Int("id", id))
-	if stored, err := dataStore.GetSet(c.Request.Context(), id); err != nil {
-		slog.Warn("patchSet: GetSet after update failed; skipping SSE",
-			slog.Int("id", id), slog.Any("error", err))
-	} else {
+	if stored.ID != 0 {
 		publishSetEvent(SetEvent{Type: SetEventUpdate, ID: id, Date: stored.Date, Set: &stored})
 	}
 	c.Status(http.StatusOK)
@@ -356,16 +355,14 @@ func postSetConfirm(c *gin.Context) {
 	}
 	pendingFalse := false
 	upd.Pending = &pendingFalse
-	if err := dataStore.UpdateSet(c.Request.Context(), id, upd); err != nil {
+	stored, err := dataStore.UpdateSet(c.Request.Context(), id, upd)
+	if err != nil {
 		slog.Error("postSetConfirm: UpdateSet failed", slog.Int("id", id), slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	slog.Info("set confirmed", slog.Int("id", id))
-	if stored, err := dataStore.GetSet(c.Request.Context(), id); err != nil {
-		slog.Warn("postSetConfirm: GetSet after update failed; skipping SSE",
-			slog.Int("id", id), slog.Any("error", err))
-	} else {
+	if stored.ID != 0 {
 		publishSetEvent(SetEvent{Type: SetEventUpdate, ID: id, Date: stored.Date, Set: &stored})
 	}
 	c.Status(http.StatusOK)
@@ -441,12 +438,8 @@ func deleteSet(c *gin.Context) {
 	if !ok {
 		return
 	}
-	// Look up the date before deletion so the SSE event can carry it.
-	var date string
-	if existing, err := dataStore.GetSet(c.Request.Context(), id); err == nil {
-		date = existing.Date
-	}
-	if err := dataStore.DeleteSet(c.Request.Context(), id); err != nil {
+	date, err := dataStore.DeleteSet(c.Request.Context(), id)
+	if err != nil {
 		slog.Error("deleteSet: DeleteSet failed", slog.Int("id", id), slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

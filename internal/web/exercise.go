@@ -100,11 +100,18 @@ func saveExerciseHandler(c *gin.Context) {
 
 	slog.Debug("saveExerciseHandler", slog.String("name", oneEx.Name), slog.Int("id", oneEx.ID))
 
-	// Upsert: delete the old record first (ID=0 means new exercise, skip delete)
+	// Upsert: update in place when the exercise exists (id preserved, so
+	// nothing referencing it churns); insert when new or the id is unknown.
 	if oneEx.ID != 0 {
-		if err := dataStore.DeleteEx(c.Request.Context(), oneEx.ID); err != nil {
-			slog.Warn("saveExerciseHandler: DeleteEx failed (continuing)",
-				slog.Int("id", oneEx.ID), slog.Any("error", err))
+		found, err := dataStore.UpdateEx(c.Request.Context(), oneEx)
+		if err != nil {
+			slog.Error("saveExerciseHandler: UpdateEx failed", slog.Any("error", err))
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		if found {
+			c.Redirect(http.StatusFound, "/")
+			return
 		}
 	}
 
