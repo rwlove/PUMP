@@ -52,7 +52,7 @@ func postHealth(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	inserted, err := healthStore.InsertHealthRecords(recs)
+	inserted, err := healthStore.InsertHealthRecords(c.Request.Context(), recs)
 	if err != nil {
 		slog.Error("postHealth: InsertHealthRecords failed", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -83,7 +83,7 @@ func getHealth(c *gin.Context) {
 			since = t
 		}
 	}
-	recs, err := healthStore.SelectHealthRecords(metricType, since)
+	recs, err := healthStore.SelectHealthRecords(c.Request.Context(), metricType, since)
 	if err != nil {
 		slog.Error("getHealth: SelectHealthRecords failed", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

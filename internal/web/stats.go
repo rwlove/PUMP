@@ -35,7 +35,7 @@ func statsHandler(c *gin.Context) {
 	guiData.ExData.Sets = sets
 	guiData.ExData.Weight = weights
 	guiData.ServerDate = time.Now().Format("2006-01-02")
-	guiData.Health = loadHealthStats()
+	guiData.Health = loadHealthStats(c.Request.Context())
 
 	c.HTML(http.StatusOK, "header.html", guiData)
 	c.HTML(http.StatusOK, "stats.html", guiData)

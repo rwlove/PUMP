@@ -14,7 +14,7 @@ import (
 // callers just bail when ok=false.
 
 func selectExOr500(c *gin.Context, who string) ([]models.Exercise, bool) {
-	exs, err := dataStore.SelectEx()
+	exs, err := dataStore.SelectEx(c.Request.Context())
 	if err != nil {
 		slog.Error(who+": SelectEx failed", slog.Any("error", err))
 		c.Status(http.StatusInternalServerError)
@@ -24,7 +24,7 @@ func selectExOr500(c *gin.Context, who string) ([]models.Exercise, bool) {
 }
 
 func selectSetsOr500(c *gin.Context, who string) ([]models.Set, bool) {
-	sets, err := dataStore.SelectSet()
+	sets, err := dataStore.SelectSet(c.Request.Context())
 	if err != nil {
 		slog.Error(who+": SelectSet failed", slog.Any("error", err))
 		c.Status(http.StatusInternalServerError)
@@ -34,7 +34,7 @@ func selectSetsOr500(c *gin.Context, who string) ([]models.Set, bool) {
 }
 
 func selectWeightsOr500(c *gin.Context, who string) ([]models.BodyWeight, bool) {
-	weights, err := dataStore.SelectW()
+	weights, err := dataStore.SelectW(c.Request.Context())
 	if err != nil {
 		slog.Error(who+": SelectW failed", slog.Any("error", err))
 		c.Status(http.StatusInternalServerError)

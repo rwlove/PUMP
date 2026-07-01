@@ -1,6 +1,7 @@
 package treadmill
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"os"
@@ -42,7 +43,7 @@ type Config struct {
 // recorder is the slice of the store the consumer needs: persisting a cardio
 // HealthRecord. *store.PostgresStore satisfies it (store.HealthStore).
 type recorder interface {
-	InsertHealthRecords(recs []models.HealthRecord) (int, error)
+	InsertHealthRecords(ctx context.Context, recs []models.HealthRecord) (int, error)
 }
 
 // Consumer subscribes to the treadmill wattage topic and records a cardio
@@ -178,7 +179,7 @@ func (c *Consumer) record(s Session) {
 		Extra:      extra,
 		Source:     "treadmill-mqtt",
 	}
-	inserted, err := c.store.InsertHealthRecords([]models.HealthRecord{rec})
+	inserted, err := c.store.InsertHealthRecords(context.Background(), []models.HealthRecord{rec})
 	if err != nil {
 		slog.Error("treadmill: failed to record session", slog.Any("error", err))
 		return

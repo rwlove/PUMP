@@ -42,9 +42,9 @@ func (s *PostgresStore) Pool() *pgxpool.Pool {
 
 // ─── exercises ────────────────────────────────────────────────────────────────
 
-func (s *PostgresStore) SelectEx() ([]models.Exercise, error) {
+func (s *PostgresStore) SelectEx(ctx context.Context) ([]models.Exercise, error) {
 	slog.Debug("db: SelectEx")
-	rows, err := s.pool.Query(context.Background(),
+	rows, err := s.pool.Query(ctx,
 		`SELECT id, gr, place, name, descr, image, color, weight::text, reps
 		 FROM exercises ORDER BY id ASC`)
 	if err != nil {
@@ -67,9 +67,9 @@ func (s *PostgresStore) SelectEx() ([]models.Exercise, error) {
 	return exes, rows.Err()
 }
 
-func (s *PostgresStore) InsertEx(ex models.Exercise) error {
+func (s *PostgresStore) InsertEx(ctx context.Context, ex models.Exercise) error {
 	slog.Debug("db: InsertEx", slog.String("name", ex.Name), slog.String("group", ex.Group))
-	_, err := s.pool.Exec(context.Background(),
+	_, err := s.pool.Exec(ctx,
 		`INSERT INTO exercises (gr, place, name, descr, image, color, weight, reps)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 		ex.Group, ex.Place, ex.Name, ex.Descr, ex.Image, ex.Color,
@@ -80,18 +80,18 @@ func (s *PostgresStore) InsertEx(ex models.Exercise) error {
 	return err
 }
 
-func (s *PostgresStore) DeleteEx(id int) error {
+func (s *PostgresStore) DeleteEx(ctx context.Context, id int) error {
 	slog.Debug("db: DeleteEx", slog.Int("id", id))
-	_, err := s.pool.Exec(context.Background(), "DELETE FROM exercises WHERE id = $1", id)
+	_, err := s.pool.Exec(ctx, "DELETE FROM exercises WHERE id = $1", id)
 	if err != nil {
 		slog.Debug("db: DeleteEx failed", slog.Int("id", id), slog.Any("error", err))
 	}
 	return err
 }
 
-func (s *PostgresStore) UpdateExColor(id int, color string) error {
+func (s *PostgresStore) UpdateExColor(ctx context.Context, id int, color string) error {
 	slog.Debug("db: UpdateExColor", slog.Int("id", id), slog.String("color", color))
-	_, err := s.pool.Exec(context.Background(),
+	_, err := s.pool.Exec(ctx,
 		"UPDATE exercises SET color = $1 WHERE id = $2", color, id)
 	return err
 }
@@ -113,9 +113,9 @@ func scanSet(row interface{ Scan(...any) error }) (models.Set, error) {
 	return set, nil
 }
 
-func (s *PostgresStore) SelectSet() ([]models.Set, error) {
+func (s *PostgresStore) SelectSet(ctx context.Context) ([]models.Set, error) {
 	slog.Debug("db: SelectSet")
-	rows, err := s.pool.Query(context.Background(),
+	rows, err := s.pool.Query(ctx,
 		`SELECT `+setColumns+` FROM sets ORDER BY id ASC`)
 	if err != nil {
 		return nil, err
@@ -134,14 +134,14 @@ func (s *PostgresStore) SelectSet() ([]models.Set, error) {
 	return sets, rows.Err()
 }
 
-func (s *PostgresStore) GetSet(id int) (models.Set, error) {
+func (s *PostgresStore) GetSet(ctx context.Context, id int) (models.Set, error) {
 	slog.Debug("db: GetSet", slog.Int("id", id))
-	row := s.pool.QueryRow(context.Background(),
+	row := s.pool.QueryRow(ctx,
 		`SELECT `+setColumns+` FROM sets WHERE id = $1`, id)
 	return scanSet(row)
 }
 
-func (s *PostgresStore) InsertSet(set models.Set) (int, error) {
+func (s *PostgresStore) InsertSet(ctx context.Context, set models.Set) (int, error) {
 	slog.Debug("db: InsertSet",
 		slog.String("date", set.Date), slog.String("name", set.Name),
 		slog.String("source", set.Source))
@@ -156,7 +156,7 @@ func (s *PostgresStore) InsertSet(set models.Set) (int, error) {
 	}
 
 	var id int
-	err := s.pool.QueryRow(context.Background(),
+	err := s.pool.QueryRow(ctx,
 		`INSERT INTO sets (date, name, color, workout_color, weight, reps,
 		                   note, source, confidence, pending, clip_path)
 		 VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -170,7 +170,7 @@ func (s *PostgresStore) InsertSet(set models.Set) (int, error) {
 	return id, err
 }
 
-func (s *PostgresStore) UpdateSet(id int, upd models.SetUpdate) error {
+func (s *PostgresStore) UpdateSet(ctx context.Context, id int, upd models.SetUpdate) error {
 	slog.Debug("db: UpdateSet", slog.Int("id", id))
 
 	cols := []string{}
@@ -210,25 +210,24 @@ func (s *PostgresStore) UpdateSet(id int, upd models.SetUpdate) error {
 	q := fmt.Sprintf("UPDATE sets SET %s WHERE id = $%d",
 		strings.Join(cols, ", "), len(args))
 
-	_, err := s.pool.Exec(context.Background(), q, args...)
+	_, err := s.pool.Exec(ctx, q, args...)
 	if err != nil {
 		slog.Debug("db: UpdateSet failed", slog.Int("id", id), slog.Any("error", err))
 	}
 	return err
 }
 
-func (s *PostgresStore) DeleteSet(id int) error {
+func (s *PostgresStore) DeleteSet(ctx context.Context, id int) error {
 	slog.Debug("db: DeleteSet", slog.Int("id", id))
-	_, err := s.pool.Exec(context.Background(), "DELETE FROM sets WHERE id = $1", id)
+	_, err := s.pool.Exec(ctx, "DELETE FROM sets WHERE id = $1", id)
 	if err != nil {
 		slog.Debug("db: DeleteSet failed", slog.Int("id", id), slog.Any("error", err))
 	}
 	return err
 }
 
-func (s *PostgresStore) BulkReplaceSetsByDate(date string, sets []models.Set) error {
+func (s *PostgresStore) BulkReplaceSetsByDate(ctx context.Context, date string, sets []models.Set) error {
 	slog.Debug("db: BulkReplaceSetsByDate", slog.String("date", date), slog.Int("sets", len(sets)))
-	ctx := context.Background()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -265,9 +264,9 @@ func (s *PostgresStore) BulkReplaceSetsByDate(date string, sets []models.Set) er
 // table; this query just collapses to one-displayed-per-date so the UI
 // can show "today's weight" and the chart plots one point per day.
 // Delete the displayed row to reveal the next-latest reading for that date.
-func (s *PostgresStore) SelectW() ([]models.BodyWeight, error) {
+func (s *PostgresStore) SelectW(ctx context.Context) ([]models.BodyWeight, error) {
 	slog.Debug("db: SelectW")
-	rows, err := s.pool.Query(context.Background(),
+	rows, err := s.pool.Query(ctx,
 		`SELECT DISTINCT ON (date) id, date::text, recorded_at::text, weight::text
 		 FROM weight
 		 ORDER BY date, recorded_at DESC`)
@@ -294,7 +293,7 @@ func (s *PostgresStore) SelectW() ([]models.BodyWeight, error) {
 // default (NOW()) is used — covers the manual web-form path where the
 // browser hasn't supplied a precise instant. Scale clients (ESPHome) send
 // the precise reading time.
-func (s *PostgresStore) InsertW(w models.BodyWeight) error {
+func (s *PostgresStore) InsertW(ctx context.Context, w models.BodyWeight) error {
 	slog.Debug("db: InsertW", slog.String("date", w.Date), slog.String("recorded_at", w.RecordedAt), slog.String("weight", w.Weight.String()))
 	var recordedAt interface{}
 	if w.RecordedAt != "" {
@@ -307,7 +306,7 @@ func (s *PostgresStore) InsertW(w models.BodyWeight) error {
 	// distinct weigh-ins per day remain supported (latest recorded_at wins for
 	// display). NUMERIC comparison ignores decimal-string formatting, so
 	// "272.2" and "272.20" are treated as equal.
-	_, err := s.pool.Exec(context.Background(),
+	_, err := s.pool.Exec(ctx,
 		`INSERT INTO weight (date, recorded_at, weight)
 		 SELECT $1::date, COALESCE($2::timestamptz, NOW()), $3::numeric
 		 WHERE NOT EXISTS (
@@ -325,9 +324,9 @@ func (s *PostgresStore) InsertW(w models.BodyWeight) error {
 // duplicates behind, so SelectW would surface the next one and the value would
 // appear unchanged ("delete didn't work"). Delete every row sharing that id's
 // date so the displayed entry actually disappears.
-func (s *PostgresStore) DeleteW(id int) error {
+func (s *PostgresStore) DeleteW(ctx context.Context, id int) error {
 	slog.Debug("db: DeleteW", slog.Int("id", id))
-	_, err := s.pool.Exec(context.Background(),
+	_, err := s.pool.Exec(ctx,
 		"DELETE FROM weight WHERE date = (SELECT date FROM weight WHERE id = $1)", id)
 	return err
 }
@@ -341,12 +340,11 @@ func (s *PostgresStore) DeleteW(id int) error {
 // (excludes conflicts). end_time is expected non-NULL (the parser sets it to
 // start_time for instantaneous samples) so dedupe works with standard
 // NULL-distinct semantics.
-func (s *PostgresStore) InsertHealthRecords(recs []models.HealthRecord) (int, error) {
+func (s *PostgresStore) InsertHealthRecords(ctx context.Context, recs []models.HealthRecord) (int, error) {
 	slog.Debug("db: InsertHealthRecords", slog.Int("count", len(recs)))
 	if len(recs) == 0 {
 		return 0, nil
 	}
-	ctx := context.Background()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return 0, err
@@ -395,7 +393,7 @@ func (s *PostgresStore) InsertHealthRecords(recs []models.HealthRecord) (int, er
 // SelectHealthRecords returns records at or after since, newest first.
 // metricType "" returns all types. Capped at 5000 rows to bound the
 // response for the UI.
-func (s *PostgresStore) SelectHealthRecords(metricType string, since time.Time) ([]models.HealthRecord, error) {
+func (s *PostgresStore) SelectHealthRecords(ctx context.Context, metricType string, since time.Time) ([]models.HealthRecord, error) {
 	slog.Debug("db: SelectHealthRecords",
 		slog.String("type", metricType), slog.Time("since", since))
 
@@ -409,7 +407,7 @@ func (s *PostgresStore) SelectHealthRecords(metricType string, since time.Time) 
 	}
 	q += ` ORDER BY start_time DESC LIMIT 5000`
 
-	rows, err := s.pool.Query(context.Background(), q, args...)
+	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

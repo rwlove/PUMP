@@ -10,13 +10,22 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/shopspring/decimal"
 
 	"github.com/rwlove/PUMP/internal/conf"
 	"github.com/rwlove/PUMP/internal/models"
 )
+
+// cvProxyClient serves the admin panel's live-data proxy. pump-cv answers
+// these from memory, so a stalled sidecar should fail fast instead of
+// hanging the request (http.DefaultClient has no timeout).
+var cvProxyClient = &http.Client{Timeout: 30 * time.Second}
+
+// cvUploadClient covers reference-clip uploads, which run pose extraction
+// over the whole clip before responding — generous but still bounded.
+var cvUploadClient = &http.Client{Timeout: 5 * time.Minute}
 
 func exerciseHandler(c *gin.Context) {
 	exs, ok := selectExOr500(c, "exerciseHandler")
@@ -61,13 +70,23 @@ func saveExerciseHandler(c *gin.Context) {
 	oneEx.Image = c.PostForm("image")
 	oneEx.Color = c.PostForm("color")
 
-	oneEx.ID, _ = strconv.Atoi(c.PostForm("id"))
-	oneEx.Weight, _ = decimal.NewFromString(c.PostForm("weight"))
-	oneEx.Reps, _ = strconv.Atoi(c.PostForm("reps"))
+	var ok bool
+	if oneEx.ID, ok = formInt(c.PostForm("id")); !ok {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+	if oneEx.Weight, ok = formDecimal(c.PostForm("weight")); !ok {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+	if oneEx.Reps, ok = formInt(c.PostForm("reps")); !ok {
+		c.Status(http.StatusBadRequest)
+		return
+	}
 
 	// Auto-assign a distinct color if none was provided.
 	if oneEx.Color == "" {
-		if exs, err := dataStore.SelectEx(); err == nil {
+		if exs, err := dataStore.SelectEx(c.Request.Context()); err == nil {
 			oneEx.Color = nextExerciseColor(collectColors(exs))
 		}
 	}
@@ -76,13 +95,13 @@ func saveExerciseHandler(c *gin.Context) {
 
 	// Upsert: delete the old record first (ID=0 means new exercise, skip delete)
 	if oneEx.ID != 0 {
-		if err := dataStore.DeleteEx(oneEx.ID); err != nil {
+		if err := dataStore.DeleteEx(c.Request.Context(), oneEx.ID); err != nil {
 			slog.Warn("saveExerciseHandler: DeleteEx failed (continuing)",
 				slog.Int("id", oneEx.ID), slog.Any("error", err))
 		}
 	}
 
-	if err := dataStore.InsertEx(oneEx); err != nil {
+	if err := dataStore.InsertEx(c.Request.Context(), oneEx); err != nil {
 		slog.Error("saveExerciseHandler: InsertEx failed", slog.Any("error", err))
 		c.Status(http.StatusInternalServerError)
 		return
@@ -128,14 +147,18 @@ func pumpCVProxyHandler(c *gin.Context) {
 		req.Header.Set("X-Api-Key", k)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := cvProxyClient.Do(req)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
 	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), body)
 }
 
@@ -166,7 +189,7 @@ func uploadReferenceClipHandler(c *gin.Context) {
 		return
 	}
 
-	exs, err := dataStore.SelectEx()
+	exs, err := dataStore.SelectEx(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -221,7 +244,7 @@ func uploadReferenceClipHandler(c *gin.Context) {
 		req.Header.Set("X-Api-Key", k)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := cvUploadClient.Do(req)
 	if err != nil {
 		slog.Error("uploadReferenceClipHandler: pump-cv unreachable",
 			slog.String("url", url), slog.Any("error", err))
@@ -230,14 +253,22 @@ func uploadReferenceClipHandler(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
 	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), respBody)
 }
 
 func deleteExerciseHandler(c *gin.Context) {
-	id, _ := strconv.Atoi(c.PostForm("id"))
+	id, ok := formInt(c.PostForm("id"))
+	if !ok {
+		c.Status(http.StatusBadRequest)
+		return
+	}
 
-	if err := dataStore.DeleteEx(id); err != nil {
+	if err := dataStore.DeleteEx(c.Request.Context(), id); err != nil {
 		slog.Error("deleteExerciseHandler: DeleteEx failed",
 			slog.Int("id", id), slog.Any("error", err))
 		c.Status(http.StatusInternalServerError)

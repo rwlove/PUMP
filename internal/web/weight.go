@@ -3,10 +3,8 @@ package web
 import (
 	"log/slog"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/shopspring/decimal"
 
 	"github.com/rwlove/PUMP/internal/models"
 )
@@ -15,9 +13,13 @@ func addWeightHandler(c *gin.Context) {
 	var w models.BodyWeight
 
 	w.Date = c.PostForm("date")
-	w.Weight, _ = decimal.NewFromString(c.PostForm("weight"))
+	var ok bool
+	if w.Weight, ok = formDecimal(c.PostForm("weight")); !ok {
+		c.Status(http.StatusBadRequest)
+		return
+	}
 
-	if err := dataStore.InsertW(w); err != nil {
+	if err := dataStore.InsertW(c.Request.Context(), w); err != nil {
 		slog.Error("addWeightHandler: InsertW failed", slog.Any("error", err))
 		c.Status(http.StatusInternalServerError)
 		return
@@ -31,9 +33,13 @@ func addWeightHandler(c *gin.Context) {
 }
 
 func deleteWeightHandler(c *gin.Context) {
-	id, _ := strconv.Atoi(c.PostForm("id"))
+	id, ok := formInt(c.PostForm("id"))
+	if !ok {
+		c.Status(http.StatusBadRequest)
+		return
+	}
 
-	if err := dataStore.DeleteW(id); err != nil {
+	if err := dataStore.DeleteW(c.Request.Context(), id); err != nil {
 		slog.Error("deleteWeightHandler: DeleteW failed",
 			slog.Int("id", id), slog.Any("error", err))
 		c.Status(http.StatusInternalServerError)
