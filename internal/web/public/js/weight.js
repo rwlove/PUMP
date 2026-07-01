@@ -9,7 +9,7 @@ function addWeight(i, date, weight, id) {
     // Delete via POST form to avoid GET-based deletion (CSRF risk)
     var deleteForm = '<form action="/wdel/" method="post" style="display:inline;">'
         + '<input type="hidden" name="id" value="' + id + '">'
-        + '<button type="submit" class="btn btn-sm del-set-button" title="Delete">'
+        + '<button type="submit" class="btn btn-sm del-set-button" title="Delete" aria-label="Delete weight entry">'
         + '<i class="bi bi-x-square"></i></button></form>';
 
     var row = '<tr>'

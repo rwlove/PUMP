@@ -165,7 +165,7 @@
         <div class="wall-cam-header">
           <span class="wall-cam-name">${escapeHtml(c.name)}</span>
           <label class="wall-cam-toggle">
-            <input type="checkbox" ${enabled.has(c.name) ? 'checked' : ''}>
+            <input type="checkbox" aria-label="Show ${escapeHtml(c.name)} camera" ${enabled.has(c.name) ? 'checked' : ''}>
             <span class="wall-cam-toggle-slider"></span>
           </label>
         </div>

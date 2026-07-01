@@ -82,14 +82,14 @@
     <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
       <!-- Date navigation -->
       <div class="d-flex align-items-center gap-2">
-        <button class="nav-day-btn" onclick='moveDayLeftRight(-1, window._allSets)' title="Previous day">
+        <button class="nav-day-btn" onclick='moveDayLeftRight(-1, window._allSets)' title="Previous day" aria-label="Previous day">
           <i class="bi bi-chevron-left"></i>
         </button>
         <button class="today-chip date-display-btn" id="dateDisplayBtn"
-          onclick="document.getElementById('realDate').showPicker()" title="Pick a date"></button>
+          onclick="document.getElementById('realDate').showPicker()" title="Pick a date" aria-label="Pick a date"></button>
         <input type="date" id="realDate" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;"
           onchange='setFormContent(window._allSets, this.value)'>
-        <button class="nav-day-btn" onclick='moveDayLeftRight(1, window._allSets)' title="Next day">
+        <button class="nav-day-btn" onclick='moveDayLeftRight(1, window._allSets)' title="Next day" aria-label="Next day">
           <i class="bi bi-chevron-right"></i>
         </button>
         <button class="today-chip" onclick="goToToday()">Today</button>
@@ -136,7 +136,7 @@
         <div class="exercise-list-area">
           <!-- Group header shown when a group is selected -->
           <div id="groupHeader" class="group-list-header" style="display:none;">
-            <button class="back-btn" onclick="clearGroup()" title="Back to groups">
+            <button class="back-btn" onclick="clearGroup()" title="Back to groups" aria-label="Back to groups">
               <i class="bi bi-arrow-left"></i>
             </button>
             <span id="groupHeaderName" class="fw-semibold" style="font-size:0.9rem;"></span>
@@ -155,16 +155,16 @@
                 onclick='addExercise("{{ .Name }}", "{{ .Weight }}", "{{ .Reps }}", "{{ .Color }}", true)'
                 title="Add to today">{{ .Name }}</button>
               <div class="ex-icon-group">
-                <button class="ex-icon-btn" title="Details"
+                <button class="ex-icon-btn" title="Details" aria-label="Details for {{ .Name }}"
                   data-bs-toggle="modal" data-bs-target="#modal{{ .ID }}">
                   <i class="bi bi-info-circle"></i>
                 </button>
-                <a class="ex-icon-btn" href="/exercise/?id={{ .ID }}" title="Edit">
+                <a class="ex-icon-btn" href="/exercise/?id={{ .ID }}" title="Edit" aria-label="Edit {{ .Name }}">
                   <i class="bi bi-pencil"></i>
                 </a>
                 <button class="ex-icon-btn ex-plus-btn"
                   onclick='addExercise("{{ .Name }}", "{{ .Weight }}", "{{ .Reps }}", "{{ .Color }}", true)'
-                  title="Add">
+                  title="Add" aria-label="Add {{ .Name }} to today">
                   <i class="bi bi-plus-lg"></i>
                 </button>
               </div>

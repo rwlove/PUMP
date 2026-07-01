@@ -587,6 +587,25 @@
   color: var(--bs-danger);
 }
 
+/* ─── Touch targets (any coarse-pointer device, e.g. phones) ─────────────
+   44px is the WCAG/Apple minimum tap target. The wall-display block below
+   goes bigger still and, being later in the file, wins at >=1280px. */
+@media (pointer: coarse) {
+  .nav-day-btn { width: 44px; height: 44px; }
+  .back-btn { min-width: 44px; min-height: 44px; }
+  .ex-icon-btn { width: 44px; height: 44px; font-size: 1rem; }
+  .entry-num { height: 44px; }
+  .entry-del-btn,
+  .entry-confirm-btn,
+  .entry-reject-btn,
+  .entry-mic-btn,
+  .entry-prior-note-btn {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 1.05rem;
+  }
+}
+
 /* ─── Large-viewport touch overrides (gym wall display) ────────────────── */
 /* When the page is rendered on a wall-mounted touchscreen at 1080p+, bump
    tap targets and font sizes so sweat-glove-finger taps land reliably and
