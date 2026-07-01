@@ -10,9 +10,9 @@ import (
 // GinMiddleware returns a Gin handler that logs every request.
 //
 //   - DEBUG level: every successful request (the wall page polls
-//                   /api/cv/api/v1/cameras/<name>/snapshot at 1 Hz, so
-//                   API success at INFO would drown the log; use DEBUG
-//                   if you want to see them)
+//     /api/cv/api/v1/cameras/<name>/snapshot at 1 Hz, so
+//     API success at INFO would drown the log; use DEBUG
+//     if you want to see them)
 //   - WARN  level: 4xx responses
 //   - ERROR level: 5xx responses
 //

@@ -17,13 +17,6 @@ import (
 	"github.com/rwlove/PUMP/internal/web"
 )
 
-func envOr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
-}
-
 // All configuration is read from environment variables:
 //
 //	LOG_LEVEL          log verbosity: debug/info/warn/error  (default: info)
@@ -61,8 +54,8 @@ func main() {
 	logger.Init(os.Getenv("LOG_LEVEL"))
 
 	cfg := conf.GetFromEnv()
-	port := envOr("PORT", "8080")
-	host := envOr("HOST", "0.0.0.0")
+	port := conf.EnvOr("PORT", "8080")
+	host := conf.EnvOr("HOST", "0.0.0.0")
 	nodePath := os.Getenv("NODE_PATH")
 
 	slog.Info("PUMP monolith starting",

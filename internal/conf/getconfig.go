@@ -8,6 +8,14 @@ import (
 	"github.com/rwlove/PUMP/internal/models"
 )
 
+// EnvOr returns the value of environment variable key, or def when unset.
+func EnvOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
 // GetFromEnv reads all configuration from environment variables only.
 // No config file is required.
 func GetFromEnv() models.Conf {

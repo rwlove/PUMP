@@ -1,7 +1,6 @@
 package web
 
 import (
-	"log/slog"
 	"net/http"
 	"sort"
 	"time"
@@ -16,16 +15,12 @@ import (
 // wearable metrics (steps / heart rate / sleep / cardio from Health Connect).
 // Each tile deep-links into the matching Stats tab.
 func healthHandler(c *gin.Context) {
-	sets, err := dataStore.SelectSet()
-	if err != nil {
-		slog.Error("healthHandler: SelectSet failed", slog.Any("error", err))
-		c.Status(http.StatusInternalServerError)
+	sets, ok := selectSetsOr500(c, "healthHandler")
+	if !ok {
 		return
 	}
-	weights, err := dataStore.SelectW()
-	if err != nil {
-		slog.Error("healthHandler: SelectW failed", slog.Any("error", err))
-		c.Status(http.StatusInternalServerError)
+	weights, ok := selectWeightsOr500(c, "healthHandler")
+	if !ok {
 		return
 	}
 

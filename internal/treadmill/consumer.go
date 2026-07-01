@@ -12,6 +12,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/shopspring/decimal"
 
+	"github.com/rwlove/PUMP/internal/conf"
 	"github.com/rwlove/PUMP/internal/models"
 )
 
@@ -63,11 +64,11 @@ func ConfigFromEnv() Config {
 		Broker:      os.Getenv("TREADMILL_MQTT_BROKER"),
 		Username:    os.Getenv("TREADMILL_MQTT_USERNAME"),
 		Password:    os.Getenv("TREADMILL_MQTT_PASSWORD"),
-		Topic:       envOr("TREADMILL_MQTT_TOPIC", defaultTopic),
+		Topic:       conf.EnvOr("TREADMILL_MQTT_TOPIC", defaultTopic),
 		Threshold:   floatOr("TREADMILL_WATTS_THRESHOLD", defaultThreshold),
 		OffDebounce: secondsOr("TREADMILL_OFF_DEBOUNCE_SECONDS", defaultOffDebounce),
 		MinSession:  secondsOr("TREADMILL_MIN_SESSION_SECONDS", defaultMinSession),
-		SessionType: envOr("TREADMILL_SESSION_TYPE", defaultSessionType),
+		SessionType: conf.EnvOr("TREADMILL_SESSION_TYPE", defaultSessionType),
 	}
 }
 
@@ -209,13 +210,6 @@ func parseWatts(payload []byte) (float64, bool) {
 		return f, true
 	}
 	return 0, false
-}
-
-func envOr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
 }
 
 func floatOr(key string, def float64) float64 {

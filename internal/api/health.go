@@ -32,27 +32,6 @@ var healthEnvelopeMeta = map[string]bool{
 	"app_version": true,
 }
 
-// healthIngestAuth gates POST /api/health when HEALTH_INGEST_KEY is set.
-// Mirrors weightIngestAuth: a no-op when the key is unset (in-cluster
-// posture), a hard 401 on mismatch when set.
-func healthIngestAuth() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if healthIngestKey == "" {
-			c.Next()
-			return
-		}
-		if c.GetHeader("X-Api-Key") != healthIngestKey {
-			slog.Warn("health ingest: rejected",
-				slog.String("ip", c.ClientIP()),
-				slog.Bool("header_present", c.GetHeader("X-Api-Key") != ""))
-			c.AbortWithStatusJSON(http.StatusUnauthorized,
-				gin.H{"error": "invalid or missing X-Api-Key"})
-			return
-		}
-		c.Next()
-	}
-}
-
 // postHealth ingests an Android Health Connect payload from the HC Webhook
 // bridge. The body is a root object with metadata (timestamp, app_version)
 // plus one snake_case array per data type (steps, heart_rate, sleep, ...).

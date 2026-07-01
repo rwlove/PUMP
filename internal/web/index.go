@@ -1,7 +1,6 @@
 package web
 
 import (
-	"log/slog"
 	"net/http"
 	"sort"
 	"time"
@@ -12,22 +11,16 @@ import (
 )
 
 func indexHandler(c *gin.Context) {
-	exs, err := dataStore.SelectEx()
-	if err != nil {
-		slog.Error("indexHandler: SelectEx failed", slog.Any("error", err))
-		c.Status(http.StatusInternalServerError)
+	exs, ok := selectExOr500(c, "indexHandler")
+	if !ok {
 		return
 	}
-	sets, err := dataStore.SelectSet()
-	if err != nil {
-		slog.Error("indexHandler: SelectSet failed", slog.Any("error", err))
-		c.Status(http.StatusInternalServerError)
+	sets, ok := selectSetsOr500(c, "indexHandler")
+	if !ok {
 		return
 	}
-	weights, err := dataStore.SelectW()
-	if err != nil {
-		slog.Error("indexHandler: SelectW failed", slog.Any("error", err))
-		c.Status(http.StatusInternalServerError)
+	weights, ok := selectWeightsOr500(c, "indexHandler")
+	if !ok {
 		return
 	}
 
