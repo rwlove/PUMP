@@ -31,8 +31,8 @@ function weightChart(id, dates, ws, wcolor) {
                     borderColor(ctx) {
                         const prev = ctx.p0.parsed.y;
                         const next = ctx.p1.parsed.y;
-                        if (next < prev) return '#28a745'; // falling → green
-                        if (next > prev) return '#dc3545'; // rising → red
+                        if (next < prev) return cssVar('--bs-success', '#28a745'); // falling → green
+                        if (next > prev) return cssVar('--bs-danger', '#dc3545'); // rising → red
                         return wcolor;
                     }
                 },
@@ -40,8 +40,8 @@ function weightChart(id, dates, ws, wcolor) {
                 borderWidth: 2,
                 fill: true,
                 tension: 0.1,
-                pointBackgroundColor: '#888',
-                pointBorderColor: '#888',
+                pointBackgroundColor: cssVar('--bs-secondary-color', '#888'),
+                pointBorderColor: cssVar('--bs-secondary-color', '#888'),
                 pointRadius: 3,
             }]
         },

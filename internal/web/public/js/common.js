@@ -44,3 +44,10 @@ function subscribeSetEvents(handlers) {
     es.onerror = handlers.error || function() {};
     return es;
 }
+
+// cssVar reads a CSS custom property off :root, falling back when the
+// theme doesn't define it. Used to feed theme colors into Chart.js.
+function cssVar(name, fallback) {
+    var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+}
