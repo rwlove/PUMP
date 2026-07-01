@@ -1,14 +1,11 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rwlove/PUMP/internal/models"
@@ -79,16 +76,19 @@ func registerRoutes(r *gin.Engine) {
 	r.POST("/api/sets/:id/confirm", postSetConfirm)
 	r.DELETE("/api/sets/:id", deleteSet)
 
-	// Body weight
+	// Body weight. POST is gated by WEIGHT_INGEST_KEY: off-cluster callers
+	// (e.g. the BLE-scale ESPHome firmware) reach it via a path-scoped Route
+	// that bypasses oauth2-proxy, and the header check is the only auth in
+	// that path.
 	r.GET("/api/weight", getWeight)
-	r.POST("/api/weight", weightIngestAuth(), postWeight)
+	r.POST("/api/weight", ingestAuth(weightIngestKey, "weight ingest"), postWeight)
 	r.DELETE("/api/weight/:id", deleteWeight)
 
 	// Wearable health (Android Health Connect via the HC Webhook bridge).
 	// POST is gated by HEALTH_INGEST_KEY for off-cluster ingest, mirroring
 	// the /api/weight path-scoped Route.
 	r.GET("/api/health", getHealth)
-	r.POST("/api/health", healthIngestAuth(), postHealth)
+	r.POST("/api/health", ingestAuth(healthIngestKey, "health ingest"), postHealth)
 
 	// Config
 	r.GET("/api/config", getConfig)
@@ -140,9 +140,8 @@ func postExercise(c *gin.Context) {
 }
 
 func putExercise(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+	id, ok := idParam(c)
+	if !ok {
 		return
 	}
 	var ex models.Exercise
@@ -166,9 +165,8 @@ func putExercise(c *gin.Context) {
 }
 
 func patchExerciseColor(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+	id, ok := idParam(c)
+	if !ok {
 		return
 	}
 	var body struct {
@@ -188,9 +186,8 @@ func patchExerciseColor(c *gin.Context) {
 }
 
 func deleteExercise(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+	id, ok := idParam(c)
+	if !ok {
 		return
 	}
 	slog.Debug("deleteExercise", slog.Int("id", id))
@@ -247,49 +244,15 @@ func getSetsStream(c *gin.Context) {
 	ch, unsub := setBroker.subscribe()
 	defer unsub()
 
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	c.Writer.WriteHeader(http.StatusOK)
-	if _, err := fmt.Fprint(c.Writer, ": connected\n\n"); err != nil {
+	if !sseHeaders(c) {
 		return
 	}
-	c.Writer.Flush()
-
-	keepalive := time.NewTicker(25 * time.Second)
-	defer keepalive.Stop()
-
-	ctx := c.Request.Context()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-keepalive.C:
-			if _, err := fmt.Fprint(c.Writer, ": keepalive\n\n"); err != nil {
-				return
-			}
-			c.Writer.Flush()
-		case ev, ok := <-ch:
-			if !ok {
-				return
-			}
-			data, err := json.Marshal(ev)
-			if err != nil {
-				continue
-			}
-			if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", ev.Type, data); err != nil {
-				return
-			}
-			c.Writer.Flush()
-		}
-	}
+	sseLoop(c, ch, func(ev SetEvent) string { return string(ev.Type) })
 }
 
 func getSet(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+	id, ok := idParam(c)
+	if !ok {
 		return
 	}
 	set, err := dataStore.GetSet(id)
@@ -358,9 +321,8 @@ func buildPendingSetMessage(s models.Set) notify.Message {
 }
 
 func patchSet(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+	id, ok := idParam(c)
+	if !ok {
 		return
 	}
 	var upd models.SetUpdate
@@ -383,9 +345,8 @@ func patchSet(c *gin.Context) {
 // postSetConfirm clears the pending flag and optionally applies edits from
 // the body in a single update.
 func postSetConfirm(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+	id, ok := idParam(c)
+	if !ok {
 		return
 	}
 	var upd models.SetUpdate
@@ -415,51 +376,20 @@ func getWallStream(c *gin.Context) {
 	ch, lastSHA, unsub := wallBroker.subscribe()
 	defer unsub()
 
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	c.Writer.WriteHeader(http.StatusOK)
-	if _, err := fmt.Fprint(c.Writer, ": connected\n\n"); err != nil {
+	if !sseHeaders(c) {
 		return
 	}
-	c.Writer.Flush()
 
 	// Tell the freshly-connected kiosk what build is currently live so
 	// it can reload if it loaded against a stale build.
 	if lastSHA != "" {
-		data, _ := json.Marshal(WallEvent{Type: WallEventBuildChanged, Data: lastSHA})
-		fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", WallEventBuildChanged, data)
-		c.Writer.Flush()
-	}
-
-	keepalive := time.NewTicker(25 * time.Second)
-	defer keepalive.Stop()
-
-	ctx := c.Request.Context()
-	for {
-		select {
-		case <-ctx.Done():
+		if !sseEvent(c, string(WallEventBuildChanged),
+			WallEvent{Type: WallEventBuildChanged, Data: lastSHA}) {
 			return
-		case <-keepalive.C:
-			if _, err := fmt.Fprint(c.Writer, ": keepalive\n\n"); err != nil {
-				return
-			}
-			c.Writer.Flush()
-		case ev, ok := <-ch:
-			if !ok {
-				return
-			}
-			data, err := json.Marshal(ev)
-			if err != nil {
-				continue
-			}
-			if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", ev.Type, data); err != nil {
-				return
-			}
-			c.Writer.Flush()
 		}
 	}
+
+	sseLoop(c, ch, func(ev WallEvent) string { return string(ev.Type) })
 }
 
 func postWallWake(c *gin.Context) {
@@ -502,9 +432,8 @@ func postNotifyTest(c *gin.Context) {
 }
 
 func deleteSet(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+	id, ok := idParam(c)
+	if !ok {
 		return
 	}
 	// Look up the date before deletion so the SSE event can carry it.
@@ -535,29 +464,6 @@ func getWeight(c *gin.Context) {
 	c.JSON(http.StatusOK, ws)
 }
 
-// weightIngestAuth gates POST /api/weight when WEIGHT_INGEST_KEY is set.
-// Off-cluster callers (e.g. the BLE-scale ESPHome firmware) reach this
-// endpoint via a path-scoped Route that bypasses oauth2-proxy; this header
-// check is the only auth in that path. When the key is unset the middleware
-// is a no-op, preserving the in-cluster-only posture.
-func weightIngestAuth() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if weightIngestKey == "" {
-			c.Next()
-			return
-		}
-		if c.GetHeader("X-Api-Key") != weightIngestKey {
-			slog.Warn("weight ingest: rejected",
-				slog.String("ip", c.ClientIP()),
-				slog.Bool("header_present", c.GetHeader("X-Api-Key") != ""))
-			c.AbortWithStatusJSON(http.StatusUnauthorized,
-				gin.H{"error": "invalid or missing X-Api-Key"})
-			return
-		}
-		c.Next()
-	}
-}
-
 func postWeight(c *gin.Context) {
 	var w models.BodyWeight
 	if err := c.ShouldBindJSON(&w); err != nil {
@@ -578,9 +484,8 @@ func postWeight(c *gin.Context) {
 }
 
 func deleteWeight(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+	id, ok := idParam(c)
+	if !ok {
 		return
 	}
 	slog.Debug("deleteWeight", slog.Int("id", id))

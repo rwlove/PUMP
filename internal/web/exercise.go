@@ -18,16 +18,12 @@ import (
 )
 
 func exerciseHandler(c *gin.Context) {
-	exs, err := dataStore.SelectEx()
-	if err != nil {
-		slog.Error("exerciseHandler: SelectEx failed", slog.Any("error", err))
-		c.Status(http.StatusInternalServerError)
+	exs, ok := selectExOr500(c, "exerciseHandler")
+	if !ok {
 		return
 	}
-	sets, err := dataStore.SelectSet()
-	if err != nil {
-		slog.Error("exerciseHandler: SelectSet failed", slog.Any("error", err))
-		c.Status(http.StatusInternalServerError)
+	sets, ok := selectSetsOr500(c, "exerciseHandler")
+	if !ok {
 		return
 	}
 
