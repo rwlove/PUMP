@@ -68,32 +68,6 @@ def _build_single_source(cam, cfg: CVConfig):
     )
 
 
-def _build_pose_source(cfg: CVConfig):
-    """Construct the PoseSource (single or fused) implied by the config.
-
-    Single camera (or two-camera config without calibration paths) →
-    one PoseSource. Two cameras with calibration → FusedPoseSource that
-    pairs frames by timestamp and triangulates the athlete to 3D.
-
-    NOTE: this allocates new per-camera sources, which re-registers them
-    in the global camera registry. main.py's startup path uses
-    `_assemble_pose_source` instead, which reuses the sources created
-    pre-calibration so the registry stays at exactly N entries.
-    """
-    if not cfg.cameras:
-        raise SystemExit("pump-cv: at least one camera must be configured")
-
-    if len(cfg.cameras) >= 2 and cfg.cameras[0].calibration_path and cfg.cameras[1].calibration_path:
-        cam_a, cam_b = cfg.cameras[0], cfg.cameras[1]
-        src_a = _build_single_source(cam_a, cfg)
-        src_b = _build_single_source(cam_b, cfg)
-        calib_a = load_camera(Path(cam_a.calibration_path))
-        calib_b = load_camera(Path(cam_b.calibration_path))
-        return FusedPoseSource(src_a, src_b, calib_a, calib_b)
-
-    return _build_single_source(cfg.cameras[0], cfg)
-
-
 def _assemble_pose_source(cfg: CVConfig, sources: list):
     """Wire up the right PoseSource using already-constructed singles.
 

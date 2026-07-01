@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import datetime as dt
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -87,7 +88,9 @@ async def _run(args) -> int:
     log.configure()
     today = dt.date.today().isoformat()
 
-    async with PumpClient(args.pump) as pump:
+    api_key = args.api_key or os.getenv("PUMP_API_KEY", "")
+
+    async with PumpClient(args.pump, api_key) as pump:
         for i, s in enumerate(_SCRIPT):
             wait = s.delay_s / max(1.0, args.speed)
             logger.info("demo: waiting", seconds=round(wait, 1))
@@ -129,6 +132,8 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="pump_cv.scripts.demo")
     p.add_argument("--pump", default="http://localhost:8851",
                    help="PUMP API base URL")
+    p.add_argument("--api-key", default="",
+                   help="PUMP API key (default: $PUMP_API_KEY)")
     p.add_argument("--speed", type=float, default=4.0,
                    help="time-compression factor (4 = 4× faster than real workout)")
     p.add_argument("--clips-dir", type=Path, default=None,

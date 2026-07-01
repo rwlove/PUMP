@@ -10,31 +10,23 @@ design.
 
 ## Status
 
-Phase 1, in progress. Complete (all unit-tested without GPU):
+Running in production against live cameras. The full pipeline is wired:
 
-- Repo bootstrap (this README, Dockerfile, pyproject)
 - Structured logging + yaml/env config loader
 - Async PUMP API client (POST/PATCH/DELETE/confirm + SSE consumer)
-- Pose layer types + a YOLOv8-Pose wrapper (untested on real GPU yet) +
-  a synthetic mock source for unit testing
+- YOLOv8-Pose capture per camera + a synthetic mock source for unit testing
 - Single-athlete picker, rep counter, set-boundary FSM
-- Pipeline runner that wires these together
-- Multi-camera fusion via DLT triangulation (`pump_cv.fusion`)
-- Camera calibration script (`python -m pump_cv.calibration intrinsics|stereo`)
-- Plate-color barbell weight detector (`pump_cv.weight.estimate_barbell_load`)
-- DTW exercise classifier + on-disk PrototypeStore (`pump_cv.classify`)
-- 28 tests covering every pure-logic module, including triangulation
+- Pipeline runner wiring pose → reps → set boundaries → commit, including
+  the DTW exercise classifier and the plate-color barbell weight detector
+- Multi-camera fusion via DLT triangulation (`pump_cv.fusion`) with a
+  browser-driven stereo calibration wizard (plus the standalone
+  `python -m pump_cv.calibration intrinsics|stereo` CLI)
+- Reference-clip recording flow in the PUMP UI (`/exercise/` → healthd)
+- healthd control/observability sidecar: liveness/readiness, Prometheus
+  metrics, admin panel API (state/thresholds/prototypes/snapshots/cameras)
+- Unit tests covering every pure-logic module, including triangulation
   recovery to sub-mm against synthetic ground truth and a live PUMP API
   integration test
-
-Not yet (genuinely needs cameras / phase 2):
-
-- Real-camera RTSP smoke test for the YOLOv8 wrapper
-- Running the calibration CLI against actual checkerboard photos
-- Reference-clip recording flow in the PUMP UI (a separate slice)
-- Wiring the classifier and weight detector into the pipeline runner
-  (currently only the rep counter and set FSM are wired; weight defaults
-  to 0 and exercise is hardcoded)
 
 ## Quickstart (no GPU)
 
