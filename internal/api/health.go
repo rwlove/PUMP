@@ -16,8 +16,7 @@ import (
 )
 
 // healthStore is the subset of the active store that persists wearable
-// health records. nil when the store doesn't implement store.HealthStore
-// (split-frontend / APIClient mode); the /api/health routes then 501.
+// health records. Set by RegisterRoutes.
 var healthStore store.HealthStore
 
 // healthIngestKey, when non-empty, requires POST /api/health callers to

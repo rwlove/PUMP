@@ -1,13 +1,11 @@
 package web
 
 import (
-	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/rwlove/PUMP/internal/conf"
 	"github.com/rwlove/PUMP/internal/models"
 )
 
@@ -29,20 +27,9 @@ func saveConfigHandler(c *gin.Context) {
 	appConfig.AutoFill = c.PostForm("autofill") == "on"
 	appConfig.CVAutoLog = c.PostForm("cvautolog") == "on"
 
-	if apiClient != nil {
-		// Split-frontend: persist config via API
-		if err := apiClient.SaveConfig(appConfig); err != nil {
-			slog.Error("saveConfigHandler: SaveConfig failed", slog.Any("error", err))
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-	} else if configSaveHook != nil {
-		// Monolith: notify the API layer of the new config
+	// Notify the API layer of the new config.
+	if configSaveHook != nil {
 		configSaveHook(appConfig)
-	} else {
-		// Standalone: write config file directly
-		conf.Write(appConfig)
-		slog.Info("config written", slog.String("path", appConfig.ConfPath))
 	}
 
 	c.Redirect(http.StatusFound, "/config")

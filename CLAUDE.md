@@ -87,7 +87,7 @@ Any PR that adds, removes, or renames a table or column must also increment the 
 
 ### Migration checklist before tagging
 
-- [ ] All columns referenced in `internal/store/postgres.go` and `internal/store/apiclient.go` exist in a migration
+- [ ] All columns referenced in `internal/store/postgres.go` exist in a migration
 - [ ] No migration entry has been modified after it was merged
 - [ ] `schema_version` table will contain a row for every migration after a fresh run
 - [ ] `models.Conf` and `models.Set` / `models.Exercise` / `models.BodyWeight` match the current schema
