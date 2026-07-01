@@ -15,6 +15,9 @@ type Store interface {
 	UpdateExColor(ctx context.Context, id int, color string) error
 
 	SelectSet(ctx context.Context) ([]models.Set, error)
+	// SelectSetsSince returns sets dated on or after cutoff (YYYY-MM-DD),
+	// in the same id order as SelectSet.
+	SelectSetsSince(ctx context.Context, cutoff string) ([]models.Set, error)
 	// BulkReplaceSetsByDate atomically replaces all sets for a given date.
 	// Used by the manual-entry form path. Per-set ops below are used by the
 	// CV auto-log path and any UI that edits one set at a time.

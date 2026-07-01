@@ -122,6 +122,15 @@ CREATE TABLE IF NOT EXISTS health_record (
 CREATE INDEX IF NOT EXISTS health_record_type_time_idx ON health_record (metric_type, start_time DESC);
 `,
 	},
+	{
+		Version:     9,
+		Description: "add read-path indexes: sets(date), sets(name,date), health_record(start_time)",
+		SQL: `
+CREATE INDEX IF NOT EXISTS sets_date_idx ON sets (date);
+CREATE INDEX IF NOT EXISTS sets_name_date_idx ON sets (name, date);
+CREATE INDEX IF NOT EXISTS health_record_start_time_idx ON health_record (start_time DESC);
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any

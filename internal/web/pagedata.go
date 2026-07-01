@@ -23,6 +23,16 @@ func selectExOr500(c *gin.Context, who string) ([]models.Exercise, bool) {
 	return exs, true
 }
 
+func selectSetsSinceOr500(c *gin.Context, who, cutoff string) ([]models.Set, bool) {
+	sets, err := dataStore.SelectSetsSince(c.Request.Context(), cutoff)
+	if err != nil {
+		slog.Error(who+": SelectSetsSince failed", slog.Any("error", err))
+		c.Status(http.StatusInternalServerError)
+		return nil, false
+	}
+	return sets, true
+}
+
 func selectSetsOr500(c *gin.Context, who string) ([]models.Set, bool) {
 	sets, err := dataStore.SelectSet(c.Request.Context())
 	if err != nil {
