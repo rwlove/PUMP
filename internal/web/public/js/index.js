@@ -186,13 +186,13 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
 
     var speechSupported = ('webkitSpeechRecognition' in window) || ('SpeechRecognition' in window);
     var micBtn = speechSupported
-        ? `<button type="button" class="entry-mic-btn" title="Dictate note">
+        ? `<button type="button" class="entry-mic-btn" title="Dictate note" aria-label="Dictate note">
                <i class="bi bi-mic"></i>
            </button>`
         : '';
 
     var priorNoteIndicator = priorNote
-        ? `<button type="button" class="entry-prior-note-btn" title="Show note from last time">
+        ? `<button type="button" class="entry-prior-note-btn" title="Show note from last time" aria-label="Show note from last time">
                <i class="bi bi-sticky"></i>
            </button>`
         : '';
@@ -202,13 +202,13 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
         : '';
 
     var actionButtons = meta.pending
-        ? `<button type="button" class="entry-confirm-btn" title="Confirm set">
+        ? `<button type="button" class="entry-confirm-btn" title="Confirm set" aria-label="Confirm set">
                <i class="bi bi-check-lg"></i>
            </button>
-           <button type="button" class="entry-reject-btn" title="Reject — delete this set">
+           <button type="button" class="entry-reject-btn" title="Reject — delete this set" aria-label="Reject and delete this set">
                <i class="bi bi-x-lg"></i>
            </button>`
-        : `<button type="button" class="entry-del-btn" title="Remove">
+        : `<button type="button" class="entry-del-btn" title="Remove" aria-label="Remove set">
                <i class="bi bi-x-lg"></i>
            </button>`;
 
@@ -251,7 +251,7 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
         <div class="entry-note-row" style="display:none;">
             <i class="bi bi-mic-fill entry-note-icon"></i>
             <span class="entry-note-text"></span>
-            <button type="button" class="entry-note-clear" title="Clear note">
+            <button type="button" class="entry-note-clear" title="Clear note" aria-label="Clear note">
                 <i class="bi bi-x"></i>
             </button>
         </div>
@@ -697,7 +697,7 @@ function renderWeekStreak(sets) {
         var dotCls = 'week-dot' + (item.active ? ' has-workout' : '') + (item.today ? ' is-today' : '');
         var lblCls = 'week-dot-label' + (item.today ? ' is-today' : '');
         // Click a day to jump the workout view to it (same path as prev/next).
-        return '<div class="week-dot-item" role="button" tabindex="0" title="' + item.date + '"' +
+        return '<div class="week-dot-item" role="button" tabindex="0" title="' + item.date + '" aria-label="Go to ' + item.date + '"' +
             ' style="cursor:pointer" data-date="' + item.date + '"' +
             ' onclick="setFormContent(window._allSets, \'' + item.date + '\')"' +
             ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();setFormContent(window._allSets,\'' + item.date + '\');}">' +

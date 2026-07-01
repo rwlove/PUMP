@@ -53,6 +53,9 @@ function hcDelta(id, cur, base, lowerBetter, suffix) {
     const arrow = d > 0 ? '▲' : (d < 0 ? '▼' : '—');
     const good = lowerBetter ? d < 0 : d > 0;
     el.textContent = arrow + ' ' + Math.abs(Math.round(d)) + (suffix || '');
+    // Screen readers get words, not a glyph + colour.
+    el.setAttribute('aria-label',
+        (d > 0 ? 'up ' : (d < 0 ? 'down ' : 'unchanged ')) + Math.abs(Math.round(d)) + (suffix || ''));
     el.style.color = d === 0 ? 'var(--bs-secondary-color)' : (good ? hcColor('--bs-success', '#28a745') : hcColor('--bs-danger', '#dc3545'));
 }
 
