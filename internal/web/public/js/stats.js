@@ -1037,3 +1037,11 @@ function updateRecoveryTab(allSets, exercises, period) {
     html += '</tbody></table>';
     container.innerHTML = html;
 }
+
+// With 12 tabs the bar overflows on narrow screens; keep the selected tab
+// visible by centering it when it activates. shown.bs.tab bubbles.
+document.addEventListener('shown.bs.tab', function(ev) {
+    if (ev.target.classList && ev.target.classList.contains('page-tab-btn')) {
+        ev.target.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+    }
+});
