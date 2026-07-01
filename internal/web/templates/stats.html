@@ -196,11 +196,11 @@
                     <tbody id="weightList"></tbody>
                   </table>
                   <div class="d-flex gap-2 px-3 pb-2 pt-2">
-                    <button id="weight-older-btn" onclick='setWeights(filterWeightByPeriod(window._allWeight, currentPeriod), window._chartColor, 1, window._pageStep);'
+                    <button id="weight-older-btn" onclick='setWeights(filterWeightByPeriod(window._allWeight, currentPeriod), 1, window._pageStep);'
                       class="btn btn-sm btn-outline-primary rounded-3 flex-fill">
                       <i class="bi bi-arrow-left"></i> Older
                     </button>
-                    <button id="weight-newer-btn" onclick='setWeights(filterWeightByPeriod(window._allWeight, currentPeriod), window._chartColor, -1, window._pageStep);'
+                    <button id="weight-newer-btn" onclick='setWeights(filterWeightByPeriod(window._allWeight, currentPeriod), -1, window._pageStep);'
                       class="btn btn-sm btn-outline-primary rounded-3 flex-fill">
                       Newer <i class="bi bi-arrow-right"></i>
                     </button>
@@ -507,7 +507,7 @@
     // though the tab is hidden; honors the current time period like the chart.
     if (window._allWeight) {
         setToday();
-        renderWeightTable(filterWeightByPeriod(window._allWeight, currentPeriod), window._chartColor, window._pageStep);
+        renderWeightTable(filterWeightByPeriod(window._allWeight, currentPeriod), window._pageStep);
     }
 
     // Init all displays with default period
@@ -518,8 +518,8 @@
         refreshVolumeChart();
     });
     document.getElementById('tab-weight-btn').addEventListener('shown.bs.tab', function() {
-        generateWeightChart(filterWeightByPeriod(window._allWeight, currentPeriod), window._chartColor, 0, 'stats-body-weight');
-        renderWeightTable(filterWeightByPeriod(window._allWeight, currentPeriod), window._chartColor, window._pageStep);
+        generateWeightChart(filterWeightByPeriod(window._allWeight, currentPeriod), window._chartColor, 'stats-body-weight');
+        renderWeightTable(filterWeightByPeriod(window._allWeight, currentPeriod), window._pageStep);
     });
     document.getElementById('tab-prs-btn').addEventListener('shown.bs.tab', function() {
         updatePRsTab(window.currentSets, window.exercises, currentPeriod);
