@@ -8,13 +8,13 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rwlove/PUMP/internal/conf"
 	"github.com/rwlove/PUMP/internal/models"
 	"github.com/rwlove/PUMP/internal/notify"
 	"github.com/rwlove/PUMP/internal/store"
 )
 
 var (
-	appConfig models.Conf
 	dataStore store.Store
 	pushover  *notify.Pushover // may be nil; safe to invoke either way
 	publicURL string           // base URL for deep-links in notifications
@@ -25,14 +25,14 @@ var (
 	weightIngestKey string
 )
 
-// RegisterRoutes mounts all API routes on r using the provided store and
-// config. p may be nil (notifications disabled). pubURL is the externally-
-// reachable PUMP base URL used to build deep-links in notifications; may
-// be empty (notifications still fire, just without a clickable URL).
+// RegisterRoutes mounts all API routes on r using the provided store.
+// Config is read from the shared conf holder. p may be nil (notifications
+// disabled). pubURL is the externally-reachable PUMP base URL used to
+// build deep-links in notifications; may be empty (notifications still
+// fire, just without a clickable URL).
 //
 // Used by cmd/pump (monolith). Does not call r.Run().
-func RegisterRoutes(r *gin.Engine, s *store.PostgresStore, cfg models.Conf, p *notify.Pushover, pubURL string) {
-	appConfig = cfg
+func RegisterRoutes(r *gin.Engine, s *store.PostgresStore, p *notify.Pushover, pubURL string) {
 	dataStore = s
 	healthStore = s
 	pushover = p
@@ -45,16 +45,7 @@ func RegisterRoutes(r *gin.Engine, s *store.PostgresStore, cfg models.Conf, p *n
 		slog.Bool("health_ingest_key_configured", healthIngestKey != ""))
 }
 
-// SetConfig updates the in-memory appConfig. Called by the monolith web layer
-// when config is saved through the UI.
-func SetConfig(cfg models.Conf) {
-	appConfig = cfg
-	slog.Debug("api appConfig updated",
-		slog.String("color", cfg.Color),
-	)
-}
-
-// registerRoutes mounts all API routes on r. Shared by Start() and RegisterRoutes().
+// registerRoutes mounts all API routes on r.
 func registerRoutes(r *gin.Engine) {
 	// Health / connectivity probe (no auth required)
 	r.GET("/api/ping", getPing)
@@ -271,7 +262,7 @@ func postSet(c *gin.Context) {
 	}
 	// Gate CV writes on the operator's opt-in toggle. Manual writes are
 	// always accepted regardless of CVAutoLog.
-	if set.Source == "cv" && !appConfig.CVAutoLog {
+	if set.Source == "cv" && !conf.Get().CVAutoLog {
 		slog.Warn("postSet: refused CV write — CVAutoLog is off",
 			slog.String("date", set.Date), slog.String("name", set.Name))
 		c.JSON(http.StatusForbidden, gin.H{"error": "CV auto-log is disabled"})
@@ -502,7 +493,7 @@ func deleteWeight(c *gin.Context) {
 
 func getConfig(c *gin.Context) {
 	slog.Debug("getConfig")
-	c.JSON(http.StatusOK, appConfig)
+	c.JSON(http.StatusOK, conf.Get())
 }
 
 func putConfig(c *gin.Context) {
@@ -516,12 +507,14 @@ func putConfig(c *gin.Context) {
 		slog.Int("pagestep", cfg.PageStep),
 		slog.Bool("cv_autolog", cfg.CVAutoLog),
 	)
-	appConfig.Color = cfg.Color
-	appConfig.PageStep = cfg.PageStep
-	appConfig.FrequencyDays = cfg.FrequencyDays
-	appConfig.DisplayDays = cfg.DisplayDays
-	appConfig.AutoFill = cfg.AutoFill
-	appConfig.CVAutoLog = cfg.CVAutoLog
+	cur := conf.Get()
+	cur.Color = cfg.Color
+	cur.PageStep = cfg.PageStep
+	cur.FrequencyDays = cfg.FrequencyDays
+	cur.DisplayDays = cfg.DisplayDays
+	cur.AutoFill = cfg.AutoFill
+	cur.CVAutoLog = cfg.CVAutoLog
 	// Pushover creds are env-only — never accepted from the API body.
+	conf.Set(cur)
 	c.Status(http.StatusOK)
 }

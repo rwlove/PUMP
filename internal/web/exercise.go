@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 
+	"github.com/rwlove/PUMP/internal/conf"
 	"github.com/rwlove/PUMP/internal/models"
 )
 
@@ -27,10 +28,11 @@ func exerciseHandler(c *gin.Context) {
 		return
 	}
 
-	sortExsByFrequency(exs, sets, appConfig.FrequencyDays)
+	cfg := conf.Get()
+	sortExsByFrequency(exs, sets, cfg.FrequencyDays)
 
 	var guiData models.GuiData
-	guiData.Config = appConfig
+	guiData.Config = cfg
 	guiData.ExData.Exs = exs
 	guiData.GroupMap = buildGroupList(exs)
 
@@ -146,7 +148,7 @@ func pumpCVProxyHandler(c *gin.Context) {
 // on; if not, returns 412 — a polite "you have to flip the toggle in
 // settings first."
 func uploadReferenceClipHandler(c *gin.Context) {
-	if !appConfig.CVAutoLog {
+	if !conf.Get().CVAutoLog {
 		c.JSON(http.StatusPreconditionFailed,
 			gin.H{"error": "CV auto-log is disabled"})
 		return

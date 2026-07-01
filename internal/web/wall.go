@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/rwlove/PUMP/internal/conf"
 	"github.com/rwlove/PUMP/internal/models"
 )
 
@@ -13,7 +14,7 @@ import (
 // the kiosk layout renders below the navbar.
 func wallHandler(c *gin.Context) {
 	var guiData models.GuiData
-	guiData.Config = appConfig
+	guiData.Config = conf.Get()
 	guiData.Version = Version
 	c.HTML(http.StatusOK, "header.html", guiData)
 	c.HTML(http.StatusOK, "wall.html", guiData)

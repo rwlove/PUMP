@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/rwlove/PUMP/internal/conf"
 	"github.com/rwlove/PUMP/internal/models"
 )
 
@@ -28,7 +29,7 @@ func healthHandler(c *gin.Context) {
 	sort.Slice(weights, func(i, j int) bool { return weights[i].Date < weights[j].Date })
 
 	var guiData models.GuiData
-	guiData.Config = appConfig
+	guiData.Config = conf.Get()
 	guiData.ExData.Sets = sets
 	guiData.ExData.Weight = weights
 	guiData.ServerDate = time.Now().Format("2006-01-02")

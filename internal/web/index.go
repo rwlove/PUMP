@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/rwlove/PUMP/internal/conf"
 	"github.com/rwlove/PUMP/internal/models"
 )
 
@@ -33,10 +34,11 @@ func indexHandler(c *gin.Context) {
 		}
 	}
 
-	sortExsByFrequency(exs, sets, appConfig.FrequencyDays)
+	cfg := conf.Get()
+	sortExsByFrequency(exs, sets, cfg.FrequencyDays)
 
 	// Limit sets sent to the main page to the configured display window.
-	days := appConfig.DisplayDays
+	days := cfg.DisplayDays
 	if days <= 0 {
 		days = 30
 	}
@@ -53,7 +55,7 @@ func indexHandler(c *gin.Context) {
 	})
 
 	var guiData models.GuiData
-	guiData.Config = appConfig
+	guiData.Config = cfg
 	guiData.ExData.Exs = exs
 	guiData.ExData.Sets = displaySets
 	guiData.ExData.Weight = weights

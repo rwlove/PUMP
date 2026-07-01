@@ -8,18 +8,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/rwlove/PUMP/internal/models"
 	"github.com/rwlove/PUMP/internal/store"
 )
 
-// RegisterRoutes mounts all web UI routes on r using the provided store and config.
-// onConfigSave is called whenever the user saves settings.
+// RegisterRoutes mounts all web UI routes on r using the provided store.
+// Config is read from the shared conf holder.
 // Used by cmd/pump (monolith). Does not call r.Run().
-func RegisterRoutes(r *gin.Engine, s *store.PostgresStore, cfg models.Conf, onConfigSave func(models.Conf)) {
-	appConfig = cfg
+func RegisterRoutes(r *gin.Engine, s *store.PostgresStore) {
 	dataStore = s
 	healthStore = s
-	configSaveHook = onConfigSave
 
 	templ := template.New("").Funcs(template.FuncMap{
 		"json": func(v interface{}) template.JS {
