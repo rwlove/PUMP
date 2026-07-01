@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/rwlove/PUMP/internal/conf"
 	"github.com/rwlove/PUMP/internal/models"
 	"github.com/rwlove/PUMP/internal/notify"
 	"github.com/rwlove/PUMP/internal/store"
@@ -35,20 +34,18 @@ var (
 // be empty (notifications still fire, just without a clickable URL).
 //
 // Used by cmd/pump (monolith). Does not call r.Run().
-func RegisterRoutes(r *gin.Engine, s store.Store, cfg models.Conf, p *notify.Pushover, pubURL string) {
+func RegisterRoutes(r *gin.Engine, s *store.PostgresStore, cfg models.Conf, p *notify.Pushover, pubURL string) {
 	appConfig = cfg
 	dataStore = s
+	healthStore = s
 	pushover = p
 	publicURL = pubURL
 	weightIngestKey = os.Getenv("WEIGHT_INGEST_KEY")
 	healthIngestKey = os.Getenv("HEALTH_INGEST_KEY")
-	// Health ingest/read is monolith-only; nil in split-frontend mode.
-	healthStore, _ = s.(store.HealthStore)
 	registerRoutes(r)
 	slog.Debug("api routes registered",
 		slog.Bool("weight_ingest_key_configured", weightIngestKey != ""),
-		slog.Bool("health_ingest_key_configured", healthIngestKey != ""),
-		slog.Bool("health_store_available", healthStore != nil))
+		slog.Bool("health_ingest_key_configured", healthIngestKey != ""))
 }
 
 // SetConfig updates the in-memory appConfig. Called by the monolith web layer
@@ -614,8 +611,6 @@ func putConfig(c *gin.Context) {
 		slog.Int("pagestep", cfg.PageStep),
 		slog.Bool("cv_autolog", cfg.CVAutoLog),
 	)
-	appConfig.Host = cfg.Host
-	appConfig.Port = cfg.Port
 	appConfig.Color = cfg.Color
 	appConfig.PageStep = cfg.PageStep
 	appConfig.FrequencyDays = cfg.FrequencyDays
@@ -623,6 +618,5 @@ func putConfig(c *gin.Context) {
 	appConfig.AutoFill = cfg.AutoFill
 	appConfig.CVAutoLog = cfg.CVAutoLog
 	// Pushover creds are env-only — never accepted from the API body.
-	conf.Write(appConfig)
 	c.Status(http.StatusOK)
 }

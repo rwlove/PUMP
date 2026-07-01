@@ -19,15 +19,13 @@ var (
 	appConfig models.Conf
 
 	// dataStore is the active data source.
-	// SQLiteStore in monolith mode, APIClient in split-frontend mode.
 	dataStore store.Store
 
-	// apiClient is non-nil only in split-frontend mode; used for config
-	// operations that fall outside the Store interface.
-	apiClient *store.APIClient
+	// healthStore persists and serves wearable health records.
+	healthStore store.HealthStore
 
-	// configSaveHook is called in monolith mode when the user saves config
-	// through the web UI. Set by RegisterRoutes; nil in split-frontend mode.
+	// configSaveHook is called when the user saves config through the web UI.
+	// Set by RegisterRoutes.
 	configSaveHook func(models.Conf)
 )
 

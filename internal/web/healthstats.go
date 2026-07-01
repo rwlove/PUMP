@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/rwlove/PUMP/internal/models"
-	"github.com/rwlove/PUMP/internal/store"
 )
 
 // healthLookbackDays bounds how much wearable history we pull for the Health
@@ -15,16 +14,11 @@ import (
 const healthLookbackDays = 400
 
 // loadHealthStats fetches and aggregates wearable records from the active
-// store. Returns an empty (Available:false) struct when the store has no
-// HealthStore (split-frontend / APIClient mode) or on error, so the page
+// store. Returns an empty (Available:false) struct on error, so the page
 // degrades to empty states rather than failing.
 func loadHealthStats() models.HealthStats {
-	hs, ok := dataStore.(store.HealthStore)
-	if !ok {
-		return models.HealthStats{}
-	}
 	since := time.Now().AddDate(0, 0, -healthLookbackDays)
-	recs, err := hs.SelectHealthRecords("", since)
+	recs, err := healthStore.SelectHealthRecords("", since)
 	if err != nil {
 		slog.Error("loadHealthStats: SelectHealthRecords failed", slog.Any("error", err))
 		return models.HealthStats{}

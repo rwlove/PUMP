@@ -6,8 +6,7 @@ import (
 	"github.com/rwlove/PUMP/internal/models"
 )
 
-// Store abstracts data access so both the monolith (SQLite) and the
-// split frontend (HTTP API client) can satisfy the same interface.
+// Store abstracts data access for handlers and tests.
 type Store interface {
 	SelectEx() ([]models.Exercise, error)
 	InsertEx(ex models.Exercise) error
@@ -33,12 +32,9 @@ type Store interface {
 	DeleteW(id int) error
 }
 
-// HealthStore is an optional capability for stores that persist wearable
-// health records ingested from Android Health Connect (via the HC Webhook
-// bridge → POST /api/health). The Postgres store implements it; the HTTP
-// API client does not — health ingest is monolith-only. Callers type-assert:
-//
-//	hs, ok := s.(store.HealthStore)
+// HealthStore persists wearable health records ingested from Android Health
+// Connect (via the HC Webhook bridge → POST /api/health). The Postgres store
+// implements it.
 type HealthStore interface {
 	// InsertHealthRecords appends records, deduping on
 	// (MetricType, StartTime, EndTime) so the bridge's rolling 48h

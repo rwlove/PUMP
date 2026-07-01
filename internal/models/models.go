@@ -9,11 +9,7 @@ import (
 
 // Conf - web gui config
 type Conf struct {
-	Host          string
-	Port          string
 	Color         string
-	Icon          string
-	ConfPath      string
 	NodePath      string
 	PageStep      int
 	FrequencyDays int  // days to look back when sorting exercises by usage frequency
@@ -22,9 +18,8 @@ type Conf struct {
 	CVAutoLog     bool // when true, accept set writes from the pump-cv sidecar
 
 	// Pushover credentials are read from env on startup (PUSHOVER_USER_KEY,
-	// PUSHOVER_APP_TOKEN) and never serialised through the JSON API or
-	// persisted to the on-disk config file. The web UI shows only a
-	// "configured / not configured" indicator.
+	// PUSHOVER_APP_TOKEN) and never serialised through the JSON API. The web
+	// UI shows only a "configured / not configured" indicator.
 	PushoverUserKey  string `json:"-" yaml:"-"`
 	PushoverAppToken string `json:"-" yaml:"-"`
 }
@@ -150,8 +145,8 @@ type CardioSession struct {
 }
 
 // HealthStats is the aggregated wearable view. Available is false when the
-// active store has no HealthStore (split-frontend mode) — the UI then shows
-// empty states instead of failing.
+// records could not be loaded — the UI then shows empty states instead of
+// failing.
 type HealthStats struct {
 	Available      bool            `json:"Available"`
 	DailySteps     []DayValue      `json:"DailySteps"`
