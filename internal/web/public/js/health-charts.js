@@ -9,6 +9,12 @@ var _hdSparks = {};
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
+// Theme colors for charts, resolved from Bootstrap's CSS vars with the
+// previous hard-coded hexes as fallbacks. hcAlpha appends an alpha channel
+// only when the resolved value is a 6-digit hex.
+function hcColor(name, fallback) { return cssVar(name, fallback); }
+function hcAlpha(c, a) { return /^#[0-9a-fA-F]{6}$/.test(c) ? c + a : c; }
+
 function hcPrimary() {
     return getComputedStyle(document.documentElement).getPropertyValue('--bs-primary').trim() || '#2780e3';
 }
@@ -47,7 +53,7 @@ function hcDelta(id, cur, base, lowerBetter, suffix) {
     const arrow = d > 0 ? '▲' : (d < 0 ? '▼' : '—');
     const good = lowerBetter ? d < 0 : d > 0;
     el.textContent = arrow + ' ' + Math.abs(Math.round(d)) + (suffix || '');
-    el.style.color = d === 0 ? 'var(--bs-secondary-color)' : (good ? '#28a745' : '#dc3545');
+    el.style.color = d === 0 ? 'var(--bs-secondary-color)' : (good ? hcColor('--bs-success', '#28a745') : hcColor('--bs-danger', '#dc3545'));
 }
 
 // hcSpark draws a tiny axis-less sparkline (dashboard tiles).
@@ -106,7 +112,7 @@ function renderStepsTab(period) {
         data: {
             labels, datasets: [
                 { type: 'bar', label: 'Steps', data: vals, backgroundColor: hcPrimary() + 'cc', borderRadius: 4, order: 2 },
-                { type: 'line', label: '7-day avg', data: hcRollingAvg(vals, 7), borderColor: '#888', borderWidth: 2, pointRadius: 0, tension: 0.3, order: 1 },
+                { type: 'line', label: '7-day avg', data: hcRollingAvg(vals, 7), borderColor: hcColor('--bs-secondary-color', '#888'), borderWidth: 2, pointRadius: 0, tension: 0.3, order: 1 },
             ]
         },
         options: { responsive: true, scales: { x: hcAxisOpts.x, y: hcAxisOpts.yCount('Steps') }, plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } } } }
@@ -141,7 +147,7 @@ function renderHRTab(period) {
             labels, datasets: [
                 { type: 'line', label: 'Max', data: dh.map(d => Math.round(d.Max)), borderColor: 'transparent', backgroundColor: hcPrimary() + '18', pointRadius: 0, fill: '+1', order: 3 },
                 { type: 'line', label: 'Min', data: dh.map(d => Math.round(d.Min)), borderColor: 'transparent', backgroundColor: hcPrimary() + '18', pointRadius: 0, fill: false, order: 3 },
-                { type: 'line', label: 'Avg', data: dh.map(d => Math.round(d.Avg)), borderColor: '#888', borderWidth: 1.5, pointRadius: 0, tension: 0.3, order: 2 },
+                { type: 'line', label: 'Avg', data: dh.map(d => Math.round(d.Avg)), borderColor: hcColor('--bs-secondary-color', '#888'), borderWidth: 1.5, pointRadius: 0, tension: 0.3, order: 2 },
                 { type: 'line', label: 'Resting', data: labels.map(l => restMap[l] != null ? restMap[l] : null), borderColor: hcPrimary(), borderWidth: 2.5, pointRadius: 2, tension: 0.3, spanGaps: true, order: 1 },
             ]
         },
@@ -176,8 +182,8 @@ function renderSleepTab(period) {
         datasets = [
             { label: 'Deep', data: data.map(d => +(d.Deep / 60).toFixed(2)), backgroundColor: hcPrimary() },
             { label: 'Light', data: data.map(d => +(d.Light / 60).toFixed(2)), backgroundColor: hcPrimary() + '99' },
-            { label: 'REM', data: data.map(d => +(d.REM / 60).toFixed(2)), backgroundColor: '#6f42c1aa' },
-            { label: 'Awake', data: data.map(d => +(d.Awake / 60).toFixed(2)), backgroundColor: '#dc354566' },
+            { label: 'REM', data: data.map(d => +(d.REM / 60).toFixed(2)), backgroundColor: hcAlpha(hcColor('--bs-purple', '#6f42c1'), 'aa') },
+            { label: 'Awake', data: data.map(d => +(d.Awake / 60).toFixed(2)), backgroundColor: hcAlpha(hcColor('--bs-danger', '#dc3545'), '66') },
         ];
     } else {
         datasets = [{ label: 'Sleep', data: data.map(d => +(d.Minutes / 60).toFixed(2)), backgroundColor: hcPrimary() + 'cc', borderRadius: 4 }];
@@ -273,7 +279,7 @@ function renderActiveCalories(period) {
     _calChart = hcDestroy(_calChart);
     _calChart = new Chart(canvas, {
         type: 'bar',
-        data: { labels: data.map(d => d.Date), datasets: [{ label: 'Active kcal', data: data.map(d => Math.round(d.Value)), backgroundColor: '#fd7e14cc', borderRadius: 4 }] },
+        data: { labels: data.map(d => d.Date), datasets: [{ label: 'Active kcal', data: data.map(d => Math.round(d.Value)), backgroundColor: hcAlpha(hcColor('--bs-orange', '#fd7e14'), 'cc'), borderRadius: 4 }] },
         options: { responsive: true, scales: { x: hcAxisOpts.x, y: hcAxisOpts.yCount('kcal') }, plugins: { legend: { display: false } } }
     });
 }
@@ -308,7 +314,7 @@ function renderHealthDashboard() {
         hcSetText('hd-cal-val', todayRow ? Math.round(todayRow.Value).toLocaleString() : '0');
         const avg7 = hcMean(hcLast(cals, 7).map(d => d.Value));
         hcDelta('hd-cal-delta', todayRow ? todayRow.Value : 0, avg7, false, '');
-        hcSpark('hd-cal-spark', hcLast(cals, 30).map(d => d.Value), '#fd7e14');
+        hcSpark('hd-cal-spark', hcLast(cals, 30).map(d => d.Value), hcColor('--bs-orange', '#fd7e14'));
     } else { hcSetText('hd-cal-val', '–'); }
 
     // Resting HR.
@@ -318,7 +324,7 @@ function renderHealthDashboard() {
         hcSetText('hd-hr-val', Math.round(cur));
         const base = hcMean(hcLast(rhr, 7).map(d => d.Value));
         hcDelta('hd-hr-delta', cur, base, true, '');
-        hcSpark('hd-hr-spark', hcLast(rhr, 30).map(d => d.Value), '#dc3545');
+        hcSpark('hd-hr-spark', hcLast(rhr, 30).map(d => d.Value), hcColor('--bs-danger', '#dc3545'));
     } else { hcSetText('hd-hr-val', '–'); }
 
     // Sleep last night.
@@ -328,7 +334,7 @@ function renderHealthDashboard() {
         hcSetText('hd-sleep-val', hcFmtDur(last.Minutes));
         const avg7 = hcMean(hcLast(sleep, 7).map(d => d.Minutes));
         hcSetText('hd-sleep-sub', '7-day avg ' + hcFmtDur(avg7));
-        hcSpark('hd-sleep-spark', hcLast(sleep, 30).map(d => d.Minutes / 60), '#6f42c1');
+        hcSpark('hd-sleep-spark', hcLast(sleep, 30).map(d => d.Minutes / 60), hcColor('--bs-purple', '#6f42c1'));
     } else { hcSetText('hd-sleep-val', '–'); }
 
     // Training this week + streak (from window.currentSets: [{Date,...}]).
@@ -355,5 +361,5 @@ function renderHealthDashboard() {
     const weeks = {};
     sets.forEach(s => { const dt = new Date(s.Date); const wk = Math.floor(dt.getTime() / (7 * 864e5)); weeks[wk] = (weeks[wk] || 0) + 1; });
     const wkVals = Object.keys(weeks).sort().map(k => weeks[k]);
-    hcSpark('hd-train-spark', hcLast(wkVals, 12), '#28a745');
+    hcSpark('hd-train-spark', hcLast(wkVals, 12), hcColor('--bs-success', '#28a745'));
 }

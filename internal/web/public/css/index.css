@@ -1,3 +1,25 @@
+/* ─── Shared icon-button base ────────────────────────────────────────────
+ * Borderless, quiet icon buttons used across the picker and workout log.
+ * Per-class rules below only carry their deltas (size, hover accent). */
+.back-btn,
+.ex-icon-btn,
+.entry-del-btn,
+.entry-confirm-btn,
+.entry-reject-btn,
+.entry-mic-btn,
+.entry-prior-note-btn,
+.entry-note-clear {
+  background: none;
+  border: none;
+  color: var(--bs-secondary-color);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: 0.15s ease;
+}
+
+/* ─── Shared color-dot swatch ────────────────────────────────────────────── */
+.ex-color-dot,
 /* ─── Date Navigation Bar ────────────────────────────────────────────────── */
 
 .date-nav-bar {
@@ -5,7 +27,7 @@
   border-bottom: 1px solid var(--bs-border-color);
   padding: 0.6rem 0;
   position: sticky;
-  top: 54px;
+  top: var(--navbar-height);
   z-index: 200;
 }
 
@@ -221,14 +243,7 @@
 }
 
 .back-btn {
-  background: none;
-  border: none;
-  color: var(--bs-secondary-color);
-  padding: 4px 6px;
-  border-radius: 6px;
-  cursor: pointer;
   font-size: 0.9rem;
-  transition: 0.15s ease;
   flex-shrink: 0;
 }
 
@@ -262,13 +277,6 @@
   background: var(--bs-secondary-bg);
 }
 
-.ex-color-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
 .ex-name-btn {
   flex: 1;
   background: none;
@@ -298,16 +306,12 @@
 }
 
 .ex-icon-btn {
-  background: none;
-  border: none;
-  color: var(--bs-secondary-color);
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
   font-size: 0.85rem;
   transition: 0.12s ease;
   text-decoration: none;
@@ -465,15 +469,8 @@
 }
 
 .entry-del-btn {
-  background: none;
-  border: none;
-  color: var(--bs-secondary-color);
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 6px;
   line-height: 1;
   font-size: 0.9rem;
-  transition: 0.15s ease;
 }
 
 .entry-del-btn:hover {
@@ -510,14 +507,8 @@
 
 .entry-confirm-btn,
 .entry-reject-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 6px;
   line-height: 1;
   font-size: 0.95rem;
-  transition: 0.15s ease;
 }
 
 .entry-confirm-btn { color: var(--bs-success); }
@@ -534,15 +525,8 @@
 
 .entry-mic-btn,
 .entry-prior-note-btn {
-  background: none;
-  border: none;
-  color: var(--bs-secondary-color);
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 6px;
   line-height: 1;
   font-size: 0.95rem;
-  transition: 0.15s ease;
 }
 
 .entry-mic-btn:hover,
@@ -594,11 +578,8 @@
 }
 
 .entry-note-clear {
-  background: none;
-  border: none;
-  color: var(--bs-secondary-color);
-  cursor: pointer;
   padding: 0 4px;
+  border-radius: 0;
   line-height: 1;
 }
 
@@ -633,7 +614,7 @@
   border-bottom: 1px solid var(--bs-border-color);
   padding: 0;
   position: sticky;
-  top: 54px; /* just below navbar */
+  top: var(--navbar-height); /* just below navbar */
   z-index: 190;
 }
 
@@ -737,13 +718,6 @@
   border-bottom: 1px solid var(--bs-border-color-translucent, rgba(128,128,128,0.15));
 }
 .pr-row:last-child { border-bottom: none; }
-
-.pr-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
 
 .pr-name {
   min-width: 140px;
