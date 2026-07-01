@@ -161,16 +161,16 @@
     }
     const enabled = loadCamPrefs();
     els.cams.innerHTML = cams.map(c => `
-      <div class="wall-cam" data-cam="${escapeHTML(c.name)}">
+      <div class="wall-cam" data-cam="${escapeHtml(c.name)}">
         <div class="wall-cam-header">
-          <span class="wall-cam-name">${escapeHTML(c.name)}</span>
+          <span class="wall-cam-name">${escapeHtml(c.name)}</span>
           <label class="wall-cam-toggle">
             <input type="checkbox" ${enabled.has(c.name) ? 'checked' : ''}>
             <span class="wall-cam-toggle-slider"></span>
           </label>
         </div>
         <div class="wall-cam-frame">
-          <img class="wall-cam-img" alt="${escapeHTML(c.name)} preview" hidden>
+          <img class="wall-cam-img" alt="${escapeHtml(c.name)} preview" hidden>
           <div class="wall-cam-wait" hidden>waiting for camera…</div>
           <div class="wall-cam-off">off</div>
         </div>
@@ -207,6 +207,9 @@
     img.onload = () => { img.hidden = false; if (wait) wait.hidden = true; };
     img.onerror = () => { img.hidden = true; if (wait) wait.hidden = false; };
     const tick = () => {
+      // Nobody can see the frame while the tab is hidden; skip the fetch
+      // and resume on the next interval after the tab is visible again.
+      if (document.hidden) return;
       // Cache-buster — the snapshot endpoint sends Cache-Control: no-store
       // anyway, but `?t=` defends against any intermediate caching layer.
       img.src = `/api/cv/api/v1/cameras/${encodeURIComponent(name)}/snapshot?t=${Date.now()}`;
@@ -241,7 +244,7 @@
     const pending = !!s.Pending;
 
     const cvBadge = cv ? '<span class="wall-set-cvbadge" title="Detected by camera">CV</span>' : '';
-    const note    = s.Note ? `<div class="wall-set-meta">${escapeHTML(s.Note)}</div>` : '';
+    const note    = s.Note ? `<div class="wall-set-meta">${escapeHtml(s.Note)}</div>` : '';
     const actions = pending
       ? `<div class="wall-set-actions">
            <button class="wall-set-btn confirm" title="Confirm">✓</button>
@@ -255,7 +258,7 @@
       <article class="${cls.join(' ')}"
                data-set-id="${s.ID}" data-pending="${pending}">
         <div class="wall-set-body">
-          <div class="wall-set-name">${escapeHTML(s.Name)} ${cvBadge}</div>
+          <div class="wall-set-name">${escapeHtml(s.Name)} ${cvBadge}</div>
           <div class="wall-set-numbers">
             ${formatWeight(s.Weight)}<span class="unit">lb</span>
             &nbsp;×&nbsp;
@@ -274,19 +277,13 @@
     return Number.isInteger(n) ? n.toString() : n.toFixed(1);
   }
 
-  function escapeHTML(s) {
-    return String(s).replace(/[&<>"']/g, c => ({
-      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-    }[c]));
-  }
-
   // ─── Set-recording modal ────────────────────────────────────────────
   function openClipModal(s) {
     if (s && s.ClipPath) {
       els.clipBody.innerHTML =
-        `<video class="wall-clip-video" src="/clips/${escapeAttr(s.ClipPath)}" ` +
+        `<video class="wall-clip-video" src="/clips/${escapeHtml(s.ClipPath)}" ` +
         `autoplay loop muted playsinline controls></video>` +
-        `<div class="wall-clip-caption">${escapeHTML(s.Name)} — ` +
+        `<div class="wall-clip-caption">${escapeHtml(s.Name)} — ` +
         `${formatWeight(s.Weight)} lb × ${s.Reps} reps</div>`;
     } else {
       els.clipBody.innerHTML =
@@ -294,7 +291,7 @@
           `<div class="wall-clip-empty-icon">⊘</div>` +
           `<div class="wall-clip-empty-msg">No recording captured for this set.</div>` +
         `</div>` +
-        `<div class="wall-clip-caption">${escapeHTML(s.Name)} — ` +
+        `<div class="wall-clip-caption">${escapeHtml(s.Name)} — ` +
         `${formatWeight(s.Weight)} lb × ${s.Reps} reps</div>`;
     }
     els.clipModal.hidden = false;
@@ -314,13 +311,6 @@
   document.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape' && !els.clipModal.hidden) closeClipModal();
   });
-  // Limited HTML attribute escape for the clip src.
-  function escapeAttr(s) {
-    return String(s).replace(/[&<>"']/g, c => ({
-      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-    }[c]));
-  }
-
   // ─── Tap-to-confirm / tap-to-reject ─────────────────────────────────
   async function confirmSet(id) {
     try {
@@ -370,23 +360,15 @@
   }
 
   function openSetsStream() {
-    const es = new EventSource('/api/sets/stream');
-    es.onopen = () => { setsConnected = true; updateStatus(); };
-    es.onerror = () => { setsConnected = false; updateStatus(); };
-
-    es.addEventListener('add', ev => {
-      const e = JSON.parse(ev.data);
-      if (e.set) { sets.set(e.id, e.set); renderSets(); }
+    const upsert = e => { if (e.set) { sets.set(e.id, e.set); renderSets(); } };
+    subscribeSetEvents({
+      open: () => { setsConnected = true; updateStatus(); },
+      error: () => { setsConnected = false; updateStatus(); },
+      add: upsert,
+      update: upsert,
+      delete: e => { if (e.id) { sets.delete(e.id); renderSets(); } },
+      bulk: () => loadInitialSets(),
     });
-    es.addEventListener('update', ev => {
-      const e = JSON.parse(ev.data);
-      if (e.set) { sets.set(e.id, e.set); renderSets(); }
-    });
-    es.addEventListener('delete', ev => {
-      const e = JSON.parse(ev.data);
-      if (e.id) { sets.delete(e.id); renderSets(); }
-    });
-    es.addEventListener('bulk', () => loadInitialSets());
   }
 
   // ─── Wall events: wake / sleep / build_changed ──────────────────────
@@ -473,9 +455,9 @@
     if (calib.prevs.dataset.cams === camNames.join('|')) return;
     calib.prevs.dataset.cams = camNames.join('|');
     calib.prevs.innerHTML = camNames.map(n => `
-      <div class="wall-calib-prev" data-cam="${escapeHTML(n)}">
-        <span class="wall-calib-prev-label">${escapeHTML(n)}</span>
-        <img alt="${escapeHTML(n)} preview" hidden>
+      <div class="wall-calib-prev" data-cam="${escapeHtml(n)}">
+        <span class="wall-calib-prev-label">${escapeHtml(n)}</span>
+        <img alt="${escapeHtml(n)} preview" hidden>
         <span class="wall-calib-prev-wait">waiting for camera…</span>
         <span class="wall-calib-prev-detect" hidden></span>
       </div>
@@ -495,6 +477,7 @@
   function calibStartPreviews(camNames) {
     clearInterval(calib.prevTimer);
     const tick = () => {
+      if (document.hidden) return;
       camNames.forEach(n => {
         const tile = calib.prevs.querySelector(`.wall-calib-prev[data-cam="${cssEscape(n)}"]`);
         if (!tile) return;

@@ -41,8 +41,9 @@
     <script src="{{ .Config.NodePath }}/node_modules/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ .Config.NodePath }}/node_modules/chart.js/dist/chart.umd.js"></script>
     {{ end }}
-    <!-- Global custom styles -->
+    <!-- Global custom styles + shared JS helpers -->
     <link rel="stylesheet" type="text/css" href="/fs/public/css/style.css">
+    <script src="/fs/public/js/common.js"></script>
 {{ end }}
 
 {{ define "page-body" }}

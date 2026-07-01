@@ -343,7 +343,7 @@ function renderHealthDashboard() {
     // Current streak: consecutive days ending today/yesterday with a set.
     let streak = 0; const d = new Date(window._serverDate || new Date());
     for (;;) {
-        const key = d.toLocaleDateString('en-CA');
+        const key = localDateStr(d);
         if (byDay[key]) { streak++; d.setDate(d.getDate() - 1); }
         else if (streak === 0 && key === (window._serverDate)) { d.setDate(d.getDate() - 1); } // allow rest today
         else break;
