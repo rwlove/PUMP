@@ -71,7 +71,6 @@ func indexHandler(c *gin.Context) {
 	guiData.GroupMap = buildGroupList(exs)
 	guiData.ServerDate = time.Now().Format("2006-01-02")
 
-	c.HTML(http.StatusOK, "header.html", guiData)
 	c.HTML(http.StatusOK, "index.html", guiData)
 }
 

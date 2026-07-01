@@ -1,12 +1,11 @@
 {{ define "stats.html" }}
-<head>
+{{ template "page-head" . }}
+    <link rel="stylesheet" type="text/css" href="/fs/public/css/index.css">
+{{ template "page-body" . }}
     <script src="/fs/public/js/stats.js"></script>
     <script src="/fs/public/js/weight-chart.js"></script>
     <script src="/fs/public/js/weight.js"></script>
     <script src="/fs/public/js/health-charts.js"></script>
-    <link rel="stylesheet" type="text/css" href="/fs/public/css/index.css" />
-</head>
-<body>
     <script>window.exercises = {{ .ExData.Exs | json | safeJS }};</script>
     <script>window.healthData = {{ .Health | json | safeJS }};</script>
 

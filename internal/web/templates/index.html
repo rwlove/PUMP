@@ -1,7 +1,8 @@
 {{ define "index.html" }}
-</head>
+{{ template "page-head" . }}
+    <link rel="stylesheet" type="text/css" href="/fs/public/css/index.css">
+{{ template "page-body" . }}
 <script src="/fs/public/js/index.js"></script>
-<link rel="stylesheet" type="text/css" href="/fs/public/css/index.css">
 
 <!-- ── Exercise Detail Modals ────────────────────────────────────────────── -->
 {{ range .ExData.Exs }}

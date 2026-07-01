@@ -63,7 +63,6 @@ func exerciseHandler(c *gin.Context) {
 		}
 	}
 
-	c.HTML(http.StatusOK, "header.html", guiData)
 	c.HTML(http.StatusOK, "exercise.html", guiData)
 }
 

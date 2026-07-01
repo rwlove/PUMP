@@ -1,15 +1,14 @@
 {{ define "health.html" }}
-<head>
-    <script src="/fs/public/js/health-charts.js"></script>
-    <link rel="stylesheet" type="text/css" href="/fs/public/css/index.css" />
+{{ template "page-head" . }}
+    <link rel="stylesheet" type="text/css" href="/fs/public/css/index.css">
     <style>
       a.health-tile-link { text-decoration: none; color: inherit; display: block; }
       a.health-tile-link .panel { transition: transform .12s ease, box-shadow .12s ease; }
       a.health-tile-link:hover .panel { transform: translateY(-2px); box-shadow: 0 .35rem 1rem rgba(0,0,0,.18); }
       .health-spark { height: 48px; }
     </style>
-</head>
-<body>
+{{ template "page-body" . }}
+    <script src="/fs/public/js/health-charts.js"></script>
 
     <div class="container-xl py-4">
       <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">

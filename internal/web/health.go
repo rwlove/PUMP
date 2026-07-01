@@ -35,6 +35,5 @@ func healthHandler(c *gin.Context) {
 	guiData.ServerDate = time.Now().Format("2006-01-02")
 	guiData.Health = loadHealthStats(c.Request.Context())
 
-	c.HTML(http.StatusOK, "header.html", guiData)
 	c.HTML(http.StatusOK, "health.html", guiData)
 }

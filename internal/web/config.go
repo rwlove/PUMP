@@ -16,7 +16,6 @@ func configHandler(c *gin.Context) {
 	guiData.Config = conf.Get()
 	guiData.Version = Version
 
-	c.HTML(http.StatusOK, "header.html", guiData)
 	c.HTML(http.StatusOK, "config.html", guiData)
 }
 
