@@ -425,36 +425,30 @@ function refreshSetBadges() {
     var container = document.getElementById('todayEx');
     if (!container) return;
 
-    // Build an ordered list of [entry, name] pairs
+    // One DOM pass: collect each entry's name and badge, numbering as we go.
     var entries = container.querySelectorAll('.workout-entry');
-    var counters = {}; // name → running count (1-indexed)
+    var counters = {}; // name → running count (1-indexed); ends as the total
+    var rows = [];     // [{entry, name, badge, ordinal}]
 
     entries.forEach(function(entry) {
         var hidden = entry.querySelector('input[data-exname]');
         if (!hidden) return;
         var name = hidden.getAttribute('data-exname');
         counters[name] = (counters[name] || 0) + 1;
-        var badge = entry.querySelector('.set-badge');
-        if (badge) badge.textContent = 'Set ' + counters[name];
+        rows.push({
+            entry: entry,
+            name: name,
+            badge: entry.querySelector('.set-badge'),
+            ordinal: counters[name],
+        });
     });
 
-    // Count total occurrences per name so we know when to show/hide the badge.
-    var totals = {};
-    entries.forEach(function(entry) {
-        var hidden = entry.querySelector('input[data-exname]');
-        if (!hidden) return;
-        var name = hidden.getAttribute('data-exname');
-        totals[name] = (totals[name] || 0) + 1;
-    });
-
-    entries.forEach(function(entry) {
-        var hidden = entry.querySelector('input[data-exname]');
-        if (!hidden) return;
-        var name = hidden.getAttribute('data-exname');
-        var badge = entry.querySelector('.set-badge');
-        if (badge) {
-            badge.style.display = (totals[name] > 1) ? '' : 'none';
-        }
+    // Second pass over the collected rows (no DOM queries): a badge shows
+    // "Set N" and is visible only when the exercise has more than one set.
+    rows.forEach(function(r) {
+        if (!r.badge) return;
+        r.badge.textContent = 'Set ' + r.ordinal;
+        r.badge.style.display = (counters[r.name] > 1) ? '' : 'none';
     });
 
     // Wrap consecutive same-name entries in a .workout-entry-group so the
@@ -558,10 +552,8 @@ function entryHasFocus(entry) {
 // CVAutoLog is on. Events for other dates are ignored. Events that match a
 // row already in the DOM (own writes echoed back) are deduplicated by id.
 function openSetsStream() {
-    var es = new EventSource('/api/sets/stream');
-
-    es.addEventListener('add', function(ev) {
-        var e = JSON.parse(ev.data);
+    subscribeSetEvents({
+    add: function(e) {
         if (!e.set || e.date !== today) return;
         if (findEntryByServerId(e.id)) return; // already present (our own write echoed back)
         addExercise(
@@ -569,10 +561,9 @@ function openSetsStream() {
             false, e.set.Note,
             {id: e.id, source: e.set.Source, pending: e.set.Pending, confidence: e.set.Confidence}
         );
-    });
+    },
 
-    es.addEventListener('update', function(ev) {
-        var e = JSON.parse(ev.data);
+    update: function(e) {
         if (!e.set || e.date !== today) return;
         var entry = findEntryByServerId(e.id);
         if (!entry) return;
@@ -599,37 +590,32 @@ function openSetsStream() {
                 {id: e.id, source: e.set.Source, pending: isPending, confidence: e.set.Confidence}
             );
         }
-    });
+    },
 
-    es.addEventListener('delete', function(ev) {
-        var e = JSON.parse(ev.data);
+    "delete": function(e) {
         var entry = findEntryByServerId(e.id);
         if (entry) {
             entry.remove();
             updateEmptyState();
             refreshSetBadges();
         }
-    });
+    },
 
-    es.addEventListener('bulk', function(ev) {
-        var e = JSON.parse(ev.data);
+    bulk: function(e) {
         if (e.date !== today) return;
         // Re-fetch all sets and re-render the day.
         fetch('/api/sets').then(function(r) { return r.json(); }).then(function(sets) {
             window._allSets = sets || [];
             setFormContent(window._allSets, today);
         });
+    },
     });
-
-    es.onerror = function() {
-        // EventSource auto-reconnects; nothing to do.
-    };
 }
 
 function setFormDate(sets) {
     var date = window.sessionStorage.getItem("today");
     if (!date) {
-        date = window._serverDate || new Date().toLocaleDateString('en-CA');
+        date = todayStr();
     }
     setFormContent(sets, date);
 }
@@ -638,7 +624,7 @@ function goToToday() {
     // Compute the live local date rather than window._serverDate: that value is
     // rendered server-side at page load, so a phone left open across midnight
     // would otherwise send "Today" to yesterday. en-CA gives YYYY-MM-DD.
-    var date = new Date().toLocaleDateString('en-CA');
+    var date = localDateStr(new Date());
     setFormContent(window._allSets, date);
 }
 
@@ -650,7 +636,7 @@ function moveDayLeftRight(where, sets) {
     var day   = dateStr.substring(8, 10);
     var date  = new Date(year, month - 1, day);
     date.setDate(date.getDate() + parseInt(where));
-    var newDate = date.toLocaleDateString('en-CA');
+    var newDate = localDateStr(date);
     setFormContent(sets, newDate);
 }
 
@@ -701,7 +687,7 @@ function renderWeekStreak(sets) {
     var items = [];
     for (var i = 6; i >= 0; i--) {
         var d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
-        var dateStr = d.toLocaleDateString('en-CA');
+        var dateStr = localDateStr(d);
         var isToday = i === 0;
         var hasWorkout = sets && sets.some(function(s) { return s.Date === dateStr; });
         if (hasWorkout) activeCount++;

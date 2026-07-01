@@ -260,12 +260,19 @@ function blendToWhite(hex, t) {
 
 // Return the most recent body weight value (lbs) on or before `dateStr`,
 // or null if none is available.
+let _sortedWeightSrc = null;
+let _sortedWeightCache = null;
 function getBodyWeightOnOrBefore(dateStr) {
     const allW = window._allWeight;
     if (!allW || allW.length === 0) return null;
     // _allWeight entries have a Date string (YYYY-MM-DD) and a Weight value.
-    // Walk backwards through sorted entries to find the closest past entry.
-    const sorted = allW.slice().sort((a, b) => a.Date < b.Date ? -1 : a.Date > b.Date ? 1 : 0);
+    // Sort once per source array (this runs inside per-set loops) and walk
+    // through sorted entries to find the closest past entry.
+    if (_sortedWeightSrc !== allW) {
+        _sortedWeightSrc = allW;
+        _sortedWeightCache = allW.slice().sort((a, b) => a.Date < b.Date ? -1 : a.Date > b.Date ? 1 : 0);
+    }
+    const sorted = _sortedWeightCache;
     let best = null;
     for (let i = 0; i < sorted.length; i++) {
         if (sorted[i].Date <= dateStr) best = sorted[i];
@@ -412,14 +419,6 @@ function refreshVolumeChart() {
 }
 
 // ─── Personal Records ─────────────────────────────────────────────────────────
-
-function escapeHtml(str) {
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
 
 function computePRs(allSets) {
     // Per exercise: highest estimated 1RM set (Epley: w * (1 + r/30))
@@ -754,20 +753,11 @@ function updateBalanceTab(allSets, exercises, period) {
 
 // ─── Training Consistency ─────────────────────────────────────────────────────
 
-function getTodayStr() {
-    return window._serverDate || new Date().toLocaleDateString('en-CA');
-}
-
-function parseDateStr(str) {
-    const [y, m, d] = str.split('-').map(Number);
-    return new Date(y, m - 1, d);
-}
-
 function updateConsistencyTab(allSets, period) {
     period = period || currentPeriod;
 
-    const todayStr = getTodayStr();
-    const today = parseDateStr(todayStr);
+    const todayYMD = todayStr();
+    const today = parseDateStr(todayYMD);
 
     // All-time set of workout days. The heatmap colours cells from this map;
     // the visible window is scoped to the selected period below.
@@ -787,20 +777,20 @@ function updateConsistencyTab(allSets, period) {
         periodLabel = 'last year';
     } else { // alltime
         const allKeys = Object.keys(workoutDatesAll).sort();
-        const firstStr = allKeys.length > 0 ? allKeys[0] : todayStr;
+        const firstStr = allKeys.length > 0 ? allKeys[0] : todayYMD;
         periodDays = Math.max(1, Math.round((today - parseDateStr(firstStr)) / 86400000) + 1);
         periodLabel = 'all time';
     }
     {
         const start = new Date(today);
         start.setDate(today.getDate() - (periodDays - 1));
-        periodStartStr = start.toLocaleDateString('en-CA');
+        periodStartStr = localDateStr(start);
     }
 
     // Filter workout days to the selected period.
     const workoutDates = {};
     Object.keys(workoutDatesAll).forEach(d => {
-        if (d >= periodStartStr && d <= todayStr) workoutDates[d] = workoutDatesAll[d];
+        if (d >= periodStartStr && d <= todayYMD) workoutDates[d] = workoutDatesAll[d];
     });
 
     // Current streak: consecutive days back from today, capped at the period window.
@@ -808,7 +798,7 @@ function updateConsistencyTab(allSets, period) {
     for (let i = 0; i < periodDays; i++) {
         const d = new Date(today);
         d.setDate(today.getDate() - i);
-        const ds = d.toLocaleDateString('en-CA');
+        const ds = localDateStr(d);
         if (workoutDates[ds]) {
             currentStreak++;
         } else if (i > 0) {
@@ -856,7 +846,7 @@ function updateConsistencyTab(allSets, period) {
     // spans whole week-columns from there through the week containing today.
     const windowStart = new Date(today);
     windowStart.setDate(today.getDate() - (periodDays - 1));
-    const windowStartStr = windowStart.toLocaleDateString('en-CA');
+    const windowStartStr = localDateStr(windowStart);
     const gridStart = new Date(windowStart);
     gridStart.setDate(gridStart.getDate() - gridStart.getDay()); // back to Sunday
 
@@ -912,9 +902,9 @@ function updateConsistencyTab(allSets, period) {
         for (let d = 0; d < 7; d++) {
             const cellDate = new Date(gridStart);
             cellDate.setDate(gridStart.getDate() + w * 7 + d);
-            const ds = cellDate.toLocaleDateString('en-CA');
+            const ds = localDateStr(cellDate);
             const count = workoutDatesAll[ds] || 0;
-            const isFuture = ds > todayStr;
+            const isFuture = ds > todayYMD;
             // Days in the leading partial week that fall before the period
             // start are shown muted, so the grid reads as the selected window.
             const beforeStart = ds < windowStartStr;
@@ -922,7 +912,7 @@ function updateConsistencyTab(allSets, period) {
 
             const cell = document.createElement('div');
             cell.className = 'heatmap-cell';
-            if (ds === todayStr) cell.classList.add('heatmap-today');
+            if (ds === todayYMD) cell.classList.add('heatmap-today');
 
             if (!outOfRange && count > 0) {
                 const opacity = count <= 2 ? 0.4 : count <= 4 ? 0.62 : count <= 7 ? 0.82 : 1.0;
@@ -969,8 +959,8 @@ function updateRecoveryTab(allSets, exercises, period) {
         sessionDates[s.Name].add(s.Date);
     });
 
-    const todayStr = getTodayStr();
-    const today = parseDateStr(todayStr);
+    const todayYMD = todayStr();
+    const today = parseDateStr(todayYMD);
 
     const rows = Object.keys(lastDate).map(name => {
         const last = lastDate[name];
