@@ -164,7 +164,19 @@ class YOLOPoseSource:
 
     async def _stream_one_capture(self) -> AsyncIterator[FrameAndPoses]:
         """One open-read-close cycle. Exits on EOF or read failure; the
-        outer poses() handles reconnection."""
+        outer poses() handles reconnection.
+
+        Runs capture and inference on independent threads so a new frame
+        can be read while the previous one is still on the GPU. A live
+        camera at 15 fps and a model at 12 fps used to serialise into
+        ~7 fps end-to-end (capture waits for predict, predict waits for
+        capture); overlapping them recovers the model-bound throughput
+        and keeps the wall-preview `_latest_frame` fresh even between
+        predictions.
+
+        The bounded slot below drops the previous frame when the reader
+        outpaces the predictor — the rep detector only ever needs the
+        newest frame, so backing up an FIFO would just add latency."""
         cap = cv2.VideoCapture(self._source)
         if not cap.isOpened():
             raise RuntimeError(f"yolo: cannot open source {self._source}")
@@ -173,8 +185,92 @@ class YOLOPoseSource:
         fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
         frame_period = 1.0 / fps
         is_file = Path(self._source).is_file()
-        frame_idx = 0
 
+        # For file sources, keep the original sequential path: the file
+        # replay speed is bounded by the predictor rather than a real-
+        # time camera, so double-buffering would race through the file
+        # and drop most frames.
+        if is_file:
+            async for item in self._stream_sequential(cap, frame_period, is_file=True):
+                yield item
+            return
+
+        # Live-source double-buffer: reader publishes into slot, this
+        # coroutine consumes and runs inference.
+        loop = asyncio.get_running_loop()
+        slot: asyncio.Queue = asyncio.Queue(maxsize=1)
+        stop = asyncio.Event()
+
+        async def reader() -> None:
+            try:
+                while not stop.is_set():
+                    ok, frame = await asyncio.to_thread(cap.read)
+                    if not ok or frame is None:
+                        await slot.put(None)  # EOF sentinel
+                        return
+                    ts = time.time()
+                    self._frame_times.append(ts)
+                    self._latest_frame = frame
+                    self._frame_id += 1
+                    # Drop-newest: if predict hasn't consumed the previous
+                    # frame yet, throw it away and put this one instead.
+                    if slot.full():
+                        try:
+                            slot.get_nowait()
+                        except asyncio.QueueEmpty:
+                            pass
+                    await slot.put((ts, frame))
+            except Exception as e:
+                logger.warning("yolo: reader crashed", error=str(e))
+                await slot.put(None)
+
+        reader_task = loop.create_task(reader())
+
+        try:
+            while True:
+                item = await slot.get()
+                if item is None:
+                    return
+                ts, frame = item
+                results = await asyncio.to_thread(
+                    self._model.predict,
+                    frame,
+                    imgsz=self._image_size,
+                    device=self._device,
+                    verbose=False,
+                )
+                yield frame, self._results_to_poses(results, ts)
+        finally:
+            stop.set()
+            # Unblock the reader if it's mid-put; then wait for it to
+            # exit cleanly so the VideoCapture close happens after the
+            # last cap.read() returns (avoids the "reader is inside a
+            # to_thread(cap.read) while we release the cap" race).
+            if slot.full():
+                try:
+                    slot.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+            reader_task.cancel()
+            try:
+                await reader_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._connected = False
+            self._latest_frame = None
+            # Frame gone → JPEG cache is stale; drop it so /snapshot 404s
+            # instead of serving the last frame from a disconnected camera.
+            self._jpeg_cache = {}
+            cap.release()
+
+    async def _stream_sequential(
+        self, cap, frame_period: float, is_file: bool
+    ) -> AsyncIterator[FrameAndPoses]:
+        """Original single-threaded read → predict → yield loop.
+
+        Used for file sources where we want every frame processed,
+        paced by the predictor rather than wall-clock time."""
+        frame_idx = 0
         try:
             while True:
                 ok, frame = await asyncio.to_thread(cap.read)
@@ -198,8 +294,6 @@ class YOLOPoseSource:
         finally:
             self._connected = False
             self._latest_frame = None
-            # Frame gone → JPEG cache is stale; drop it so /snapshot 404s
-            # instead of serving the last frame from a disconnected camera.
             self._jpeg_cache = {}
             cap.release()
 
