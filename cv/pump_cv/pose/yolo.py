@@ -58,6 +58,12 @@ class YOLOPoseSource:
         # wall-page live preview. Single-writer (capture loop), reader
         # tolerates stale frames so no lock is needed.
         self._latest_frame = None
+        # Monotonic id incremented on each new frame; drives the
+        # JPEG-encode cache below (only re-encode when the frame changes,
+        # not on every ~1s wall poll).
+        self._frame_id: int = 0
+        # (frame_id, quality) -> encoded JPEG bytes.
+        self._jpeg_cache: dict[tuple[int, int], bytes] = {}
         register_camera(self)
 
     # ─── admin introspection ─────────────────────────────────────────
@@ -86,6 +92,38 @@ class YOLOPoseSource:
         """Return the most recent decoded BGR frame, or None if the
         capture loop hasn't produced one yet (or has disconnected)."""
         return self._latest_frame
+
+    def latest_jpeg(self, quality: int) -> bytes | None:
+        """Return the most recent frame encoded as JPEG, cached by
+        (frame_id, quality). None when no frame is available.
+
+        The wall page polls per-camera snapshot endpoints every ~1s from
+        multiple viewers (wall + admin panel + calibration wizard) so an
+        unchanged frame — during a disconnect, a slow camera, or two
+        polls landing between decode events — reuses the previous
+        encode instead of re-running libjpeg."""
+        import cv2
+
+        # Snapshot both atomically-enough for Python: sample id, then
+        # frame; on a torn read the cache lookup below misses and we
+        # re-encode with the fresh frame, which is the safe outcome.
+        fid = self._frame_id
+        frame = self._latest_frame
+        if frame is None:
+            return None
+        key = (fid, quality)
+        hit = self._jpeg_cache.get(key)
+        if hit is not None:
+            return hit
+        ok, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
+        if not ok:
+            return None
+        data = jpg.tobytes()
+        # Drop older entries so the cache doesn't grow — realistic
+        # concurrent quality-parameter count is 1 (wall polls all use
+        # the default q=75), so keeping only the last entry is fine.
+        self._jpeg_cache = {key: data}
+        return data
 
     def _ensure_model(self) -> None:
         if self._model is None:
@@ -147,6 +185,7 @@ class YOLOPoseSource:
                 frame_idx += 1
                 self._frame_times.append(time.time())
                 self._latest_frame = frame
+                self._frame_id += 1
 
                 results = await asyncio.to_thread(
                     self._model.predict,
@@ -159,6 +198,9 @@ class YOLOPoseSource:
         finally:
             self._connected = False
             self._latest_frame = None
+            # Frame gone → JPEG cache is stale; drop it so /snapshot 404s
+            # instead of serving the last frame from a disconnected camera.
+            self._jpeg_cache = {}
             cap.release()
 
     def _results_to_poses(self, results, ts: float) -> list[Pose]:
