@@ -11,9 +11,9 @@ func TestBuildGroupList_PreservesFirstSeenOrder(t *testing.T) {
 	exs := []models.Exercise{
 		{Group: "Chest"},
 		{Group: "Legs"},
-		{Group: "Chest"}, // duplicate, drop
+		{Group: "Chest"},   // duplicate, drop
 		{Group: "Back"},
-		{Group: "Legs"}, // duplicate, drop
+		{Group: "Legs"},    // duplicate, drop
 	}
 	got := buildGroupList(exs)
 	want := []string{"Chest", "Legs", "Back"}

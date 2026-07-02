@@ -142,8 +142,8 @@ func TestHealthRecordFromElement_NoTimestamp(t *testing.T) {
 
 func TestFirstTime_TriesEachKeyInOrder(t *testing.T) {
 	m := map[string]json.RawMessage{
-		"time":             json.RawMessage(`"2026-07-02T00:00:00Z"`),
-		"session_end_time": json.RawMessage(`"2026-07-02T01:00:00Z"`),
+		"time":              json.RawMessage(`"2026-07-02T00:00:00Z"`),
+		"session_end_time":  json.RawMessage(`"2026-07-02T01:00:00Z"`),
 	}
 	// start_time missing, time present — should match time.
 	got, ok := firstTime(m, "start_time", "time", "session_end_time")
@@ -158,9 +158,9 @@ func TestFirstTime_TriesEachKeyInOrder(t *testing.T) {
 
 func TestFirstNumeric_PicksFirstMatchingKey(t *testing.T) {
 	m := map[string]json.RawMessage{
-		"count":     json.RawMessage(`42`),
-		"level":     json.RawMessage(`99`),
-		"unrelated": json.RawMessage(`"nope"`),
+		"count":       json.RawMessage(`42`),
+		"level":       json.RawMessage(`99`),
+		"unrelated":   json.RawMessage(`"nope"`),
 	}
 	// firstNumeric walks value, count, bpm, level, ...
 	v, unit, ok := firstNumeric(m)
