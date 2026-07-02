@@ -236,19 +236,16 @@ def build_app(
         Used by the wall page's live-preview tiles, which poll this
         endpoint every ~1s. 404 if the camera isn't registered or hasn't
         produced a frame yet (cold start / disconnected)."""
-        import cv2
-
         from .pose.yolo import registered_cameras
         for c in registered_cameras():
             if c.camera_name == name:
-                frame = c.latest_frame()
-                if frame is None:
+                # Encode once per frame regardless of poll rate — see
+                # YOLOPoseSource.latest_jpeg for the caching contract.
+                data = c.latest_jpeg(q)
+                if data is None:
                     raise HTTPException(status_code=404, detail="no frame yet")
-                ok, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, q])
-                if not ok:
-                    raise HTTPException(status_code=500, detail="jpeg encode failed")
                 return Response(
-                    content=jpg.tobytes(),
+                    content=data,
                     media_type="image/jpeg",
                     headers={"Cache-Control": "no-store"},
                 )
