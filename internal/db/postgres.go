@@ -131,6 +131,22 @@ CREATE INDEX IF NOT EXISTS sets_name_date_idx ON sets (name, date);
 CREATE INDEX IF NOT EXISTS health_record_start_time_idx ON health_record (start_time DESC);
 `,
 	},
+	{
+		Version:     10,
+		Description: "add app_config table for UI-editable settings persistence",
+		SQL: `
+CREATE TABLE IF NOT EXISTS app_config (
+    id             INTEGER     PRIMARY KEY CHECK (id = 1),
+    color          TEXT        NOT NULL DEFAULT 'dark',
+    page_step      INTEGER     NOT NULL DEFAULT 10,
+    frequency_days INTEGER     NOT NULL DEFAULT 30,
+    display_days   INTEGER     NOT NULL DEFAULT 30,
+    autofill       BOOLEAN     NOT NULL DEFAULT TRUE,
+    cv_autolog     BOOLEAN     NOT NULL DEFAULT FALSE,
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any

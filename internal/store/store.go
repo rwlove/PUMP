@@ -41,6 +41,14 @@ type Store interface {
 	SelectW(ctx context.Context) ([]models.BodyWeight, error)
 	InsertW(ctx context.Context, w models.BodyWeight) error
 	DeleteW(ctx context.Context, id int) error
+
+	// GetAppConfig returns the persisted UI-editable settings. ok=false
+	// when nothing has ever been saved (fresh install) so callers know to
+	// fall back to env-var defaults instead of overwriting them.
+	GetAppConfig(ctx context.Context) (cfg models.Conf, ok bool, err error)
+	// SaveAppConfig upserts the UI-editable settings (single row).
+	// Pushover credentials and NodePath are env-only and never persisted.
+	SaveAppConfig(ctx context.Context, cfg models.Conf) error
 }
 
 // HealthStore persists wearable health records ingested from Android Health

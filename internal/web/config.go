@@ -1,6 +1,7 @@
 package web
 
 import (
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -28,6 +29,14 @@ func saveConfigHandler(c *gin.Context) {
 	cfg.AutoFill = c.PostForm("autofill") == "on"
 	cfg.CVAutoLog = c.PostForm("cvautolog") == "on"
 	conf.Set(cfg)
+
+	// Persist so the change survives a pod restart. Failure here is
+	// logged but not fatal — the in-memory config is already updated, so
+	// the UI reflects the change until the next restart.
+	if err := dataStore.SaveAppConfig(c.Request.Context(), cfg); err != nil {
+		slog.Error("saveConfigHandler: SaveAppConfig failed",
+			slog.Any("error", err))
+	}
 
 	c.Redirect(http.StatusFound, "/config")
 }

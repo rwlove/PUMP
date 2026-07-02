@@ -13,9 +13,9 @@ func TestHslToHex_KnownAnchors(t *testing.T) {
 	// Anchor a few HSL points that must land near well-known CSS colors.
 	// hslToHex uses standard HSL→RGB math; these values are the reference.
 	cases := []struct {
-		name string
+		name    string
 		h, s, l float64
-		want string
+		want    string
 	}{
 		{"pure red", 0, 100, 50, "#ff0000"},
 		{"pure green", 120, 100, 50, "#00ff00"},

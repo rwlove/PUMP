@@ -523,5 +523,10 @@ func putConfig(c *gin.Context) {
 	cur.CVAutoLog = cfg.CVAutoLog
 	// Pushover creds are env-only — never accepted from the API body.
 	conf.Set(cur)
+	// Persist for restart survival. Same soft-fail semantics as the web
+	// save handler: log and keep the in-memory update.
+	if err := dataStore.SaveAppConfig(c.Request.Context(), cur); err != nil {
+		slog.Error("putConfig: SaveAppConfig failed", slog.Any("error", err))
+	}
 	c.Status(http.StatusOK)
 }
