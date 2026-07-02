@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	_ "time/tzdata"
@@ -94,6 +95,25 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(logger.GinMiddleware())
+
+	// Overlay any UI-persisted settings on top of the env-var defaults so
+	// changes made via /config/ survive a pod restart. Env vars still win
+	// for a fresh install (no app_config row yet).
+	if persisted, ok, err := pgStore.GetAppConfig(context.Background()); err != nil {
+		slog.Warn("failed to load persisted config; using env-var values",
+			slog.Any("error", err))
+	} else if ok {
+		cfg.Color = persisted.Color
+		cfg.PageStep = persisted.PageStep
+		cfg.FrequencyDays = persisted.FrequencyDays
+		cfg.DisplayDays = persisted.DisplayDays
+		cfg.AutoFill = persisted.AutoFill
+		cfg.CVAutoLog = persisted.CVAutoLog
+		slog.Info("loaded persisted config",
+			slog.String("color", cfg.Color),
+			slog.Bool("cv_autolog", cfg.CVAutoLog),
+			slog.Int("pagestep", cfg.PageStep))
+	}
 
 	cfg.NodePath = nodePath
 	conf.Set(cfg)

@@ -397,6 +397,50 @@ func (s *PostgresStore) DeleteW(ctx context.Context, id int) error {
 	return err
 }
 
+// ─── app config (UI-editable settings) ────────────────────────────────────────
+
+// GetAppConfig returns the persisted UI-editable settings. Returns
+// (zero, false, nil) when no row exists yet, so a fresh install falls
+// back to env-var defaults instead of the schema's DEFAULT values.
+func (s *PostgresStore) GetAppConfig(ctx context.Context) (models.Conf, bool, error) {
+	slog.Debug("db: GetAppConfig")
+	var cfg models.Conf
+	err := s.pool.QueryRow(ctx,
+		`SELECT color, page_step, frequency_days, display_days, autofill, cv_autolog
+		 FROM app_config WHERE id = 1`).Scan(
+		&cfg.Color, &cfg.PageStep, &cfg.FrequencyDays, &cfg.DisplayDays,
+		&cfg.AutoFill, &cfg.CVAutoLog)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.Conf{}, false, nil
+	}
+	if err != nil {
+		return models.Conf{}, false, err
+	}
+	return cfg, true, nil
+}
+
+// SaveAppConfig upserts the UI-editable settings. Pushover credentials
+// and NodePath are env-only and never persisted (see the Conf comment).
+func (s *PostgresStore) SaveAppConfig(ctx context.Context, cfg models.Conf) error {
+	slog.Debug("db: SaveAppConfig",
+		slog.String("color", cfg.Color),
+		slog.Bool("cv_autolog", cfg.CVAutoLog))
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO app_config (id, color, page_step, frequency_days, display_days, autofill, cv_autolog, updated_at)
+		 VALUES (1, $1, $2, $3, $4, $5, $6, NOW())
+		 ON CONFLICT (id) DO UPDATE SET
+		     color          = EXCLUDED.color,
+		     page_step      = EXCLUDED.page_step,
+		     frequency_days = EXCLUDED.frequency_days,
+		     display_days   = EXCLUDED.display_days,
+		     autofill       = EXCLUDED.autofill,
+		     cv_autolog     = EXCLUDED.cv_autolog,
+		     updated_at     = NOW()`,
+		cfg.Color, cfg.PageStep, cfg.FrequencyDays, cfg.DisplayDays,
+		cfg.AutoFill, cfg.CVAutoLog)
+	return err
+}
+
 // ─── health records (Android Health Connect) ───────────────────────────────────
 
 // InsertHealthRecords persists a batch of wearable health records in one
