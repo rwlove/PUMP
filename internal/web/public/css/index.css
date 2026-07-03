@@ -718,16 +718,6 @@
 
 /* ─── Personal Records tab ───────────────────────────────────────────────── */
 
-.pr-group-header {
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--bs-secondary-color);
-  padding: 0.6rem 1rem 0.3rem;
-  border-top: 1px solid var(--bs-border-color);
-}
-.pr-group-header:first-child { border-top: none; }
 
 .pr-row {
   display: flex;

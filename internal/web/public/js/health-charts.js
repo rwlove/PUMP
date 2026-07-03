@@ -203,6 +203,7 @@ function renderSleepTab(period) {
                 // Hovering a bar shows every stage at that night plus the total.
                 tooltip: {
                     mode: 'index', intersect: false,
+                    itemSort(a, b) { return b.datasetIndex - a.datasetIndex; },
                     callbacks: {
                         title(items) { return items.length ? items[0].label : ''; },
                         label(c) { return c.dataset.label + ': ' + hcFmtDur(c.raw * 60); },
