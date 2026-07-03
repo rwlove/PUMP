@@ -470,42 +470,23 @@ def build_app(
 def _process_reference_clip(video_path: Path, exercise_name: str,
                             prototype_dir: Path) -> Path:
     """Run YOLOv8 on the clip → prototype → PrototypeStore. Synchronous
-    helper invoked from a worker thread."""
-    from .classify import (
-        ExercisePrototype,
-        PrototypeStore,
-        pose_sequence_to_features,
-    )
-    from .pose.yolo import YOLOPoseSource
-    from .tracking import pick_athlete
+    helper invoked from a worker thread. Translates the "no athlete
+    detected" case into HTTP 422 for the caller."""
+    from .classify import NoAthleteDetectedError, build_prototype_from_video
 
-    async def _run_yolo():
-        src = YOLOPoseSource(
-            source=str(video_path),
-            camera_name="reference",
+    try:
+        saved = build_prototype_from_video(
+            video_path=video_path,
+            exercise_name=exercise_name,
+            prototype_dir=prototype_dir,
         )
-        seq = []
-        async for _frame, poses in src.poses():
-            athlete = pick_athlete(poses)
-            if athlete is not None:
-                seq.append(athlete)
-        return seq
-
-    poses = asyncio.run(_run_yolo())
-    if not poses:
+    except NoAthleteDetectedError as e:
         raise HTTPException(
             status_code=422,
             detail="no athlete detected in clip",
-        )
-    feats = pose_sequence_to_features(poses)
-    store = PrototypeStore(prototype_dir)
-    saved = store.add(ExercisePrototype(
-        exercise_name=exercise_name,
-        features=feats,
-        source_clip=video_path.name,
-    ))
+        ) from e
     logger.info("reference clip ingested",
-                exercise=exercise_name, frames=len(poses), path=str(saved))
+                exercise=exercise_name, path=str(saved))
     return saved
 
 

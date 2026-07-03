@@ -12,65 +12,44 @@ Example:
         --exercise-name "Squat" \
         --store prototypes/
 
-The full PUMP-UI record-and-upload flow is Phase 2 (waits for cameras
-and the file-upload endpoint). This CLI gets us a working classifier
-today against any clips you can produce by hand.
+The full PUMP-UI record-and-upload flow (`POST /api/v1/reference` on
+healthd) shares the same core — `pump_cv.classify.build_prototype_from_
+video` — so a fix to the pipeline never has to be replicated across
+both entry points.
 """
 
 from __future__ import annotations
 
 import argparse
-import asyncio
 import sys
 from pathlib import Path
 
 from .. import log
-from ..classify import (
-    ExercisePrototype,
-    PrototypeStore,
-    pose_sequence_to_features,
-)
-from ..pose.yolo import YOLOPoseSource
-from ..tracking import pick_athlete
+from ..classify import NoAthleteDetectedError, build_prototype_from_video
 
 logger = log.get(__name__)
 
 
-async def _process(args) -> int:
+def _process(args) -> int:
     log.configure()
-    if not Path(args.video).is_file():
+    try:
+        saved = build_prototype_from_video(
+            video_path=Path(args.video),
+            exercise_name=args.exercise_name,
+            prototype_dir=Path(args.store),
+            model=args.model,
+            image_size=args.image_size,
+            device=args.device,
+        )
+    except FileNotFoundError:
         logger.error("video not found", path=args.video)
         return 1
-
-    source = YOLOPoseSource(
-        source=args.video,
-        camera_name="reference",
-        model=args.model,
-        image_size=args.image_size,
-        device=args.device,
-    )
-
-    poses_per_frame = []
-    async for _frame, poses in source.poses():
-        athlete = pick_athlete(poses)
-        if athlete is not None:
-            poses_per_frame.append(athlete)
-
-    if not poses_per_frame:
+    except NoAthleteDetectedError:
         logger.error("no athlete detected in clip", path=args.video)
         return 2
 
-    feats = pose_sequence_to_features(poses_per_frame)
-    proto = ExercisePrototype(
-        exercise_name=args.exercise_name,
-        features=feats,
-        source_clip=args.video,
-    )
-    store = PrototypeStore(Path(args.store))
-    saved = store.add(proto)
     logger.info("prototype saved",
-                exercise=args.exercise_name, frames=len(poses_per_frame),
-                path=str(saved))
+                exercise=args.exercise_name, path=str(saved))
     return 0
 
 
@@ -88,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--device", default="cuda:0",
                    help="cuda:0 / cpu / etc.")
     args = p.parse_args(argv)
-    return asyncio.run(_process(args))
+    return _process(args)
 
 
 if __name__ == "__main__":

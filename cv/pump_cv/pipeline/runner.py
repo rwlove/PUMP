@@ -333,55 +333,51 @@ class PipelineRunner:
                 rc.push(ang, p.timestamp)
         return rc.count
 
+    # ─── admin panel introspection ───────────────────────────────────
+    # healthd's /api/v1/state and /api/v1/thresholds endpoints call
+    # these to render the admin UI and hot-reload tunables. The wall's
+    # calibration wizard also polls state.
+
+    def snapshot_state(self) -> dict:
+        return {
+            "default_exercise": self._default_exercise.name,
+            "fsm_state": self._fsm.state.value,
+            "rep_count": self._counter.count,
+            "is_awake": self._is_awake,
+            "buffer_frames": len(self._clip_buffer) if self._clip_buffer else 0,
+            "pose_buffer_len": len(self._pose_buffer),
+            "prototypes_loaded": len(self._prototypes),
+        }
+
+    def snapshot_thresholds(self) -> dict:
+        return {
+            "rep": {
+                "min_amplitude_deg": self._counter.min_amplitude_deg,
+                "min_period_s":      self._counter.min_period_s,
+                "smoothing_window":  self._counter.smoothing_window,
+            },
+            "set_boundary": {
+                "quiet_seconds": self._fsm.quiet_seconds,
+            },
+            "confidence_threshold": self._confidence_threshold,
+        }
+
+    def update_thresholds(self, payload: dict) -> None:
+        """Hot-reload tunables. Accepts dotted keys ('rep.min_period_s').
+        Unknown keys are ignored. The new values take effect on the next
+        frame; no pipeline restart needed."""
+        for key, value in payload.items():
+            if key == "rep.min_amplitude_deg":
+                self._counter.min_amplitude_deg = float(value)
+            elif key == "rep.min_period_s":
+                self._counter.min_period_s = float(value)
+            elif key == "rep.smoothing_window":
+                self._counter.smoothing_window = int(value)
+            elif key == "set_boundary.quiet_seconds":
+                self._fsm.quiet_seconds = float(value)
+            elif key == "confidence_threshold":
+                self._confidence_threshold = float(value)
+
 
 def _today() -> str:
     return dt.date.today().isoformat()
-
-
-# Add admin-panel introspection methods to PipelineRunner. Defined on the
-# class via assignment so they sit alongside the rest without crowding
-# the constructor at the top.
-def _snapshot_state(self) -> dict:
-    return {
-        "default_exercise": self._default_exercise.name,
-        "fsm_state": self._fsm.state.value,
-        "rep_count": self._counter.count,
-        "is_awake": self._is_awake,
-        "buffer_frames": len(self._clip_buffer) if self._clip_buffer else 0,
-        "pose_buffer_len": len(self._pose_buffer),
-        "prototypes_loaded": len(self._prototypes),
-    }
-
-def _snapshot_thresholds(self) -> dict:
-    return {
-        "rep": {
-            "min_amplitude_deg": self._counter.min_amplitude_deg,
-            "min_period_s":      self._counter.min_period_s,
-            "smoothing_window":  self._counter.smoothing_window,
-        },
-        "set_boundary": {
-            "quiet_seconds": self._fsm.quiet_seconds,
-        },
-        "confidence_threshold": self._confidence_threshold,
-    }
-
-def _update_thresholds(self, payload: dict) -> None:
-    """Hot-reload tunables. Accepts dotted keys ('rep.min_period_s').
-    Unknown keys are ignored. The new values take effect on the next
-    frame; no pipeline restart needed."""
-    for key, value in payload.items():
-        if key == "rep.min_amplitude_deg":
-            self._counter.min_amplitude_deg = float(value)
-        elif key == "rep.min_period_s":
-            self._counter.min_period_s = float(value)
-        elif key == "rep.smoothing_window":
-            self._counter.smoothing_window = int(value)
-        elif key == "set_boundary.quiet_seconds":
-            self._fsm.quiet_seconds = float(value)
-        elif key == "confidence_threshold":
-            self._confidence_threshold = float(value)
-
-
-PipelineRunner.snapshot_state = _snapshot_state
-PipelineRunner.snapshot_thresholds = _snapshot_thresholds
-PipelineRunner.update_thresholds = _update_thresholds
