@@ -443,14 +443,6 @@ function updatePRsTab(allSets, exercises, period) {
     // Period start for NEW badge (null = alltime)
     const periodStart = (period !== 'alltime') ? getPeriodDates(period).start : null;
 
-    // Group by muscle group
-    const byGroup = {};
-    for (const [name, pr] of Object.entries(prs)) {
-        const group = (exMap[name] || {}).Group || 'Other';
-        if (!byGroup[group]) byGroup[group] = [];
-        byGroup[group].push({ name, ...pr });
-    }
-
     const container = document.getElementById('prs-table-container');
     if (!container) return;
 
@@ -459,26 +451,26 @@ function updatePRsTab(allSets, exercises, period) {
         return;
     }
 
+    const rows = Object.entries(prs)
+        .map(([name, pr]) => ({ name, ...pr }))
+        .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
     let html = '';
-    Object.keys(byGroup).sort().forEach(group => {
-        const rows = byGroup[group].sort((a, b) => b.e1rm - a.e1rm);
-        html += `<div class="pr-group-header">${escapeHtml(group)}</div>`;
-        rows.forEach(row => {
-            const ex = exMap[row.name] || {};
-            const color = ex.Color || '#6c757d';
-            const isNew = periodStart && new Date(row.date) >= periodStart;
-            const badge = isNew ? ' <span class="pr-new-badge">NEW</span>' : '';
-            html += `<div class="pr-row">
-              <div class="pr-dot" style="background:${color}"></div>
-              <div class="pr-name">${escapeHtml(row.name)}${badge}</div>
-              <div class="pr-stats">
-                <div class="pr-stat"><div class="pr-val">${row.weight} lbs</div><div class="pr-lbl">best weight</div></div>
-                <div class="pr-stat"><div class="pr-val">${row.reps}</div><div class="pr-lbl">reps</div></div>
-                <div class="pr-stat"><div class="pr-val">${Math.round(row.e1rm).toLocaleString()} lbs</div><div class="pr-lbl">est. 1RM</div></div>
-                <div class="pr-stat pr-date-stat"><div class="pr-val">${row.date}</div><div class="pr-lbl">set on</div></div>
-              </div>
-            </div>`;
-        });
+    rows.forEach(row => {
+        const ex = exMap[row.name] || {};
+        const color = ex.Color || '#6c757d';
+        const isNew = periodStart && new Date(row.date) >= periodStart;
+        const badge = isNew ? ' <span class="pr-new-badge">NEW</span>' : '';
+        html += `<div class="pr-row">
+          <div class="pr-dot" style="background:${color}"></div>
+          <div class="pr-name">${escapeHtml(row.name)}${badge}</div>
+          <div class="pr-stats">
+            <div class="pr-stat"><div class="pr-val">${row.weight} lbs</div><div class="pr-lbl">best weight</div></div>
+            <div class="pr-stat"><div class="pr-val">${row.reps}</div><div class="pr-lbl">reps</div></div>
+            <div class="pr-stat"><div class="pr-val">${Math.round(row.e1rm).toLocaleString()} lbs</div><div class="pr-lbl">est. 1RM</div></div>
+            <div class="pr-stat pr-date-stat"><div class="pr-val">${row.date}</div><div class="pr-lbl">set on</div></div>
+          </div>
+        </div>`;
     });
     container.innerHTML = html;
 
@@ -500,14 +492,14 @@ function refreshOverloadTab(allSets, exercises, period) {
     if (!container) return;
 
     const exWithWeight = new Set();
-    const counts = {};
+    const lastDate = {};
     allSets.forEach(s => {
-        counts[s.Name] = (counts[s.Name] || 0) + 1;
         const w = parseFloat(s.Weight);
         if (!isNaN(w) && w > 0) exWithWeight.add(s.Name);
+        if (!lastDate[s.Name] || s.Date > lastDate[s.Name]) lastDate[s.Name] = s.Date;
     });
 
-    const names = [...exWithWeight].sort((a, b) => (counts[b] || 0) - (counts[a] || 0));
+    const names = [...exWithWeight].sort((a, b) => (lastDate[b] || '').localeCompare(lastDate[a] || ''));
     const colorMap = {};
     (exercises || []).forEach(ex => { colorMap[ex.Name] = ex.Color; });
 
@@ -657,6 +649,7 @@ function updateBalanceTab(allSets, exercises, period) {
         const ex = exMap[s.Name];
         if (!ex) return;
         const group = ex.Group || 'Other';
+        if (group.toLowerCase() === 'cardio') return;
         const w = parseFloat(s.Weight);
         const r = parseInt(s.Reps, 10);
         groupSets[group] = (groupSets[group] || 0) + 1;
