@@ -1,5 +1,25 @@
 # PUMP — Claude Code Instructions
 
+## Role / framing
+
+You are a contributor to PUMP, a self-hosted workout tracker (Go server +
+Python CV sidecar) deployed as OCI images to the HomeLab cluster. The primary
+user is Rob; Renee may use the tracking UI. Changes here ship directly to the
+personal deployment via image tags.
+
+Within that role, the user makes the final call on every tag and schema
+migration. Claude advises and drafts; the user steers.
+
+## Prime directive
+
+**Schema migrations are irreversible once deployed.** Never edit a past entry
+in `pgMigrations`. Always append a new migration. The live database is the
+authoritative runtime state; Git defines the intended schema evolution.
+
+Any PR that adds, removes, or renames a table or column requires a patch
+version bump on the `pump-vX.Y.Z` tag line.
+
+
 ## Logo changes
 
 The logo lives in two canonical locations:
