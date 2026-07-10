@@ -164,6 +164,8 @@ function renderSleepTab(period) {
     const all = hcData('Sleep');
     const last = all.length ? all[all.length - 1] : null;
     hcSetText('sleep-last', last ? hcFmtDur(last.Minutes) : '–');
+    hcSetText('sleep-bedtime', last && last.Bedtime ? last.Bedtime : '–');
+    hcSetText('sleep-waketime', last && last.WakeTime ? last.WakeTime : '–');
 
     const data = hcByPeriod(all, period);
     // Avg nightly sleep and deep-share track the selected period.
@@ -210,7 +212,12 @@ function renderSleepTab(period) {
                         footer(items) {
                             if (!items.length) return '';
                             const n = data[items[0].dataIndex];
-                            return n ? 'Total sleep: ' + hcFmtDur(n.Minutes) : '';
+                            if (!n) return '';
+                            const lines = [];
+                            if (n.Bedtime) lines.push('Asleep ' + n.Bedtime);
+                            if (n.WakeTime) lines.push('Woke ' + n.WakeTime);
+                            lines.push('Total sleep: ' + hcFmtDur(n.Minutes));
+                            return lines;
                         }
                     }
                 }
