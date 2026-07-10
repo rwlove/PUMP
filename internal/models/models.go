@@ -128,12 +128,14 @@ type DayRange struct {
 // SleepNight is one night keyed by wake date, with per-stage minutes (zero
 // when the source didn't report stages).
 type SleepNight struct {
-	Date    string  `json:"Date"`
-	Minutes float64 `json:"Minutes"`
-	Deep    float64 `json:"Deep"`
-	Light   float64 `json:"Light"`
-	REM     float64 `json:"REM"`
-	Awake   float64 `json:"Awake"`
+	Date     string  `json:"Date"`
+	Minutes  float64 `json:"Minutes"`
+	Deep     float64 `json:"Deep"`
+	Light    float64 `json:"Light"`
+	REM      float64 `json:"REM"`
+	Awake    float64 `json:"Awake"`
+	Bedtime  string  `json:"Bedtime"`  // "10:45 PM"; "" when unknown
+	WakeTime string  `json:"WakeTime"` // "6:32 AM";  "" when unknown
 }
 
 // CardioSession is one band-tracked workout.

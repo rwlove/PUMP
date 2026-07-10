@@ -57,6 +57,80 @@ func TestAggregateHealthSleepStagesNumeric(t *testing.T) {
 	}
 }
 
+// TestAggregateHealthSleepBedWakeTimes verifies bed time (earliest start) and
+// wake time (latest end) are carried through as 12-hour formatted strings.
+func TestAggregateHealthSleepBedWakeTimes(t *testing.T) {
+	start := time.Date(2026, 6, 8, 22, 45, 0, 0, time.Local)
+	end := time.Date(2026, 6, 9, 6, 32, 0, 0, time.Local)
+	d := decimal.NewFromFloat(28020) // 7h47m in seconds
+	rc := models.HealthRecord{
+		MetricType: "sleep",
+		StartTime:  start,
+		EndTime:    &end,
+		Value:      &d,
+	}
+
+	out := aggregateHealth([]models.HealthRecord{rc})
+	if len(out.Sleep) != 1 {
+		t.Fatalf("want 1 sleep night, got %d", len(out.Sleep))
+	}
+	n := out.Sleep[0]
+	if want := start.Format("3:04 PM"); n.Bedtime != want {
+		t.Errorf("Bedtime: want %q, got %q", want, n.Bedtime)
+	}
+	if want := end.Format("3:04 PM"); n.WakeTime != want {
+		t.Errorf("WakeTime: want %q, got %q", want, n.WakeTime)
+	}
+}
+
+// TestAggregateHealthSleepSnapshotsDedupe mirrors the real bridge payload: a
+// single night re-reported as several cumulative snapshots with a growing
+// top-level start_time and growing duration/stages. The night's duration must
+// reflect the final snapshot (not the sum of all of them), and bed/wake come
+// from the stage timestamps, not the equal top-level start==end.
+func TestAggregateHealthSleepSnapshotsDedupe(t *testing.T) {
+	// Real bed 10:45 PM → wake 6:15 AM (7h30m). Stages carry the truth; the
+	// top-level start==end is a useless fallback that grows per snapshot.
+	stagesPartial := `{"stages":[
+		{"stage":"4","start_time":"2026-06-08T22:45:00Z","end_time":"2026-06-09T00:45:00Z","duration_seconds":7200},
+		{"stage":"5","start_time":"2026-06-09T00:45:00Z","end_time":"2026-06-09T02:45:00Z","duration_seconds":7200}
+	]}`
+	stagesFull := `{"stages":[
+		{"stage":"4","start_time":"2026-06-08T22:45:00Z","end_time":"2026-06-09T00:45:00Z","duration_seconds":7200},
+		{"stage":"5","start_time":"2026-06-09T00:45:00Z","end_time":"2026-06-09T02:45:00Z","duration_seconds":7200},
+		{"stage":"6","start_time":"2026-06-09T02:45:00Z","end_time":"2026-06-09T06:15:00Z","duration_seconds":12600}
+	]}`
+
+	mk := func(startUTC string, durSecs float64, extra string) models.HealthRecord {
+		st, _ := time.Parse(time.RFC3339, startUTC)
+		d := decimal.NewFromFloat(durSecs)
+		end := st // bridge fallback: end == start
+		return models.HealthRecord{MetricType: "sleep", StartTime: st, EndTime: &end, Value: &d, Extra: json.RawMessage(extra)}
+	}
+
+	recs := []models.HealthRecord{
+		mk("2026-06-09T04:00:00Z", 14400, stagesPartial), // early snapshot, 4h so far
+		mk("2026-06-09T07:00:00Z", 27000, stagesFull),    // final snapshot, 7h30m
+	}
+	out := aggregateHealth(recs)
+	if len(out.Sleep) != 1 {
+		t.Fatalf("want 1 sleep night (snapshots collapsed), got %d", len(out.Sleep))
+	}
+	n := out.Sleep[0]
+	// Final snapshot is 7h30m = 450 min — NOT 14400+27000 summed (690 min).
+	if n.Minutes != 450 {
+		t.Errorf("Minutes: want 450 (final snapshot only), got %v", n.Minutes)
+	}
+	bed := time.Date(2026, 6, 8, 22, 45, 0, 0, time.UTC).Local().Format("3:04 PM")
+	wake := time.Date(2026, 6, 9, 6, 15, 0, 0, time.UTC).Local().Format("3:04 PM")
+	if n.Bedtime != bed {
+		t.Errorf("Bedtime: want %q (earliest stage start), got %q", bed, n.Bedtime)
+	}
+	if n.WakeTime != wake {
+		t.Errorf("WakeTime: want %q (latest stage end), got %q", wake, n.WakeTime)
+	}
+}
+
 // TestAggregateHealthRestingHRProxy verifies that when only raw heart_rate is
 // present (no resting_heart_rate), a resting proxy is synthesized from the
 // day's minimum so the Resting HR tile/line populate.

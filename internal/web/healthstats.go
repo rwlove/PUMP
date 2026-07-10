@@ -30,8 +30,9 @@ func loadHealthStats(ctx context.Context) models.HealthStats {
 // aggregateHealth collapses raw HealthRecords into the compact per-day series
 // the UI charts. Pure (no store) so it's trivially testable. Steps sum per
 // day; resting HR averages per day; heart_rate becomes a daily min/avg/max
-// spread; sleep groups by wake date with per-stage minutes; exercise becomes
-// individual cardio sessions.
+// spread; sleep dedupes cumulative snapshots per session then groups by wake
+// date with per-stage minutes and bed/wake times; exercise becomes individual
+// cardio sessions.
 func aggregateHealth(recs []models.HealthRecord) models.HealthStats {
 	out := models.HealthStats{Available: true}
 
@@ -48,6 +49,14 @@ func aggregateHealth(recs []models.HealthRecord) models.HealthStats {
 	restingByDay := map[string][]float64{}
 	hrByDay := map[string][]float64{}
 	sleepByDay := map[string]*models.SleepNight{}
+	// Sleep records arrive as cumulative snapshots of an in-progress session:
+	// the bridge re-reports the same night with a growing duration and a
+	// growing stages[] (and a growing top-level start_time, so — unlike steps —
+	// they can't be deduped by start_time). Collapse them per session, keyed by
+	// the session's true start (earliest stage start = bed time), keeping the
+	// snapshot with the largest duration (the final, complete reading). Summing
+	// the raw snapshots would multiply a night's sleep by its snapshot count.
+	sleepSessions := map[int64]sleepSnapshot{}
 
 	val := func(r models.HealthRecord) float64 {
 		if r.Value == nil {
@@ -69,18 +78,11 @@ func aggregateHealth(recs []models.HealthRecord) models.HealthStats {
 		case "heart_rate":
 			hrByDay[day] = append(hrByDay[day], val(r))
 		case "sleep":
-			// Key a night by its wake (end) date when available.
-			d := day
-			if r.EndTime != nil {
-				d = r.EndTime.Local().Format("2006-01-02")
+			start, end := sleepSpan(r)
+			key := start.UnixNano()
+			if cur, ok := sleepSessions[key]; !ok || val(r) > cur.dur {
+				sleepSessions[key] = sleepSnapshot{start: start, end: end, dur: val(r), extra: r.Extra}
 			}
-			n := sleepByDay[d]
-			if n == nil {
-				n = &models.SleepNight{Date: d}
-				sleepByDay[d] = n
-			}
-			n.Minutes += val(r) / 60.0
-			addSleepStages(r.Extra, n)
 		case "exercise":
 			out.Cardio = append(out.Cardio, cardioFromRecord(r, day, val(r)))
 		}
@@ -106,7 +108,35 @@ func aggregateHealth(recs []models.HealthRecord) models.HealthStats {
 	for d, vs := range restingByDay {
 		out.RestingHR = append(out.RestingHR, models.DayValue{Date: d, Value: mean(vs)})
 	}
-	for _, n := range sleepByDay {
+	// Fold the deduped sessions into per-night rollups, keyed by wake date, so
+	// genuine multi-session nights (e.g. a nap plus the main sleep) still sum
+	// while snapshot duplicates do not. Bed time is the night's earliest start,
+	// wake time its latest end.
+	sleepStartByDay := map[string]time.Time{}
+	sleepEndByDay := map[string]time.Time{}
+	for _, s := range sleepSessions {
+		d := s.end.Local().Format("2006-01-02")
+		n := sleepByDay[d]
+		if n == nil {
+			n = &models.SleepNight{Date: d}
+			sleepByDay[d] = n
+		}
+		n.Minutes += s.dur / 60.0
+		addSleepStages(s.extra, n)
+		if t, ok := sleepStartByDay[d]; !ok || s.start.Before(t) {
+			sleepStartByDay[d] = s.start
+		}
+		if t, ok := sleepEndByDay[d]; !ok || s.end.After(t) {
+			sleepEndByDay[d] = s.end
+		}
+	}
+	for d, n := range sleepByDay {
+		if s, ok := sleepStartByDay[d]; ok {
+			n.Bedtime = s.Local().Format("3:04 PM")
+		}
+		if e, ok := sleepEndByDay[d]; ok {
+			n.WakeTime = e.Local().Format("3:04 PM")
+		}
 		out.Sleep = append(out.Sleep, *n)
 	}
 
@@ -172,6 +202,51 @@ func minAvgMax(vs []float64) (mn, av, mx float64) {
 		sum += v
 	}
 	return mn, sum / float64(len(vs)), mx
+}
+
+// sleepSnapshot is one deduped sleep session: its true span (bed→wake), total
+// duration in seconds, and the Extra of the fullest snapshot (for stage rollup).
+type sleepSnapshot struct {
+	start, end time.Time
+	dur        float64
+	extra      json.RawMessage
+}
+
+// sleepSpan returns a sleep record's true span. The bridge frequently omits a
+// top-level session end_time (so StartTime == EndTime) and re-reports the same
+// session with a growing top-level start_time; the real bed/wake times live on
+// the per-stage segments. Prefer the earliest stage start and latest stage end
+// when stages are present, falling back to the record's own timestamps.
+func sleepSpan(r models.HealthRecord) (start, end time.Time) {
+	start = r.StartTime
+	if r.EndTime != nil {
+		end = *r.EndTime
+	} else {
+		end = r.StartTime
+	}
+	var e struct {
+		Stages []struct {
+			Start string `json:"start_time"`
+			End   string `json:"end_time"`
+		} `json:"stages"`
+	}
+	if len(r.Extra) == 0 || json.Unmarshal(r.Extra, &e) != nil {
+		return start, end
+	}
+	var haveStart, haveEnd bool
+	for _, s := range e.Stages {
+		if t, err := time.Parse(time.RFC3339, s.Start); err == nil {
+			if !haveStart || t.Before(start) {
+				start, haveStart = t, true
+			}
+		}
+		if t, err := time.Parse(time.RFC3339, s.End); err == nil {
+			if !haveEnd || t.After(end) {
+				end, haveEnd = t, true
+			}
+		}
+	}
+	return start, end
 }
 
 // addSleepStages parses a sleep record's Extra ({"stages":[{stage,duration_seconds}]})
