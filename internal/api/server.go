@@ -14,6 +14,7 @@ import (
 	"github.com/rwlove/PUMP/internal/models"
 	"github.com/rwlove/PUMP/internal/notify"
 	"github.com/rwlove/PUMP/internal/store"
+	"github.com/shopspring/decimal"
 )
 
 var (
@@ -25,6 +26,14 @@ var (
 	// no-inbound-auth posture for in-cluster callers and the manual
 	// web-form path (which goes through /wadd/, not /api/weight).
 	weightIngestKey string
+	// weightMinLbs/weightMaxLbs bound plausible body weights accepted by
+	// POST /api/weight. PUMP does not trust a single upstream — the BLE-scale
+	// firmware enforces a tight band, and this is the backstop that keeps a
+	// physically-impossible reading (from any source) out of the store.
+	// Overridable via WEIGHT_MIN_LBS / WEIGHT_MAX_LBS; defaults are a generous
+	// human range so normal weigh-ins never trip it.
+	weightMinLbs = decimal.NewFromInt(50)
+	weightMaxLbs = decimal.NewFromInt(500)
 )
 
 // RegisterRoutes mounts all API routes on r using the provided store.
@@ -41,10 +50,29 @@ func RegisterRoutes(r *gin.Engine, s *store.PostgresStore, p *notify.Pushover, p
 	publicURL = pubURL
 	weightIngestKey = os.Getenv("WEIGHT_INGEST_KEY")
 	healthIngestKey = os.Getenv("HEALTH_INGEST_KEY")
+	weightMinLbs = envDecimal("WEIGHT_MIN_LBS", weightMinLbs)
+	weightMaxLbs = envDecimal("WEIGHT_MAX_LBS", weightMaxLbs)
 	registerRoutes(r)
 	slog.Debug("api routes registered",
 		slog.Bool("weight_ingest_key_configured", weightIngestKey != ""),
 		slog.Bool("health_ingest_key_configured", healthIngestKey != ""))
+}
+
+// envDecimal reads a decimal from env var key, falling back to def when the
+// var is unset or unparseable.
+func envDecimal(key string, def decimal.Decimal) decimal.Decimal {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	d, err := decimal.NewFromString(v)
+	if err != nil {
+		slog.Warn("invalid decimal env var; using default",
+			slog.String("key", key), slog.String("value", v),
+			slog.String("default", def.String()))
+		return def
+	}
+	return d
 }
 
 // registerRoutes mounts all API routes on r.
@@ -462,6 +490,12 @@ func getWeight(c *gin.Context) {
 	c.JSON(http.StatusOK, ws)
 }
 
+// weightOutOfRange reports whether w falls outside the accepted plausibility
+// band [weightMinLbs, weightMaxLbs] (inclusive).
+func weightOutOfRange(w decimal.Decimal) bool {
+	return w.LessThan(weightMinLbs) || w.GreaterThan(weightMaxLbs)
+}
+
 func postWeight(c *gin.Context) {
 	var w models.BodyWeight
 	if err := c.ShouldBindJSON(&w); err != nil {
@@ -472,6 +506,19 @@ func postWeight(c *gin.Context) {
 		slog.String("date", w.Date),
 		slog.String("recorded_at", w.RecordedAt),
 		slog.String("weight", w.Weight.String()))
+	// Plausibility guard: reject physically-impossible body weights before the
+	// store. The scale firmware enforces a tight band; this is the backstop
+	// against a bad reading from any source (see weightMinLbs/weightMaxLbs).
+	if weightOutOfRange(w.Weight) {
+		slog.Warn("postWeight: rejected out-of-range weight",
+			slog.String("date", w.Date),
+			slog.String("recorded_at", w.RecordedAt),
+			slog.String("weight", w.Weight.String()),
+			slog.String("min", weightMinLbs.String()),
+			slog.String("max", weightMaxLbs.String()))
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "weight out of plausible range"})
+		return
+	}
 	if err := dataStore.InsertW(c.Request.Context(), w); err != nil {
 		slog.Error("postWeight: InsertW failed", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
