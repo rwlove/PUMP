@@ -70,6 +70,8 @@ All configuration is via environment variables. No config file is required.
 | `POSTGRES_DSN` | PostgreSQL connection string **(required)** | — |
 | `API_KEY` | Sent as `X-Api-Key` when proxying to `pump-cv` (server-to-server only — pump has no inbound auth) | `""` |
 | `WEIGHT_INGEST_KEY` | When set, `POST /api/weight` requires header `X-Api-Key` matching this value. Enables off-cluster ingest (e.g. a BLE-scale ESPHome device) via an oauth2-bypassing internal Route scoped to `/api/weight`. Unset preserves the legacy no-inbound-auth posture. | `""` |
+| `WEIGHT_MIN_LBS` | Lower bound (lbs) for `POST /api/weight`. A reading below this is rejected `422` and logged (`warn`) instead of stored — a backstop below the scale firmware's own band, so a bad reading from any source can't corrupt the log. | `50` |
+| `WEIGHT_MAX_LBS` | Upper bound (lbs) for `POST /api/weight`. A reading above this is rejected `422` and logged. | `500` |
 | `HEALTH_INGEST_KEY` | When set, `POST /api/health` requires header `X-Api-Key` matching this value. Enables off-cluster wearable-metrics ingest from Android Health Connect (via the HC Webhook bridge app) over a path-scoped internal Route. The endpoint accepts a Health Connect envelope (per-type arrays: steps, active_calories, heart_rate, sleep, exercise, …) and stores each datum in `health_record`, deduped on `(metric_type, start_time, end_time)`. Unset preserves the no-inbound-auth posture. | `""` |
 | `LOG_LEVEL` | Log verbosity: `debug`, `info`, `warn`, `error` | `info` |
 | `COLOR` | UI color mode: `light` or `dark` | `dark` |
