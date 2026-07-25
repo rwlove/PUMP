@@ -18,12 +18,21 @@ func setHandler(c *gin.Context) {
 	_ = c.Request.ParseMultipartForm(32 << 20)
 	formMap := c.Request.PostForm
 
-	formLen := len(formMap["name"])
-	if formLen == 0 {
-		c.Status(http.StatusOK)
+	// The date is what BulkReplaceSetsByDate keys on. Without it there is no
+	// target for the replace, so reject rather than touch the database. This
+	// also guards the indexing below, which is why the empty-form check keys
+	// on the date and not on the set count.
+	if len(formMap["date"]) == 0 || formMap["date"][0] == "" {
+		c.Status(http.StatusBadRequest)
 		return
 	}
 	date := formMap["date"][0]
+
+	// A zero-length set list is legitimate: it means the user deleted every
+	// set for this date. Falling through with an empty formData clears the
+	// day. Short-circuiting here instead would strand the final set, since
+	// the autosave POST that follows the last delete carries no name fields.
+	formLen := len(formMap["name"])
 
 	for i := 0; i < formLen; i++ {
 		oneSet.Date = date
