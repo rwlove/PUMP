@@ -106,13 +106,37 @@ as of `pump-v0.0.82` / `pump-cv-v0.3.0`. Companion to
 
 - [ ] Form feedback overlays (depth on squat, bar path on bench, tempo)
 - [ ] Velocity-based training estimates from bar speed
-- [ ] **Voltra integration spike.** Time-boxed 1–2 weeks. Approach:
-  - **No Android app yet** ([confirmed by Beyond Power](https://help.beyond-power.com/en/articles/9932264-android-version-of-beyond)). Means no easy HCI-snoop path; need a hardware BLE sniffer from the start (nRF52840 dongle ~$15, or Ubertooth).
-  - **No community RE work** for the Voltra exists in 2026 (no GitHub, no HA integration, no Reddit thread). The voltraco/docs GitHub repo is a different company.
-  - **Voltra has WiFi for firmware updates** — worth scanning the local network for an mDNS service or HTTP endpoint *before* doing BLE work; might be a quick win.
-  - **Recommended order**: (a) `nmap` and `avahi-browse` the device's IP for HTTP/mDNS first; (b) email Beyond Power support to ask about a BLE protocol document for non-commercial integration; (c) only if both fail, do hardware BLE sniffing with the iOS app paired to the device.
-  - Decode at minimum: current resistance value + rep events.
-  - If successful, swap the Voltra branch from "opaque + manual confirm" to "BLE/HTTP subscriber + automatic logging."
+- [x] **Voltra integration spike — done (2026-08-03).** The BLE protocol was
+  reverse-engineered and validated end to end against real hardware. No BLE
+  sniffer was needed. Prior community work exists but is unlicensed, so the
+  implementation used here is independent and written from protocol facts only.
+  The protocol spec and validation code live outside this repo.
+
+  Proven working: read and write target load, load and unload the motor, and read
+  live set number and rep count. A 5-rep set was reported by the device and read
+  back exactly.
+
+- [ ] **`pump-voltra` sidecar.** Replaces the Voltra opaque-load branch in
+  `pump_cv/pipeline/runner.py`, which currently writes `pending=true` with
+  `weight=0` and a note asking the athlete to enter the resistance.
+  - **Its own service, not part of `pump-cv`.** No GPU required — coupling it to
+    the CV deployment would tie it to that lifecycle for no reason. Same
+    `POST /api/sets` contract.
+  - **Transport is an ESPHome `bluetooth_proxy`** (ESP32, active connections), so
+    the sidecar can run in-cluster while the trainer sits in the gym. Set and rep
+    counts arrive at roughly 1 Hz, so the proxy's known habit of dropping
+    notifications under backpressure does not apply — the high-rate stream is not
+    needed.
+  - **Division of labour with CV:** the camera answers *which exercise*; the
+    trainer answers *how much weight* and *how many reps*. CV is still required —
+    the device has no idea what movement is being performed.
+  - Device behaviours the implementation must handle: the motor load expires and
+    must be re-asserted periodically; parameter writes are silently rejected
+    unless a workout is active; telemetry does not flow until an explicit
+    subscribe is written; and target load must be verified by read-back before
+    loading, or a failed write silently applies the previous weight.
+  - Safety: loading engages a motor under software control. Load only on explicit
+    user action, never on reconnect, and always unload on shutdown.
 
 ## Operations + docs
 
