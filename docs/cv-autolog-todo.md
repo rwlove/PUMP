@@ -110,33 +110,23 @@ as of `pump-v0.0.82` / `pump-cv-v0.3.0`. Companion to
   reverse-engineered and validated end to end against real hardware. No BLE
   sniffer was needed. Prior community work exists but is unlicensed, so the
   implementation used here is independent and written from protocol facts only.
-  The protocol spec and validation code live outside this repo.
+  Full spec: [`voltra-ble-protocol.md`](voltra-ble-protocol.md).
 
   Proven working: read and write target load, load and unload the motor, and read
   live set number and rep count. A 5-rep set was reported by the device and read
   back exactly.
 
-- [ ] **`pump-voltra` sidecar.** Replaces the Voltra opaque-load branch in
+- [ ] **`pump-voltra` sidecar** — replaces the Voltra opaque-load branch in
   `pump_cv/pipeline/runner.py`, which currently writes `pending=true` with
   `weight=0` and a note asking the athlete to enter the resistance.
-  - **Its own service, not part of `pump-cv`.** No GPU required — coupling it to
-    the CV deployment would tie it to that lifecycle for no reason. Same
-    `POST /api/sets` contract.
-  - **Transport is an ESPHome `bluetooth_proxy`** (ESP32, active connections), so
-    the sidecar can run in-cluster while the trainer sits in the gym. Set and rep
-    counts arrive at roughly 1 Hz, so the proxy's known habit of dropping
-    notifications under backpressure does not apply — the high-rate stream is not
-    needed.
-  - **Division of labour with CV:** the camera answers *which exercise*; the
-    trainer answers *how much weight* and *how many reps*. CV is still required —
-    the device has no idea what movement is being performed.
-  - Device behaviours the implementation must handle: the motor load expires and
-    must be re-asserted periodically; parameter writes are silently rejected
-    unless a workout is active; telemetry does not flow until an explicit
-    subscribe is written; and target load must be verified by read-back before
-    loading, or a failed write silently applies the previous weight.
-  - Safety: loading engages a motor under software control. Load only on explicit
-    user action, never on reconnect, and always unload on shutdown.
+  Design, phasing, config, safety rules and open questions:
+  [`voltra-integration-plan.md`](voltra-integration-plan.md).
+  - Phase 1 (read-only auto-logging) needs **no schema migration** — `Source:
+    "voltra"` is a new value in an existing column.
+  - Phase 2 (device control) must not merge without the motor-safety rules in the
+    plan implemented and tested.
+  - `runner.py`'s Voltra branch must be gated off when the sidecar is active, or
+    every Voltra set gets logged twice.
 
 ## Operations + docs
 
