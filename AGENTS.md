@@ -63,6 +63,13 @@ the image in GHCR, so users still pull `pump:v0.0.80` even though the git tag is
 `pump-v0.0.80`. Legacy `v0.0.X` tags (≤ v0.0.79) pre-date the split and
 remain as historical markers — they no longer trigger any CI.
 
+**Adding a fourth tag line?** Check its prefix against the existing trigger
+globs first. `pump-v*` matches `pump-voltra-v0.1.0` — `*` absorbs the
+`oltra-v0.1.0` — so tagging the sidecar on 2026-08-04 also fired the server
+build and published a spurious `pump:voltra-v0.1.0`. The server trigger is now
+`pump-v[0-9]*`. Any new `pump-<name>-v*` line must not be glob-swallowed by an
+existing one.
+
 ### Before applying any new pump-v* tag
 
 Complete all steps in order before running `git tag`:
