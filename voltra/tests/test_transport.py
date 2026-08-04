@@ -105,8 +105,13 @@ async def test_connect_trainer_requires_an_address() -> None:
 
 
 class FakeScannerDevice:
+    """Mirrors habluetooth's BluetoothScannerDevice, whose field is
+    `ble_device` — not `device`. Using the wrong name failed only at the
+    moment discovery finally succeeded, which on a trainer that advertises
+    briefly then sleeps meant it burned the entire window."""
+
     def __init__(self, device):
-        self.device = device
+        self.ble_device = device
 
 
 class FakeManager:
