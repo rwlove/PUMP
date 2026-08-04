@@ -16,6 +16,7 @@ Negotiated MTU over this path is 517, not the 23 that ESP32 folklore claims.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 
 from .log import get
@@ -59,6 +60,33 @@ async def _ensure_manager():
     await _manager.async_setup()
     habluetooth.set_manager(_manager)
     return _manager
+
+
+class TrainerNotAdvertising(TransportError):
+    """The proxy is up but has not heard the trainer.
+
+    Distinct from a connect failure: nothing is broken, the trainer is just
+    switched off or asleep. The caller should back off and look again rather
+    than treat it as an error worth alarming about.
+    """
+
+
+async def _await_discovery(manager, address: str, timeout_s: float):
+    """Wait until a registered scanner has actually heard `address` advertise.
+
+    Returns the BLEDevice. Raises TrainerNotAdvertising on timeout.
+    """
+    deadline = asyncio.get_running_loop().time() + timeout_s
+    while True:
+        devices = manager.async_scanner_devices_by_address(address, True)
+        if devices:
+            return devices[0].device
+        if asyncio.get_running_loop().time() >= deadline:
+            raise TrainerNotAdvertising(
+                f"no scanner has seen {address} in {timeout_s:.0f}s — "
+                "the trainer is probably switched off or asleep"
+            )
+        await asyncio.sleep(1.0)
 
 
 async def _close_api(api) -> None:
@@ -126,6 +154,7 @@ async def connect(address: str, host: str, port: int, psk: str, timeout_s: float
         import bleak
         from aioesphomeapi import APIClient
         from bleak_esphome import connect_scanner
+        from bleak_retry_connector import establish_connection
     except ImportError as e:  # pragma: no cover - exercised only at runtime
         raise TransportError(
             "BLE dependencies are missing; install the package with its "
@@ -157,9 +186,19 @@ async def connect(address: str, host: str, port: int, psk: str, timeout_s: float
 
         logger.info("esphome proxy connected", host=host, name=device_info.name)
 
-        # Attribute access, NOT `from bleak import BleakClient` — see module docs.
-        client = bleak.BleakClient(address, timeout=timeout_s)
-        await client.connect()
+        # A scanner that has just been registered has not heard anything yet.
+        # BLE devices are only reachable once they advertise, and connecting
+        # immediately fails with "never seen by any scanner" even when the
+        # trainer is switched on and healthy.
+        device = await _await_discovery(manager, address, timeout_s)
+
+        # establish_connection wants a BLEDevice, not an address, and handles
+        # the retry/backoff that bleak's own connect() warns about omitting.
+        # Attribute access on bleak, NOT `from bleak import BleakClient` — see
+        # the module docstring.
+        client = await establish_connection(
+            bleak.BleakClient, device, address, max_attempts=3
+        )
         logger.info(
             "trainer connected", address=address, mtu=getattr(client, "mtu_size", None)
         )

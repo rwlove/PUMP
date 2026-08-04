@@ -81,3 +81,46 @@ def test_connect_requires_host_and_address() -> None:
         asyncio.run(transport.connect("aa:bb", "", 6053, "psk"))
     with pytest.raises(transport.TransportError, match="VOLTRA_ADDRESS"):
         asyncio.run(transport.connect("", "host", 6053, "psk"))
+
+
+# ─── discovery gate ──────────────────────────────────────────────────────
+
+
+class FakeScannerDevice:
+    def __init__(self, device):
+        self.device = device
+
+
+class FakeManager:
+    """Reports the address as unseen for `misses` calls, then finds it."""
+
+    def __init__(self, misses: int):
+        self.misses = misses
+        self.calls = 0
+
+    def async_scanner_devices_by_address(self, address, connectable):
+        self.calls += 1
+        if self.calls <= self.misses:
+            return []
+        return [FakeScannerDevice(f"BLEDevice({address})")]
+
+
+async def test_discovery_waits_for_the_first_advertisement() -> None:
+    # A freshly registered scanner has heard nothing yet; connecting straight
+    # away is what produced "never seen by any scanner" against a healthy,
+    # switched-on trainer.
+    mgr = FakeManager(misses=2)
+    device = await transport._await_discovery(mgr, "AA:BB:CC:DD:EE:FF", timeout_s=30)
+    assert device == "BLEDevice(AA:BB:CC:DD:EE:FF)"
+    assert mgr.calls == 3
+
+
+async def test_discovery_times_out_as_not_advertising() -> None:
+    # Must be its own type: an idle gym is expected, not a fault to alarm on.
+    mgr = FakeManager(misses=10_000)
+    with pytest.raises(transport.TrainerNotAdvertising, match="switched off or asleep"):
+        await transport._await_discovery(mgr, "AA:BB:CC:DD:EE:FF", timeout_s=0)
+
+
+def test_not_advertising_is_a_transport_error() -> None:
+    assert issubclass(transport.TrainerNotAdvertising, transport.TransportError)
