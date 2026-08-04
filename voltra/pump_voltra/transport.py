@@ -16,6 +16,8 @@ Negotiated MTU over this path is 517, not the 23 that ESP32 folklore claims.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from .log import get
 
 logger = get(__name__)
@@ -59,6 +61,35 @@ async def _ensure_manager():
     return _manager
 
 
+async def _close_api(api) -> None:
+    """Disconnect an APIClient, swallowing teardown errors."""
+    try:
+        await api.disconnect()
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("api disconnect failed", error=str(e))
+
+
+@dataclass
+class ProxyLink:
+    """A live path to the trainer: the BLE client plus the proxy session behind it.
+
+    Both halves are returned together because both have to be torn down. Earlier
+    this function returned only the BleakClient, so every reconnect stranded an
+    APIClient on the ESP32.
+    """
+
+    client: object
+    api: object
+
+    async def close(self) -> None:
+        try:
+            await self.client.disconnect()
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("ble disconnect failed", error=str(e))
+        _unregister_scanner()
+        await _close_api(self.api)
+
+
 def _unregister_scanner() -> None:
     """Drop the previous connection's scanner, if any.
 
@@ -83,6 +114,14 @@ async def connect(address: str, host: str, port: int, psk: str, timeout_s: float
     dependency that CI does not install, and protocol/session/naming must stay
     importable without it.
     """
+    # Config guards first: a missing host is a misconfiguration whether or not
+    # the BLE stack happens to be installed, and saying so beats reporting a
+    # dependency error that sends you looking in the wrong place.
+    if not host:
+        raise TransportError("no ESPHome proxy host configured (VOLTRA_PROXY_HOST)")
+    if not address:
+        raise TransportError("no trainer BLE address configured (VOLTRA_ADDRESS)")
+
     try:
         import bleak
         from aioesphomeapi import APIClient
@@ -93,31 +132,41 @@ async def connect(address: str, host: str, port: int, psk: str, timeout_s: float
             f"runtime dependencies to use the proxy transport ({e})"
         ) from e
 
-    if not host:
-        raise TransportError("no ESPHome proxy host configured (VOLTRA_PROXY_HOST)")
-    if not address:
-        raise TransportError("no trainer BLE address configured (VOLTRA_ADDRESS)")
-
     manager = await _ensure_manager()
 
     api = APIClient(host, port, password="", noise_psk=psk or None)
-    await api.connect(login=True)
-    device_info = await api.device_info()
+    # Everything from here on must hand the APIClient back to the caller or
+    # close it. The ESP32 accepts only a handful of concurrent API connections;
+    # leaking one per failed attempt exhausts them within hours, after which it
+    # drops new clients right after the encrypted hello — which reads like a
+    # wrong key and sends you chasing the wrong bug entirely.
+    try:
+        await api.connect(login=True)
+        device_info = await api.device_info()
 
-    # connect_scanner is SYNCHRONOUS and returns ESPHomeClientData — awaiting it
-    # raises "object ESPHomeClientData can't be used in 'await' expression".
-    # It also documents three things the caller must do itself; skip any of them
-    # and the proxy connects but never produces a usable BLE client.
-    client_data = connect_scanner(api, device_info, True)
-    client_data.scanner.async_setup()  # also sync, despite the name
-    _unregister_scanner()
-    global _unregister
-    _unregister = manager.async_register_scanner(client_data.scanner)
+        # connect_scanner is SYNCHRONOUS and returns ESPHomeClientData —
+        # awaiting it raises "object ESPHomeClientData can't be used in 'await'
+        # expression". It also documents three things the caller must do
+        # itself; skip any of them and the proxy connects but never produces a
+        # usable BLE client.
+        client_data = connect_scanner(api, device_info, True)
+        client_data.scanner.async_setup()  # also sync, despite the name
+        _unregister_scanner()
+        global _unregister
+        _unregister = manager.async_register_scanner(client_data.scanner)
 
-    logger.info("esphome proxy connected", host=host, name=device_info.name)
+        logger.info("esphome proxy connected", host=host, name=device_info.name)
 
-    # Attribute access, NOT `from bleak import BleakClient` — see module docs.
-    client = bleak.BleakClient(address, timeout=timeout_s)
-    await client.connect()
-    logger.info("trainer connected", address=address, mtu=getattr(client, "mtu_size", None))
-    return client
+        # Attribute access, NOT `from bleak import BleakClient` — see module docs.
+        client = bleak.BleakClient(address, timeout=timeout_s)
+        await client.connect()
+        logger.info(
+            "trainer connected", address=address, mtu=getattr(client, "mtu_size", None)
+        )
+        return ProxyLink(client=client, api=api)
+    except BaseException:
+        # Includes CancelledError: a shutdown mid-connect must not strand an
+        # API connection on the device either.
+        await _close_api(api)
+        _unregister_scanner()
+        raise
