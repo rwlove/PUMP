@@ -80,7 +80,11 @@ async def _await_discovery(manager, address: str, timeout_s: float):
     while True:
         devices = manager.async_scanner_devices_by_address(address, True)
         if devices:
-            return devices[0].device
+            # BluetoothScannerDevice is (scanner, ble_device, advertisement).
+            # `.device` does not exist — and because the trainer only advertises
+            # briefly after being woken, getting this wrong burns the whole
+            # window before it sleeps again.
+            return devices[0].ble_device
         if asyncio.get_running_loop().time() >= deadline:
             raise TrainerNotAdvertising(
                 f"no scanner has seen {address} in {timeout_s:.0f}s — "
