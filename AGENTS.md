@@ -77,13 +77,37 @@ Take fresh screenshots of every page and tab at 1280×900 using the running prev
 - `screenshot-stats-overview.png` — Stats › Exercise Distribution tab (`/stats/`)
 - `screenshot-stats-activity.png` — Stats › Weight Moved tab (click `#tab-activity-btn`)
 - `screenshot-stats-weight.png` — Stats › Body Weight tab (click `#tab-weight-btn`)
+- `screenshot-stats-prs.png` — Stats › Personal Records tab (click `#tab-prs-btn`)
+- `screenshot-stats-overload.png` — Stats › Progressive Overload tab (click `#tab-overload-btn`)
 - `screenshot-stats-balance.png` — Stats › Muscle Balance tab (click `#tab-balance-btn`)
+- `screenshot-stats-consistency.png` — Stats › Consistency tab (click `#tab-consistency-btn`)
+- `screenshot-stats-recovery.png` — Stats › Recovery tab (click `#tab-recovery-btn`)
 - `screenshot-stats-steps.png` — Stats › Steps tab (click `#tab-steps-btn`)
 - `screenshot-stats-hr.png` — Stats › Heart Rate tab (click `#tab-hr-btn`)
 - `screenshot-stats-sleep.png` — Stats › Sleep tab (click `#tab-sleep-btn`)
 - `screenshot-stats-cardio.png` — Stats › Cardio tab (click `#tab-cardio-btn`)
 
 Shoot against a clean restore of the production dump — never against a database that test writes have touched. If a tab is added or removed, update this list and the README table to match.
+
+**Verify the list against the UI, don't trust it.** Enumerate the tabs from the
+template rather than assuming this list is current:
+
+```
+grep -o 'id="tab-[a-z]*-btn"' internal/web/templates/stats.html | sort -u
+```
+
+Four tabs (Personal Records, Progressive Overload, Consistency, Recovery)
+shipped in May 2026 and went three releases without a screenshot because the
+list was treated as authoritative.
+
+**Shoot the workout page on a day that has sets.** It defaults to today, which
+is usually empty and makes a poor first impression in the README. Set
+`sessionStorage["today"]` to a recent training day before capturing, and pick
+the day from the data:
+
+```sql
+SELECT date, count(*) FROM sets GROUP BY date ORDER BY date DESC LIMIT 5;
+```
 
 #### 2. Audit and update the README
 
