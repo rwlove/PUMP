@@ -2,11 +2,17 @@ name: Publish Container Images
 
 # Triggers on git tags of the form `pump-vX.Y.Z`. The `pump-` prefix is
 # stripped before tagging the image (so GHCR sees `pump:v0.0.80`, not
-# `pump:pump-v0.0.80`). The CV sidecar has its own `pump-cv-v*` tag
-# line so the two release cadences are independent.
+# `pump:pump-v0.0.80`). The sidecars have their own `pump-cv-v*` and
+# `pump-voltra-v*` tag lines so the release cadences are independent.
+#
+# The digit class is load-bearing: a bare `pump-v*` also matches
+# `pump-voltra-v0.1.0`, because `*` happily absorbs the "oltra-v0.1.0".
+# That fired this workflow on the 2026-08-04 sidecar release and retagged
+# the server image as `pump:voltra-v0.1.0`. Requiring a digit right after
+# `pump-v` keeps this line to real server versions.
 on:
   push:
-    tags: ["pump-v*"]
+    tags: ["pump-v[0-9]*"]
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
