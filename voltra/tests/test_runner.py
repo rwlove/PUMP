@@ -123,3 +123,36 @@ def test_metrics_render() -> None:
     out = healthd.render_metrics()
     assert "pump_voltra_sets_posted_total" in out
     assert "pump_voltra_sets_inferred_total" in out
+
+
+# ─── SSE stream timeout ──────────────────────────────────────────────────
+
+
+@respx.mock
+async def test_sse_stream_disables_the_read_timeout() -> None:
+    """An idle SSE stream must not be torn down by the client read timeout.
+
+    PUMP only sends its keepalive comment every 25 s, so a client-wide 10 s
+    read timeout kills a healthy stream every ~15 s. Deployed, that showed up
+    as a reconnect loop with an empty error message.
+    """
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["timeout"] = request.extensions.get("timeout")
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=b'event: add\ndata: {"type":"add","id":1,"date":"x","set":{}}\n\n',
+        )
+
+    respx.get(f"{BASE}/api/sets/stream").mock(side_effect=handler)
+
+    pump = PumpClient(BASE, timeout_s=10.0)
+    events = [e async for e in pump.stream_set_events()]
+    await pump.aclose()
+
+    assert len(events) == 1
+    # read=None is the fix; connect/write stay bounded.
+    assert captured["timeout"]["read"] is None
+    assert captured["timeout"]["connect"] == 10.0
