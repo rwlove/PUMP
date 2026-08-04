@@ -30,3 +30,12 @@ pump:
   request_timeout_s: 10
 
 confidence_threshold: 0.75
+
+voltra:
+  # True when the pump-voltra sidecar is deployed. It then owns sets for
+  # exercises flagged "Uses Voltra trainer" in PUMP, and CV writes none of
+  # them — it reads the real resistance and the device's own rep count.
+  # Leave false and CV falls back to logging them pending with weight=0.
+  # Override with VOLTRA_ENABLED, the same variable the sidecar reads.
+  enabled: false
+  flag_refresh_seconds: 300

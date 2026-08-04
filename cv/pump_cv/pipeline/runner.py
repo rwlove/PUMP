@@ -81,6 +81,8 @@ class PipelineRunner:
         default_exercise: ExerciseSpec,
         prototypes: list[ExercisePrototype] | None = None,
         exercise_lookup=None,  # callable: name → ExerciseSpec | None
+        is_voltra_exercise=None,  # callable: name → bool
+        voltra_sidecar_enabled: bool = False,
         bar_weight_lb: float = 45.0,
         rep_amplitude_deg: float = 25.0,
         rep_min_period_s: float = 0.6,
@@ -99,6 +101,8 @@ class PipelineRunner:
         self._default_exercise = default_exercise
         self._prototypes = prototypes or []
         self._exercise_lookup = exercise_lookup
+        self._is_voltra_exercise = is_voltra_exercise
+        self._voltra_sidecar_enabled = voltra_sidecar_enabled
         self._bar_weight = bar_weight_lb
         self._counter = RepCounter(
             min_amplitude_deg=rep_amplitude_deg,
@@ -223,14 +227,28 @@ class PipelineRunner:
                         from_=ev.rep_count, to=recounted, exercise=exercise_name)
             rep_count = recounted
 
+        # Whether this exercise is performed on the Voltra trainer is a flag
+        # on the exercise row in PUMP, not a guess from its name — plenty of
+        # exercises have "cable" in the name and use a plate stack.
+        is_voltra = bool(self._is_voltra_exercise and self._is_voltra_exercise(exercise_name))
+
+        # When pump-voltra is running it owns these sets outright: it reads
+        # the real resistance and the device's own rep count off the trainer,
+        # both of which beat anything we can infer. Writing here too would log
+        # every Voltra set twice.
+        if is_voltra and self._voltra_sidecar_enabled:
+            logger.info("voltra set owned by the pump-voltra sidecar — not writing",
+                        exercise=exercise_name, reps=int(rep_count))
+            self._reset_set_state()
+            return
+
         # Estimate weight from the most recent frame, if any.
-        # Voltra (smart cable trainer) is opaque to plate detection — its
-        # resistance is electronic, not visible. Until we reverse-engineer
-        # its BLE protocol, any exercise whose name contains "Voltra" is
-        # written pending with weight=0 so the athlete enters the
-        # resistance manually on confirmation.
+        # The trainer's resistance is electronic and invisible to plate
+        # detection, so with no sidecar to supply it the set is written
+        # pending with weight=0 and the athlete types the resistance in on
+        # confirmation. This is the fallback path when the trainer is
+        # unreachable or pump-voltra is not deployed.
         weight_lb, weight_conf = (0.0, 0.5)
-        is_voltra = "voltra" in exercise_name.lower()
         if is_voltra:
             weight_lb, weight_conf = (0.0, 0.0)
             logger.info("voltra opaque-load: deferring weight to athlete confirmation",
@@ -316,7 +334,12 @@ class PipelineRunner:
             except Exception as e:
                 logger.warning("snapshot save failed", error=str(e))
 
-        # Reset per-set state.
+        self._reset_set_state()
+
+    def _reset_set_state(self) -> None:
+        """Clear the per-set buffers. Every exit from _commit_set must call
+        this, including the early return when the Voltra sidecar owns the
+        set — otherwise the next set inherits this one's pose window."""
         self._counter.reset()
         self._pose_buffer = []
         self._latest_athlete_pose = None
