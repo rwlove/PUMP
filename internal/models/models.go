@@ -17,6 +17,11 @@ type Conf struct {
 	AutoFill      bool // pre-fill weight/reps from last performance of that exercise
 	CVAutoLog     bool // when true, accept set writes from the pump-cv sidecar
 
+	// VoltraAutoLog gates set writes from the pump-voltra sidecar. Env-only
+	// (VOLTRA_AUTOLOG); unlike CVAutoLog it is not persisted in app_config,
+	// so it has no Settings-page toggle yet.
+	VoltraAutoLog bool
+
 	// Pushover credentials are read from env on startup (PUSHOVER_USER_KEY,
 	// PUSHOVER_APP_TOKEN) and never serialised through the JSON API. The web
 	// UI shows only a "configured / not configured" indicator.
@@ -27,6 +32,17 @@ type Conf struct {
 // PushoverConfigured reports whether both Pushover env vars are set.
 func (c Conf) PushoverConfigured() bool {
 	return c.PushoverUserKey != "" && c.PushoverAppToken != ""
+}
+
+// AutoLog reports whether any sidecar may write sets on its own.
+//
+// The workout page's save mode keys on this. With it false the page saves a
+// day by POSTing the whole form to /set/, which bulk-replaces every row for
+// that date from the browser's DOM — silently destroying any set a sidecar
+// wrote and stripping provenance from the rest. Per-set saves are only safe
+// because they address rows by id.
+func (c Conf) AutoLog() bool {
+	return c.CVAutoLog || c.VoltraAutoLog
 }
 
 // Exercise - one exercise
@@ -40,6 +56,12 @@ type Exercise struct {
 	Color  string          `db:"COLOR"`
 	Weight decimal.Decimal `db:"WEIGHT"`
 	Reps   int             `db:"REPS"`
+	// Voltra marks an exercise as performed on the Voltra trainer. The
+	// trainer reports its own resistance and rep count, so pump-voltra
+	// owns these sets and pump-cv skips them (its plate detection cannot
+	// see electronic resistance). A flag rather than a name heuristic:
+	// plenty of exercises have "cable" in the name and use a plate stack.
+	Voltra bool `db:"VOLTRA"`
 }
 
 // Set - one set

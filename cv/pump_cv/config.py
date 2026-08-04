@@ -55,6 +55,18 @@ class PumpConfig(BaseModel):
     request_timeout_s: float = 10.0
 
 
+class VoltraConfig(BaseModel):
+    """Coordination with the pump-voltra sidecar.
+
+    When it is running it owns sets for Voltra-flagged exercises outright —
+    it reads the real resistance and the device's own rep count. CV must not
+    also write them, or every Voltra set is logged twice.
+    """
+
+    enabled: bool = False  # env: VOLTRA_ENABLED
+    flag_refresh_seconds: float = 300.0
+
+
 class CVConfig(BaseModel):
     cameras: list[CameraConfig] = Field(default_factory=list)
     pose: PoseConfig = Field(default_factory=PoseConfig)
@@ -62,6 +74,7 @@ class CVConfig(BaseModel):
     set_boundary: SetBoundaryConfig = Field(default_factory=SetBoundaryConfig)
     pump: PumpConfig = Field(default_factory=PumpConfig)
     confidence_threshold: float = 0.75
+    voltra: VoltraConfig = Field(default_factory=VoltraConfig)
 
 
 def load(path: str | Path | None = None) -> CVConfig:
@@ -97,5 +110,8 @@ def load(path: str | Path | None = None) -> CVConfig:
         cfg.pump.api_key = v
     if v := os.getenv("CV_CONFIDENCE_THRESHOLD"):
         cfg.confidence_threshold = float(v)
+    # Same variable the sidecar reads, so one setting governs both sides.
+    if v := os.getenv("VOLTRA_ENABLED"):
+        cfg.voltra.enabled = v.strip().lower() in ("1", "true", "yes", "on")
 
     return cfg

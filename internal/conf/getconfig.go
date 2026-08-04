@@ -69,6 +69,7 @@ func GetFromEnv() models.Conf {
 		DisplayDays:   envInt("DISPLAY_DAYS", 30),
 		AutoFill:      envBool("AUTOFILL", true),
 		CVAutoLog:     envBool("CVAUTOLOG", false),
+		VoltraAutoLog: envBool("VOLTRA_AUTOLOG", false),
 
 		// Pushover credentials never land in any persisted config and are
 		// not serialised through the JSON API.

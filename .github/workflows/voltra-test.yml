@@ -1,0 +1,60 @@
+---
+name: voltra tests
+
+# Runs the pump-voltra pytest suite on every push or PR that touches voltra/.
+# Skips the BLE stack (bleak, bleak-esphome, aioesphomeapi) — protocol,
+# registry, telemetry, session and naming are pure and import none of it, and
+# transport.py imports it lazily inside the connect function. The whole suite,
+# including the two captured-session replays, runs with no hardware.
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - "voltra/**"
+      - ".github/workflows/voltra-test.yml"
+  pull_request:
+    paths:
+      - "voltra/**"
+      - ".github/workflows/voltra-test.yml"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  pytest:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install test deps
+        working-directory: voltra
+        # Same pattern as cv-test.yml: the [test] extra in pyproject.toml is
+        # the single list of what the tests need. Installing the extra
+        # directly would drag in the BLE dependencies, so install the package
+        # dep-free and then just the extra's own list. New lightweight test
+        # deps go in pyproject.toml, not here.
+        run: |
+          python -m pip install --upgrade pip tomli
+          pip install --no-deps -e .
+          python - <<'PY' > /tmp/test-reqs.txt
+          import tomli
+          with open("pyproject.toml", "rb") as fh:
+              cfg = tomli.load(fh)
+          print("\n".join(cfg["project"]["optional-dependencies"]["test"]))
+          PY
+          pip install -r /tmp/test-reqs.txt
+
+      - name: Lint pump_voltra
+        working-directory: voltra
+        run: ruff check pump_voltra tests
+
+      - name: Run tests
+        working-directory: voltra
+        run: pytest -q

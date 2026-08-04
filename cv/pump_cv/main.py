@@ -24,6 +24,7 @@ from .pose.types import (
     LEFT_KNEE,
 )
 from .pump_client import PumpClient
+from .voltra import VoltraFlags
 
 logger = log.get(__name__)
 
@@ -158,11 +159,22 @@ async def _amain() -> None:
 
     # Run the health server and the pipeline concurrently.
     async with PumpClient(cfg.pump.base_url, cfg.pump.api_key, cfg.pump.request_timeout_s) as pump:
+        # Which exercises use the Voltra trainer is a flag on the exercise
+        # row in PUMP. Prime it before the first set so a Voltra set at the
+        # very start of a workout isn't misread as a barbell lift.
+        voltra_flags = VoltraFlags(pump, cfg.voltra.flag_refresh_seconds)
+        try:
+            await voltra_flags.refresh()
+        except Exception as e:
+            logger.warning("initial voltra flag load failed", error=str(e))
+
         runner = PipelineRunner(
             pump=pump,
             default_exercise=DEFAULT_EXERCISE,
             prototypes=prototypes,
             exercise_lookup=ex_lookup_mod.lookup,
+            is_voltra_exercise=voltra_flags,
+            voltra_sidecar_enabled=cfg.voltra.enabled,
             rep_amplitude_deg=cfg.rep.min_amplitude_deg,
             rep_min_period_s=cfg.rep.min_period_s,
             rep_smoothing_window=cfg.rep.smoothing_window,
@@ -185,6 +197,9 @@ async def _amain() -> None:
         retention_task = asyncio.create_task(
             retention.run_forever(SNAPSHOT_DIR, CLIPS_DIR, RETENTION_DAYS),
         )
+        # Re-reads the flag list on a timer, so ticking the checkbox on an
+        # exercise in PUMP takes effect without a rolling restart.
+        voltra_task = asyncio.create_task(voltra_flags.run_forever())
         healthd.mark_ready()
         try:
             # If we held for calibration, wait for the wizard to flip the
@@ -209,7 +224,8 @@ async def _amain() -> None:
                 t.cancel()
             health_task.cancel()
             retention_task.cancel()
-            await asyncio.gather(health_task, retention_task, *drain_tasks,
+            voltra_task.cancel()
+            await asyncio.gather(health_task, retention_task, voltra_task, *drain_tasks,
                                  return_exceptions=True)
 
     logger.info("pump-cv: pose stream ended")

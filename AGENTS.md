@@ -52,13 +52,14 @@ Whenever the logo SVG is changed, **all three of the following must be updated i
 
 ### Release tag conventions
 
-Two independent tag lines, each driving its own CI:
+Three independent tag lines, each driving its own CI:
 
 - `pump-vX.Y.Z` → publishes `ghcr.io/rwlove/pump:vX.Y.Z` (the Go server image)
-- `pump-cv-vA.B.C` → publishes `ghcr.io/rwlove/pump-cv:vA.B.C` (the Python sidecar image)
+- `pump-cv-vA.B.C` → publishes `ghcr.io/rwlove/pump-cv:vA.B.C` (the camera sidecar image)
+- `pump-voltra-vA.B.C` → publishes `ghcr.io/rwlove/pump-voltra:vA.B.C` (the Voltra trainer sidecar image)
 
-The `pump-` / `pump-cv-` prefixes are stripped before tagging the image
-in GHCR, so users still pull `pump:v0.0.80` even though the git tag is
+The `pump-` / `pump-cv-` / `pump-voltra-` prefixes are stripped before tagging
+the image in GHCR, so users still pull `pump:v0.0.80` even though the git tag is
 `pump-v0.0.80`. Legacy `v0.0.X` tags (≤ v0.0.79) pre-date the split and
 remain as historical markers — they no longer trigger any CI.
 

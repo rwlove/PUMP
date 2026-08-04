@@ -296,12 +296,21 @@ func postSet(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	// Gate CV writes on the operator's opt-in toggle. Manual writes are
-	// always accepted regardless of CVAutoLog.
-	if set.Source == "cv" && !conf.Get().CVAutoLog {
+	// Gate sidecar writes on the operator's opt-in toggles. Manual writes are
+	// always accepted. Refusing loudly beats accepting silently: a sidecar
+	// pointed at a server with its toggle off should fail visibly rather than
+	// look like it is working.
+	cfg := conf.Get()
+	switch {
+	case set.Source == "cv" && !cfg.CVAutoLog:
 		slog.Warn("postSet: refused CV write — CVAutoLog is off",
 			slog.String("date", set.Date), slog.String("name", set.Name))
 		c.JSON(http.StatusForbidden, gin.H{"error": "CV auto-log is disabled"})
+		return
+	case set.Source == "voltra" && !cfg.VoltraAutoLog:
+		slog.Warn("postSet: refused Voltra write — VoltraAutoLog is off",
+			slog.String("date", set.Date), slog.String("name", set.Name))
+		c.JSON(http.StatusForbidden, gin.H{"error": "Voltra auto-log is disabled"})
 		return
 	}
 	stored, err := dataStore.InsertSet(c.Request.Context(), set)

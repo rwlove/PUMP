@@ -1,0 +1,73 @@
+---
+name: Publish pump-voltra Container Image
+
+# Triggers on git tags of the form `pump-voltra-vA.B.C`. The `pump-voltra-`
+# prefix is stripped before tagging the image, so GHCR sees
+# `pump-voltra:v0.1.0`. This is the third independent tag line alongside
+# `pump-v*` and `pump-cv-v*`; the release cadences do not interact.
+#
+# Deliberately simpler than cv-publish.yml: there is no CUDA base image and
+# no multi-gigabyte layer, so the retag-vs-rebuild search, the QEMU setup and
+# the disk-freeing step that workflow needs all buy nothing here.
+
+"on":
+  push:
+    tags: ["pump-voltra-v*"]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  IMAGE: ghcr.io/${{ github.repository_owner }}/pump-voltra
+
+jobs:
+  build:
+    name: Build and push pump-voltra
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # arm64 as well as amd64: the sidecar is small and may be scheduled on
+      # the arm64 Spark node alongside pump-cv.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          labels: |
+            org.opencontainers.image.description=pump-voltra sidecar
+              (VOLTRA I set, rep and resistance auto-logging over BLE)
+          tags: |
+            type=match,pattern=pump-voltra-(v.*),group=1
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./voltra
+          file: ./voltra/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max

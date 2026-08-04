@@ -47,7 +47,7 @@ func (s *PostgresStore) Pool() *pgxpool.Pool {
 func (s *PostgresStore) SelectEx(ctx context.Context) ([]models.Exercise, error) {
 	slog.Debug("db: SelectEx")
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, gr, place, name, descr, image, color, weight::text, reps
+		`SELECT id, gr, place, name, descr, image, color, weight::text, reps, voltra
 		 FROM exercises ORDER BY id ASC`)
 	if err != nil {
 		return nil, err
@@ -59,7 +59,7 @@ func (s *PostgresStore) SelectEx(ctx context.Context) ([]models.Exercise, error)
 		var ex models.Exercise
 		var weightStr string
 		if err := rows.Scan(&ex.ID, &ex.Group, &ex.Place, &ex.Name, &ex.Descr,
-			&ex.Image, &ex.Color, &weightStr, &ex.Reps); err != nil {
+			&ex.Image, &ex.Color, &weightStr, &ex.Reps, &ex.Voltra); err != nil {
 			return nil, err
 		}
 		ex.Weight, _ = decimal.NewFromString(weightStr)
@@ -72,10 +72,10 @@ func (s *PostgresStore) SelectEx(ctx context.Context) ([]models.Exercise, error)
 func (s *PostgresStore) InsertEx(ctx context.Context, ex models.Exercise) error {
 	slog.Debug("db: InsertEx", slog.String("name", ex.Name), slog.String("group", ex.Group))
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO exercises (gr, place, name, descr, image, color, weight, reps)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		`INSERT INTO exercises (gr, place, name, descr, image, color, weight, reps, voltra)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		ex.Group, ex.Place, ex.Name, ex.Descr, ex.Image, ex.Color,
-		ex.Weight.String(), ex.Reps)
+		ex.Weight.String(), ex.Reps, ex.Voltra)
 	if err != nil {
 		slog.Debug("db: InsertEx failed", slog.Any("error", err))
 	}
@@ -89,10 +89,10 @@ func (s *PostgresStore) UpdateEx(ctx context.Context, ex models.Exercise) (bool,
 	slog.Debug("db: UpdateEx", slog.Int("id", ex.ID), slog.String("name", ex.Name))
 	ct, err := s.pool.Exec(ctx,
 		`UPDATE exercises SET gr = $1, place = $2, name = $3, descr = $4,
-		        image = $5, color = $6, weight = $7, reps = $8
-		 WHERE id = $9`,
+		        image = $5, color = $6, weight = $7, reps = $8, voltra = $9
+		 WHERE id = $10`,
 		ex.Group, ex.Place, ex.Name, ex.Descr, ex.Image, ex.Color,
-		ex.Weight.String(), ex.Reps, ex.ID)
+		ex.Weight.String(), ex.Reps, ex.Voltra, ex.ID)
 	if err != nil {
 		slog.Debug("db: UpdateEx failed", slog.Int("id", ex.ID), slog.Any("error", err))
 		return false, err

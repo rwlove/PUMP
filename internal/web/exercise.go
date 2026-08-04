@@ -75,6 +75,7 @@ func saveExerciseHandler(c *gin.Context) {
 	oneEx.Descr = c.PostForm("descr")
 	oneEx.Image = c.PostForm("image")
 	oneEx.Color = c.PostForm("color")
+	oneEx.Voltra = c.PostForm("voltra") == "on"
 
 	var ok bool
 	if oneEx.ID, ok = formInt(c.PostForm("id")); !ok {
