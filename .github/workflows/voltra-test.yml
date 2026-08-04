@@ -25,6 +25,12 @@ jobs:
   pytest:
     name: pytest
     runs-on: ubuntu-latest
+
+    # Read-only: this job checks out, installs, lints and tests. It never
+    # writes to the repo, publishes packages, or posts checks.
+    permissions:
+      contents: read
+
     steps:
       - uses: actions/checkout@v4
 
