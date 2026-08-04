@@ -25,6 +25,57 @@ class TransportError(RuntimeError):
     pass
 
 
+# habluetooth's manager is a process-global singleton (set_manager/get_manager),
+# and connect_scanner reaches for it internally. Build it once and reuse it —
+# a fresh manager per reconnect would orphan the previous one's state.
+_manager = None
+_unregister = None
+
+
+async def _ensure_manager():
+    """Create, set up and install the process-wide habluetooth manager."""
+    global _manager
+    if _manager is not None:
+        return _manager
+
+    import habluetooth
+
+    class _Manager(habluetooth.BluetoothManager):
+        """Discovery-free manager.
+
+        The base class refuses to consume advertisement data unless a subclass
+        implements this, and logs "does not implement _discover_service_info"
+        on every connect if you don't. We address the trainer by MAC and never
+        browse discovery results, so discarding them is correct rather than
+        merely tolerable.
+        """
+
+        def _discover_service_info(self, service_info) -> None:
+            return None
+
+    _manager = _Manager()
+    await _manager.async_setup()
+    habluetooth.set_manager(_manager)
+    return _manager
+
+
+def _unregister_scanner() -> None:
+    """Drop the previous connection's scanner, if any.
+
+    Reconnects would otherwise stack a new scanner onto the manager on every
+    retry — and a retry loop against an offline proxy runs all day.
+    """
+    global _unregister
+    if _unregister is None:
+        return
+    try:
+        _unregister()
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("scanner unregister failed", error=str(e))
+    finally:
+        _unregister = None
+
+
 async def connect(address: str, host: str, port: int, psk: str, timeout_s: float = 30.0):
     """Connect to the trainer through the ESPHome proxy. Returns a BleakClient.
 
@@ -36,7 +87,6 @@ async def connect(address: str, host: str, port: int, psk: str, timeout_s: float
         import bleak
         from aioesphomeapi import APIClient
         from bleak_esphome import connect_scanner
-        from habluetooth import BluetoothManager
     except ImportError as e:  # pragma: no cover - exercised only at runtime
         raise TransportError(
             "BLE dependencies are missing; install the package with its "
@@ -48,13 +98,22 @@ async def connect(address: str, host: str, port: int, psk: str, timeout_s: float
     if not address:
         raise TransportError("no trainer BLE address configured (VOLTRA_ADDRESS)")
 
-    manager = BluetoothManager()
-    await manager.async_setup()
+    manager = await _ensure_manager()
 
     api = APIClient(host, port, password="", noise_psk=psk or None)
     await api.connect(login=True)
     device_info = await api.device_info()
-    await connect_scanner(api, device_info, True)
+
+    # connect_scanner is SYNCHRONOUS and returns ESPHomeClientData — awaiting it
+    # raises "object ESPHomeClientData can't be used in 'await' expression".
+    # It also documents three things the caller must do itself; skip any of them
+    # and the proxy connects but never produces a usable BLE client.
+    client_data = connect_scanner(api, device_info, True)
+    client_data.scanner.async_setup()  # also sync, despite the name
+    _unregister_scanner()
+    global _unregister
+    _unregister = manager.async_register_scanner(client_data.scanner)
+
     logger.info("esphome proxy connected", host=host, name=device_info.name)
 
     # Attribute access, NOT `from bleak import BleakClient` — see module docs.
