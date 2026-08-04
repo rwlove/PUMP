@@ -16,8 +16,12 @@ function saveStatus(state, text) {
     }
 }
 
+// saveWorkout picks the save strategy. Per-set is required whenever a sidecar
+// may be writing: saveWorkoutBulk rewrites the entire day from the DOM, so any
+// row this browser never saw — a set pump-cv or pump-voltra just wrote — is
+// deleted, and the rows that survive lose source/confidence/pending/clip_path.
 function saveWorkout() {
-    if (window._cvAutoLog) {
+    if (window._autoLog) {
         saveWorkoutPerSet();
     } else {
         saveWorkoutBulk();
@@ -295,12 +299,13 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
         scheduleAutosave();
     });
 
-    // Delete entry — locally always; if cv-mode and the row has a server id,
-    // also send DELETE to the API so it actually goes away.
+    // Delete entry — locally always; in per-set mode, and if the row has a
+    // server id, also send DELETE to the API so it actually goes away. In bulk
+    // mode the following /set/ save rewrites the day, which does the deleting.
     var delBtn = entry.querySelector('.entry-del-btn');
     if (delBtn) {
         delBtn.addEventListener('click', function() {
-            removeEntry(entry, /*viaApi*/ window._cvAutoLog);
+            removeEntry(entry, /*viaApi*/ window._autoLog);
         });
     }
 

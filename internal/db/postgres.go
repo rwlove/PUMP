@@ -147,6 +147,13 @@ CREATE TABLE IF NOT EXISTS app_config (
 );
 `,
 	},
+	{
+		Version:     11,
+		Description: "add exercises.voltra: marks an exercise as performed on the Voltra trainer",
+		SQL: `
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS voltra BOOLEAN NOT NULL DEFAULT FALSE;
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any

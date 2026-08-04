@@ -209,11 +209,14 @@
   window._allSets    = {{ .ExData.Sets }};
   window._allExs     = {{ .ExData.Exs }};
   window._autoFill   = {{ .Config.AutoFill }};
-  window._cvAutoLog  = {{ .Config.CVAutoLog }};
+  // True when any sidecar (pump-cv or pump-voltra) may write sets. Gates the
+  // per-set save mode: the bulk /set/ path rewrites the whole day from the
+  // DOM and would wipe sidecar-written rows.
+  window._autoLog    = {{ .Config.AutoLog }};
   window._serverDate = {{ .ServerDate | json }};
   renderWeekStreak(window._allSets);
   setFormDate(window._allSets);
-  if (window._cvAutoLog) {
+  if (window._autoLog) {
     openSetsStream();
   }
 </script>
