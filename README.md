@@ -19,9 +19,13 @@
 |---|---|---|
 | ![Stats Steps](assets/screenshot-stats-steps.png) | ![Stats Heart Rate](assets/screenshot-stats-hr.png) | ![Stats Sleep](assets/screenshot-stats-sleep.png) |
 
-| Stats: Cardio | Stats: Muscle Balance | |
+| Stats: Cardio | Stats: Muscle Balance | Stats: Personal Records |
 |---|---|---|
-| ![Stats Cardio](assets/screenshot-stats-cardio.png) | ![Stats Muscle Balance](assets/screenshot-stats-balance.png) | |
+| ![Stats Cardio](assets/screenshot-stats-cardio.png) | ![Stats Muscle Balance](assets/screenshot-stats-balance.png) | ![Stats Personal Records](assets/screenshot-stats-prs.png) |
+
+| Stats: Progressive Overload | Stats: Consistency | Stats: Recovery |
+|---|---|---|
+| ![Stats Progressive Overload](assets/screenshot-stats-overload.png) | ![Stats Consistency](assets/screenshot-stats-consistency.png) | ![Stats Recovery](assets/screenshot-stats-recovery.png) |
 
 - [Architecture](#architecture)
 - [Configuration](#configuration)
@@ -99,6 +103,7 @@ All configuration is via environment variables. No config file is required.
 | `PUSHOVER_API_URL` | Pushover API endpoint override (testing only) | Pushover |
 | `PUBLIC_URL` | Externally-reachable PUMP base URL; used to build deep-links in notifications | `""` |
 | `PUMP_CV_URL` | Where to forward reference-clip uploads (e.g. `http://pump-cv:8080`); empty disables the in-browser recorder | `""` |
+| `PUMP_CLIPS_DIR` | Local directory of per-set clip mp4s written by `pump-cv` (shared volume), served at `/clips/`; empty disables clip serving | `""` |
 | `NODE_PATH` | Path to local `node_modules` directory; empty = use CDN for Bootstrap/Chart.js | `""` |
 | `TREADMILL_MQTT_ENABLED` | Enable treadmill cardio auto-capture: subscribe to the smart-plug wattage feed `zwave-js-ui` publishes to MQTT, detect each workout, and log it as a cardio session (no Home Assistant in the path). | `false` |
 | `TREADMILL_MQTT_BROKER` | MQTT broker URL, e.g. `tcp://emqx-headless.home.svc.cluster.local:1883` | `""` |
@@ -134,7 +139,32 @@ Reads its configuration from a yaml file (mounted as a Kubernetes ConfigMap, def
 | `PUMP_CV_SNAPSHOT_DIR` | Where annotated debug snapshots are written per detected set | `snapshots` |
 | `PUMP_CV_HEALTHD_PORT` | Listen port for `/healthz`, `/readyz`, `/metrics`, and `POST /api/v1/reference` | `8080` |
 | `CV_CONFIDENCE_THRESHOLD` | Override the cutoff for marking a CV-detected set pending | yaml value |
+| `VOLTRA_ENABLED` | When true, `pump-voltra` owns sets for Voltra-flagged exercises and `pump-cv` writes none of them | `false` |
 | `LOG_LEVEL` | `debug` / `info` / `warn` / `error` | `info` |
+
+### `pump-voltra` (optional trainer sidecar)
+
+A separate Python service under [`voltra/`](voltra/) that reads set number, rep count and target load off a **Beyond Power VOLTRA I** cable trainer over BLE — via an ESPHome `bluetooth_proxy` — and logs each set automatically. The trainer's resistance is electronic and invisible to plate detection, so without it every Voltra set needs its weight typed in by hand.
+
+Which exercises use the trainer is a per-exercise checkbox ("Uses Voltra trainer") on the exercise configuration page. Set names are inherited from the day's most recent set for a flagged exercise. Read-only: it issues no motor commands.
+
+Disabled by default — set `VOLTRA_AUTOLOG=true` on PUMP and `VOLTRA_ENABLED=true` on the sidecar. Same yaml + env-override pattern as `pump-cv`. See [`voltra/README.md`](voltra/README.md).
+
+| Variable | Description | Default |
+|---|---|---|
+| `VOLTRA_ENABLED` | Master switch; false disables all BLE activity | `false` |
+| `VOLTRA_ADDRESS` | Trainer BLE MAC; **secret, not in yaml** | `""` |
+| `VOLTRA_PROXY_HOST` | ESPHome `bluetooth_proxy` hostname | `""` |
+| `VOLTRA_PROXY_PSK` | ESPHome API Noise key; **secret, not in yaml** | `""` |
+| `VOLTRA_DEFAULT_EXERCISE` | Name used when no flagged set exists yet today (written `pending`) | `Voltra` |
+| `VOLTRA_EXERCISE_REFRESH_SECONDS` | How often to re-read which exercises carry the flag | `300` |
+| `VOLTRA_SET_IDLE_SECONDS` | Fallback set-completion timeout, used only if the device's end-of-set summary is lost | `30` |
+| `VOLTRA_LOAD_POLL_SECONDS` | Target-load poll interval | `5` |
+| `PUMP_API_BASE_URL` | PUMP base URL | `http://pump-api:8851` |
+| `PUMP_API_KEY` | Sent as `X-Api-Key`; **secret, not in yaml** | `""` |
+| `PUMP_VOLTRA_CONFIG` | Path to the yaml config | `configs/default.yaml` |
+
+Run **one replica with `strategy: Recreate`** — the trainer accepts a single BLE central, so two replicas would fight over the connection.
 
 #### Architecture sketch
 
