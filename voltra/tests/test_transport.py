@@ -42,16 +42,33 @@ class FakeApi:
 
 async def test_close_tears_down_both_halves() -> None:
     client, api = FakeClient(), FakeApi()
-    await transport.ProxyLink(client=client, api=api).close()
+    await transport.ProxyLink(api=api, manager=None, client=client).close()
     assert client.disconnected, "BLE client left connected"
     assert api.disconnected, "APIClient left open on the ESP32 — this is the leak"
+
+
+async def test_close_trainer_keeps_the_proxy_session() -> None:
+    """The device allows ONE advertisement subscriber and silently refuses a
+    replacement while the old connection holds the slot. Dropping the proxy
+    every time the trainer is absent is what makes it look permanently gone."""
+    client, api = FakeClient(), FakeApi()
+    link = transport.ProxyLink(api=api, manager=None, client=client)
+    await link.close_trainer()
+    assert client.disconnected
+    assert not api.disconnected, "proxy session must survive the trainer going away"
+    assert link.client is None
+
+
+async def test_close_trainer_is_idempotent() -> None:
+    link = transport.ProxyLink(api=FakeApi(), manager=None, client=None)
+    await link.close_trainer()  # must not raise
 
 
 async def test_api_is_closed_even_if_ble_teardown_raises() -> None:
     # The API connection is the scarce resource; a failure disconnecting BLE
     # must not skip it.
     client, api = FakeClient(fail=True), FakeApi()
-    await transport.ProxyLink(client=client, api=api).close()
+    await transport.ProxyLink(api=api, manager=None, client=client).close()
     assert api.disconnected
 
 
@@ -73,14 +90,15 @@ async def test_unregister_scanner_clears_state_even_on_error() -> None:
     assert transport._unregister is None, "a failed unregister must not pin the old scanner"
 
 
-def test_connect_requires_host_and_address() -> None:
+async def test_connect_proxy_requires_a_host() -> None:
     # Cheap guards, but they turn a silent hang into a clear message.
-    import asyncio
-
     with pytest.raises(transport.TransportError, match="VOLTRA_PROXY_HOST"):
-        asyncio.run(transport.connect("aa:bb", "", 6053, "psk"))
+        await transport.connect_proxy("", 6053, "psk")
+
+
+async def test_connect_trainer_requires_an_address() -> None:
     with pytest.raises(transport.TransportError, match="VOLTRA_ADDRESS"):
-        asyncio.run(transport.connect("", "host", 6053, "psk"))
+        await transport.connect_trainer(object(), "", 30)
 
 
 # ─── discovery gate ──────────────────────────────────────────────────────

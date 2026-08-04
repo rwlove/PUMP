@@ -42,6 +42,10 @@ class VoltraConfig(BaseModel):
     # Fallback set-completion timeout, used only when the device's own
     # end-of-set summary never arrives.
     set_idle_seconds: float = 30.0
+    # How long to wait for the trainer to advertise before giving up on this
+    # pass. The proxy session is kept open across these, so a long wait costs
+    # nothing and gives the scanner's advertisement subscription time to land.
+    discovery_timeout_seconds: float = 60.0
     # Slow poll of the trainer's target load. Deliberately not the 40 Hz
     # stream: that is the one thing the ESPHome proxy handles badly.
     load_poll_seconds: float = 5.0

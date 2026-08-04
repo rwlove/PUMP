@@ -106,14 +106,22 @@ class ProxyLink:
     APIClient on the ESP32.
     """
 
-    client: object
     api: object
+    manager: object
+    client: object = None
 
-    async def close(self) -> None:
+    async def close_trainer(self) -> None:
+        """Drop the BLE client but keep the proxy session and its scanner."""
+        if self.client is None:
+            return
         try:
             await self.client.disconnect()
         except Exception as e:  # pragma: no cover - defensive
             logger.debug("ble disconnect failed", error=str(e))
+        self.client = None
+
+    async def close(self) -> None:
+        await self.close_trainer()
         _unregister_scanner()
         await _close_api(self.api)
 
@@ -135,26 +143,26 @@ def _unregister_scanner() -> None:
         _unregister = None
 
 
-async def connect(address: str, host: str, port: int, psk: str, timeout_s: float = 30.0):
-    """Connect to the trainer through the ESPHome proxy. Returns a BleakClient.
+async def connect_proxy(host: str, port: int, psk: str) -> ProxyLink:
+    """Open the ESPHome proxy session and register its BLE scanner.
 
-    Imports are deliberately function-local: the BLE stack is a heavy
-    dependency that CI does not install, and protocol/session/naming must stay
-    importable without it.
+    Deliberately separate from connecting to the trainer, and meant to be
+    long-lived. The device allows exactly ONE advertisement subscriber and
+    silently rejects a new request while a previous connection still holds the
+    slot (see bleak_esphome.connect_scanner's own source comment). Tearing this
+    down and rebuilding it whenever the trainer happens to be absent means the
+    replacement subscription is usually refused, so the scanner never hears
+    anything and the trainer looks permanently offline.
+
+    Imports are function-local: the BLE stack is a heavy dependency CI does not
+    install, and the pure modules must stay importable without it.
     """
-    # Config guards first: a missing host is a misconfiguration whether or not
-    # the BLE stack happens to be installed, and saying so beats reporting a
-    # dependency error that sends you looking in the wrong place.
     if not host:
         raise TransportError("no ESPHome proxy host configured (VOLTRA_PROXY_HOST)")
-    if not address:
-        raise TransportError("no trainer BLE address configured (VOLTRA_ADDRESS)")
 
     try:
-        import bleak
         from aioesphomeapi import APIClient
         from bleak_esphome import connect_scanner
-        from bleak_retry_connector import establish_connection
     except ImportError as e:  # pragma: no cover - exercised only at runtime
         raise TransportError(
             "BLE dependencies are missing; install the package with its "
@@ -177,7 +185,7 @@ async def connect(address: str, host: str, port: int, psk: str, timeout_s: float
         # awaiting it raises "object ESPHomeClientData can't be used in 'await'
         # expression". It also documents three things the caller must do
         # itself; skip any of them and the proxy connects but never produces a
-        # usable BLE client.
+        # usable BLE client. It subscribes to advertisements internally.
         client_data = connect_scanner(api, device_info, True)
         client_data.scanner.async_setup()  # also sync, despite the name
         _unregister_scanner()
@@ -185,27 +193,32 @@ async def connect(address: str, host: str, port: int, psk: str, timeout_s: float
         _unregister = manager.async_register_scanner(client_data.scanner)
 
         logger.info("esphome proxy connected", host=host, name=device_info.name)
-
-        # A scanner that has just been registered has not heard anything yet.
-        # BLE devices are only reachable once they advertise, and connecting
-        # immediately fails with "never seen by any scanner" even when the
-        # trainer is switched on and healthy.
-        device = await _await_discovery(manager, address, timeout_s)
-
-        # establish_connection wants a BLEDevice, not an address, and handles
-        # the retry/backoff that bleak's own connect() warns about omitting.
-        # Attribute access on bleak, NOT `from bleak import BleakClient` — see
-        # the module docstring.
-        client = await establish_connection(
-            bleak.BleakClient, device, address, max_attempts=3
-        )
-        logger.info(
-            "trainer connected", address=address, mtu=getattr(client, "mtu_size", None)
-        )
-        return ProxyLink(client=client, api=api)
+        return ProxyLink(api=api, manager=manager)
     except BaseException:
         # Includes CancelledError: a shutdown mid-connect must not strand an
         # API connection on the device either.
         await _close_api(api)
         _unregister_scanner()
         raise
+
+
+async def connect_trainer(link: ProxyLink, address: str, timeout_s: float = 30.0):
+    """Wait for the trainer to advertise, then connect to it over the proxy."""
+    if not address:
+        raise TransportError("no trainer BLE address configured (VOLTRA_ADDRESS)")
+
+    import bleak
+    from bleak_retry_connector import establish_connection
+
+    # A scanner only knows about devices it has heard advertise. Connecting
+    # before then fails with "never seen by any scanner" even when the trainer
+    # is switched on and healthy.
+    device = await _await_discovery(link.manager, address, timeout_s)
+
+    # establish_connection wants a BLEDevice, not an address, and handles the
+    # retry/backoff that bleak's own connect() warns about omitting. Attribute
+    # access on bleak, NOT `from bleak import BleakClient` — see module docs.
+    client = await establish_connection(bleak.BleakClient, device, address, max_attempts=3)
+    link.client = client
+    logger.info("trainer connected", address=address, mtu=getattr(client, "mtu_size", None))
+    return client

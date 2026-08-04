@@ -49,7 +49,7 @@ async def _serve_probes(cfg) -> asyncio.Task | None:
 
 async def _run_live(cfg, pump: PumpClient, namer: ExerciseNamer) -> None:
     from .client import VoltraClient, WorkoutInactive
-    from .transport import TrainerNotAdvertising, connect
+    from .transport import TrainerNotAdvertising, connect_proxy, connect_trainer
 
     tracker = SetTracker(idle_seconds=cfg.set_idle_seconds)
     runner = Runner(pump, namer, tracker)
@@ -75,24 +75,34 @@ async def _run_live(cfg, pump: PumpClient, namer: ExerciseNamer) -> None:
     # the trainer is simply switched off — the normal state of an empty gym.
     backoff = MIN_BACKOFF_S
 
+    # The proxy session is long-lived and deliberately survives the trainer
+    # being absent. The device permits ONE advertisement subscriber and
+    # silently refuses a new one while a prior connection still holds the slot,
+    # so reconnecting every time the gym is empty means the scanner mostly
+    # never hears anything.
+    link = None
+
     try:
         while True:
             try:
-                link = await connect(
-                    cfg.address, cfg.proxy.host, cfg.proxy.port, cfg.proxy.psk
-                )
+                if link is None:
+                    link = await connect_proxy(cfg.proxy.host, cfg.proxy.port, cfg.proxy.psk)
+                await connect_trainer(link, cfg.address, cfg.discovery_timeout_seconds)
                 backoff = MIN_BACKOFF_S
             except TrainerNotAdvertising as e:
-                # An empty gym is the normal case, not a fault. Log it at info
-                # and keep looking, so a genuine failure still stands out.
+                # An empty gym is the normal case, not a fault. Keep the proxy
+                # session — and its advertisement subscription — open.
                 logger.info("waiting for the trainer", detail=str(e))
                 healthd.record_connected(False)
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, MAX_BACKOFF_S)
+                await asyncio.sleep(MIN_BACKOFF_S)
                 continue
             except Exception as e:
                 logger.warning("connect failed; retrying", error=str(e), retry_in_s=backoff)
                 healthd.record_connected(False)
+                if link is not None:
+                    with contextlib.suppress(Exception):
+                        await link.close()
+                    link = None
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, MAX_BACKOFF_S)
                 continue
@@ -124,12 +134,15 @@ async def _run_live(cfg, pump: PumpClient, namer: ExerciseNamer) -> None:
                 logger.warning("session ended; reconnecting", error=str(e))
             finally:
                 healthd.record_connected(False)
-                # Closes the BLE client, unregisters the scanner AND drops the
-                # proxy's API connection. Dropping only the BLE half strands an
-                # APIClient on the ESP32 per reconnect.
+                # Only the BLE half. The proxy session stays up so its single
+                # advertisement subscription is never surrendered — losing it
+                # is what makes the trainer look permanently absent.
                 with contextlib.suppress(Exception):
-                    await link.close()
+                    await link.close_trainer()
     finally:
+        if link is not None:
+            with contextlib.suppress(Exception):
+                await link.close()
         for task in background:
             task.cancel()
 
