@@ -24,6 +24,11 @@ from .session import SetTracker
 
 logger = log.get(__name__)
 
+# Reconnect backoff bounds. The ceiling is deliberately low enough that walking
+# into the gym and switching the trainer on is picked up without a restart.
+MIN_BACKOFF_S = 15
+MAX_BACKOFF_S = 120
+
 
 async def _serve_probes(cfg) -> asyncio.Task | None:
     try:
@@ -65,19 +70,26 @@ async def _run_live(cfg, pump: PumpClient, namer: ExerciseNamer) -> None:
         with contextlib.suppress(asyncio.QueueFull):
             queue.put_nowait(payload)
 
+    # Back off on repeated failure. A fixed 15 s retry means ~240 connection
+    # attempts an hour against a small ESP32, which is enough to matter when
+    # the trainer is simply switched off — the normal state of an empty gym.
+    backoff = MIN_BACKOFF_S
+
     try:
         while True:
             try:
-                ble = await connect(
+                link = await connect(
                     cfg.address, cfg.proxy.host, cfg.proxy.port, cfg.proxy.psk
                 )
+                backoff = MIN_BACKOFF_S
             except Exception as e:
-                logger.warning("connect failed; retrying", error=str(e))
+                logger.warning("connect failed; retrying", error=str(e), retry_in_s=backoff)
                 healthd.record_connected(False)
-                await asyncio.sleep(15)
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, MAX_BACKOFF_S)
                 continue
 
-            client = VoltraClient(ble, on_telemetry)
+            client = VoltraClient(link.client, on_telemetry)
             try:
                 await client.start()
                 await client.subscribe_telemetry()
@@ -104,8 +116,11 @@ async def _run_live(cfg, pump: PumpClient, namer: ExerciseNamer) -> None:
                 logger.warning("session ended; reconnecting", error=str(e))
             finally:
                 healthd.record_connected(False)
+                # Closes the BLE client, unregisters the scanner AND drops the
+                # proxy's API connection. Dropping only the BLE half strands an
+                # APIClient on the ESP32 per reconnect.
                 with contextlib.suppress(Exception):
-                    await ble.disconnect()
+                    await link.close()
     finally:
         for task in background:
             task.cancel()
