@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pump-voltra"
-version = "0.1.3"
+version = "0.1.4"
 description = "Beyond Power VOLTRA I sidecar for PUMP — auto-logs sets, reps and resistance"
 requires-python = ">=3.11"
 dependencies = [

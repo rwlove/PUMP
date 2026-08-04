@@ -49,7 +49,7 @@ async def _serve_probes(cfg) -> asyncio.Task | None:
 
 async def _run_live(cfg, pump: PumpClient, namer: ExerciseNamer) -> None:
     from .client import VoltraClient, WorkoutInactive
-    from .transport import connect
+    from .transport import TrainerNotAdvertising, connect
 
     tracker = SetTracker(idle_seconds=cfg.set_idle_seconds)
     runner = Runner(pump, namer, tracker)
@@ -82,6 +82,14 @@ async def _run_live(cfg, pump: PumpClient, namer: ExerciseNamer) -> None:
                     cfg.address, cfg.proxy.host, cfg.proxy.port, cfg.proxy.psk
                 )
                 backoff = MIN_BACKOFF_S
+            except TrainerNotAdvertising as e:
+                # An empty gym is the normal case, not a fault. Log it at info
+                # and keep looking, so a genuine failure still stands out.
+                logger.info("waiting for the trainer", detail=str(e))
+                healthd.record_connected(False)
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, MAX_BACKOFF_S)
+                continue
             except Exception as e:
                 logger.warning("connect failed; retrying", error=str(e), retry_in_s=backoff)
                 healthd.record_connected(False)
