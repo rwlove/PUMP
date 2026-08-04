@@ -187,17 +187,33 @@ Discriminated by `payload[0]`/`payload[1]`:
 
 | Subtype | Len | Content |
 | --- | --- | --- |
-| `0x84`/`0x40` | 66 | **per-rep summary, ~1 Hz — `[2]` = set, `[3:5]` uint16 BE = rep** |
+| `0x85`/`0x5F` | 97 | **end-of-set summary, once per set — `[13]` = set, `[15]` = final rep count** |
+| `0x84`/`0x40` | 66 | **live progress, ~1 Hz — `[2]` = set, `[3:5]` uint16 BE = rep** |
 | `0x81`/`0x2B` | 45 | per-sample — `[2]` = phase, `[3]` = set, `[4:6]` uint16 BE = rep |
-| `0x80`/`0x25` | 39 | heartbeat, rep count at `[3:5]` BE |
-| `0x82`/`0x3B` | 61 | rep boundary event |
+| `0x80`/`0x25` | 39 | session-state ping — `[3:5]` BE is a **state code, not a rep count** |
+| `0x82`/`0x3B` | 61 | rep boundary event (alternates 01/02 — the up and down phase) |
 | `0x87`/`0x**` | 134–214 | waveform chunks |
 
-`0x84/0x40` is the one to consume: ~1 Hz, carries both set and rep, and was the
-subtype that reliably appeared. `0x81/0x2B` was not emitted in every session.
+**`0x85/0x5F` is the authoritative set boundary.** It is emitted exactly once,
+roughly half a second after the final rep, and carries both the set number and
+the final rep count in single bytes. Across both capture sessions it reads
+set 3 / 5 reps and set 2 / 3 reps, matching what was physically performed.
+Consume this and you do not have to infer where a set ended.
+
+`0x84/0x40` gives live progress at ~1 Hz while the set is under way. It stops
+entirely when the athlete stops — it is not a heartbeat — so its *absence* is a
+usable fallback boundary if the summary is lost in transport. `0x81/0x2B` was
+not emitted in every session.
+
+`0x80/0x25` is a session-state ping that continues while the device is idle.
+Its `[3:5]` field walks `0 → 1 → 2 → 3 → 4 → 0` across a session independently
+of how many reps were performed (`3` appears once a set has completed), so it
+is a state code. An earlier revision of this document described it as a rep
+count; that was wrong.
 
 > **Rep counters are big-endian.** Every parameter value is little-endian. This
-> is the single easiest mistake to make in this protocol.
+> is the single easiest mistake to make in this protocol. Note that the two
+> counters in `0x85/0x5F` are single bytes, so endianness does not arise there.
 
 ### `0x10` — async state push
 

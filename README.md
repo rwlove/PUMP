@@ -47,6 +47,19 @@ Use image `ghcr.io/rwlove/pump`. Set `POSTGRES_DSN`. Front the deployment with a
 
 A separate Python service under [`cv/`](cv/) watches gym cameras, detects exercises/reps/sets, and writes them to PUMP via the per-set REST API. Disabled by default — enable on the config page (`CVAutoLog`) once cameras are installed and the sidecar is running. See [`docs/cv-autolog-plan.md`](docs/cv-autolog-plan.md) for the full design and [`cv/README.md`](cv/README.md) for runtime details.
 
+### Optional: pump-voltra trainer sidecar
+
+A separate Python service under [`voltra/`](voltra/) that reads sets, reps and
+resistance off a **Beyond Power VOLTRA I** cable trainer over BLE and logs them
+automatically. The trainer's resistance is electronic, so plate detection
+cannot see it — without this, every Voltra set has to have its weight typed in
+by hand.
+
+Which exercises use the trainer is a per-exercise checkbox ("Uses Voltra
+trainer") on the exercise configuration page, not a guess from the name.
+Disabled by default — set `VOLTRA_AUTOLOG=true` on PUMP and `VOLTRA_ENABLED=true`
+on the sidecar. See [`voltra/README.md`](voltra/README.md).
+
 ### Health dashboard & wearable metrics
 
 The **Health** page (`/health/`) is a one-page, whole-body view that pulls from every source PUMP tracks — body weight, strength training, and wearable metrics — as summary tiles (latest value, trend delta, sparkline) that deep-link into the matching Stats tab.
@@ -80,6 +93,7 @@ All configuration is via environment variables. No config file is required.
 | `FREQUENCY_DAYS` | Look-back window (days) for sorting exercises by usage frequency | `30` |
 | `AUTOFILL` | Pre-fill weight/reps from last performance when adding a set | `true` |
 | `CVAUTOLOG` | Accept set writes from the `pump-cv` camera sidecar; toggleable in the UI | `false` |
+| `VOLTRA_AUTOLOG` | Accept set writes from the `pump-voltra` trainer sidecar; env-only | `false` |
 | `PUSHOVER_USER_KEY` | Pushover user key for low-confidence set notifications; env-only, never in UI | `""` |
 | `PUSHOVER_APP_TOKEN` | Pushover app token for low-confidence set notifications; env-only, never in UI | `""` |
 | `PUSHOVER_API_URL` | Pushover API endpoint override (testing only) | Pushover |
@@ -143,8 +157,27 @@ Reads its configuration from a yaml file (mounted as a Kubernetes ConfigMap, def
                                   ┌───────────┴───────────┐
                                   │     IP cameras        │
                                   └───────────────────────┘
+
+┌────────────────────────┐         ┌──────────────────────────┐
+│ pump (Go) Deployment   │ ◀────── │ pump-voltra (Python)     │
+│  env: VOLTRA_AUTOLOG   │  /api/  │  replicas: 1, Recreate   │
+│            =true       │  sets   │  env: VOLTRA_PROXY_HOST  │
+└────────────────────────┘         │       VOLTRA_PROXY_PSK   │
+                                   │       VOLTRA_ADDRESS     │
+                                   └──────────────────────────┘
+                                              ▲
+                                              │ ESPHome API (Noise)
+                                  ┌───────────┴───────────┐
+                                  │ ESP32 bluetooth_proxy │
+                                  └───────────┬───────────┘
+                                              │ BLE
+                                  ┌───────────┴───────────┐
+                                  │   VOLTRA I trainer    │
+                                  └───────────────────────┘
 ```
 
-The two services are independent Deployments, talk only over HTTP+JSON, and either can be restarted without touching the other. `pump-cv` only needs egress to PUMP and ingress from RTSP cameras — no public-internet egress (Pushover credentials live on the PUMP side, not the sidecar).
+The services are independent Deployments, talk only over HTTP+JSON, and any can be restarted without touching the others. `pump-cv` only needs egress to PUMP and ingress from RTSP cameras — no public-internet egress (Pushover credentials live on the PUMP side, not the sidecar).
+
+`pump-voltra` runs **one replica with `strategy: Recreate`** — the trainer accepts a single BLE central, so two replicas would fight over the connection.
 
 A persistent volume holding `prototypes/` and `snapshots/` is recommended; both directories are write-only from `pump-cv` and survive Pod restarts. Exercise prototypes are loaded once at sidecar startup, so a rolling restart is needed to pick up new prototypes (UI uploads work via the live `POST /api/v1/reference` endpoint without restart, but the next pipeline restart will then see them).

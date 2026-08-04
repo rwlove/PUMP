@@ -116,17 +116,25 @@ as of `pump-v0.0.82` / `pump-cv-v0.3.0`. Companion to
   live set number and rep count. A 5-rep set was reported by the device and read
   back exactly.
 
-- [ ] **`pump-voltra` sidecar** — replaces the Voltra opaque-load branch in
-  `pump_cv/pipeline/runner.py`, which currently writes `pending=true` with
-  `weight=0` and a note asking the athlete to enter the resistance.
-  Design, phasing, config, safety rules and open questions:
+- [x] **`pump-voltra` sidecar — phase 1 shipped.** Lives in [`voltra/`](../voltra/),
+  own `pump-voltra-v*` tag line. Reads set number, rep count and target load off
+  the trainer and writes complete sets; the opaque-load branch in
+  `pump_cv/pipeline/runner.py` is now the fallback for when it is not running.
+  Design, phasing, config and safety rules:
   [`voltra-integration-plan.md`](voltra-integration-plan.md).
-  - Phase 1 (read-only auto-logging) needs **no schema migration** — `Source:
-    "voltra"` is a new value in an existing column.
-  - Phase 2 (device control) must not merge without the motor-safety rules in the
-    plan implemented and tested.
-  - `runner.py`'s Voltra branch must be gated off when the sidecar is active, or
-    every Voltra set gets logged twice.
+  - Needed migration **v11** after all, for the per-exercise `voltra` flag. The
+    "no schema migration" estimate assumed the name heuristic would survive.
+  - `runner.py`'s Voltra branch is gated on `VOLTRA_ENABLED`, so sets are not
+    logged twice.
+  - Turned up a live bug on the PUMP side: with `CVAUTOLOG=false` the workout
+    page saved a day by bulk-replacing it from the DOM, which would have deleted
+    every sidecar-written set. The save-mode gate is now `Conf.AutoLog()`.
+
+- [ ] **`pump-voltra` phase 2 — device control.** Set target load from PUMP,
+  load/unload. Must not merge without the motor-safety rules in the plan
+  implemented and tested.
+- [ ] **`pump-voltra` phase 3 — CV fusion.** Correlate CV's exercise
+  classification with the trainer's set boundaries and retire the naming anchor.
 
 ## Operations + docs
 
@@ -137,7 +145,7 @@ as of `pump-v0.0.82` / `pump-cv-v0.3.0`. Companion to
 
 ## Decisions not yet made
 
-- Which exercise-name prefix triggers Voltra-opaque mode? Currently any name containing "voltra" (case-insensitive). Could add an explicit `equipment_type: voltra` field on the `exercises` table if naming gets unwieldy.
+- ~~Which exercise-name prefix triggers Voltra-opaque mode?~~ **Settled: none.** It is a per-exercise `voltra` boolean (migration v11), set by a checkbox on the exercise configuration page. Name matching was abandoned rather than generalised — "cable" would have caught plate-stack exercises like "Seated Cable Pulldown". If a second smart device ever appears, migrate the column to a text `equipment_type` rather than adding a third boolean.
 - Should there be an emergency "pause CV writes" button on the admin panel? Useful when CV is misbehaving badly mid-workout. Toggling `CVAutoLog` off in config achieves the same end via /config/.
 - Should the wall view show ONLY today's sets, or also the most recent 1–2 sets from the previous workout day for context?
 

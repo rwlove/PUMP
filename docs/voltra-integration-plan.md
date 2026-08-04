@@ -8,10 +8,10 @@ Related: [`cv-autolog-plan.md`](cv-autolog-plan.md), [`cv-autolog-todo.md`](cv-a
 
 ## Why
 
-`pump_cv/pipeline/runner.py` currently treats any exercise whose name contains
-"voltra" as **opaque load** — its resistance is electronic and invisible to
-plate detection, so the sidecar writes `pending=true`, `weight=0`, and a note
-asking the athlete to type the resistance in afterwards.
+`pump_cv/pipeline/runner.py` treated any exercise whose name contains "voltra"
+as **opaque load** — its resistance is electronic and invisible to plate
+detection, so the sidecar wrote `pending=true`, `weight=0`, and a note asking
+the athlete to type the resistance in afterwards.
 
 The trainer knows its own resistance, set number, and rep count. Reading them
 closes that gap and removes a manual step from every Voltra set.
@@ -92,7 +92,29 @@ complete set — real weight, real reps — with a configured default name and
 `pending=true` so the athlete corrects the exercise in the UI. Inverts today's
 situation: weight becomes known, name becomes the uncertain field.
 
-### Recommendation
+### What shipped
+
+**A refinement of C, and it removed most of C's cost.** The sidecar owns the
+set, but the exercise name is not left to a fixed placeholder: it is inherited
+from the most recent set logged today for a **Voltra-flagged exercise**, read
+from `GET /api/sets/stream`. The athlete taps "Cable Row" and logs set 1 by
+hand; every following set auto-logs under that name. The configured default and
+`pending=true` remain, but only as the degraded path for a set logged before
+any anchor exists.
+
+This keeps C's properties — no cross-sidecar coupling, works with CV disabled —
+while making the common case fully automatic rather than requiring a name
+correction on every set.
+
+**Which exercises count is a flag, not a name.** A `voltra` boolean on the
+`exercises` table, surfaced as a checkbox on the exercise configuration page.
+The original `"voltra" in name` heuristic is gone, and matching `"cable"`
+instead would have been just as wrong: plenty of exercises have "cable" in the
+name and run off a plate stack. This is the `equipment_type` column that the
+section below defers — it turned out to be required, not optional, so it
+shipped as migration **v11**.
+
+### Original recommendation, for the record
 
 **Ship C first, move to A later.** C has no cross-sidecar coupling, works with CV
 disabled, and delivers the main win immediately — resistance and reps stop being
@@ -108,12 +130,22 @@ production.
 ### Phase 1 — read-only auto-logging
 
 - Connect through the proxy, bootstrap, subscribe to telemetry.
-- Track set/rep from `0xAA` `0x84/0x40` and target load from `0x3E86`.
-- On set completion, `POST /api/sets` with `Source: "voltra"`, real weight, real
-  reps, `Pending: true`, and a note naming the exercise as unconfirmed.
-- **No writes to the device.** No motor control at all in this phase.
-- Update `runner.py` so CV skips writing sets for Voltra exercises when
-  `pump-voltra` is enabled, avoiding duplicates.
+- Track set/rep from `0xAA` `0x84/0x40` and target load from `0x3E86`. Close
+  the set on `0xAA` `0x85/0x5F`, the device's own end-of-set summary, which was
+  identified after this plan was written — see the protocol doc. The idle
+  timeout is the fallback for when that frame is lost in transport.
+- On set completion, `POST /api/sets` with `Source: "voltra"`, real weight and
+  real reps, named from the day's most recent Voltra-flagged set. Only when no
+  such set exists yet does it fall back to the configured default with
+  `Pending: true`.
+- **No motor commands.** Never sets the weight, never loads or unloads.
+  Note this is *not* the same as "no writes": the device streams nothing until
+  the telemetry subscribe (`0x5183`, then `0x5182`) is written, and every
+  write is silently ignored unless a workout is active. Both are handled
+  explicitly and fail loudly. An earlier revision of this document claimed
+  phase 1 wrote nothing at all; that was wrong.
+- Update `runner.py` so CV skips writing sets for Voltra-flagged exercises
+  when `pump-voltra` is enabled, avoiding duplicates.
 
 Exit criteria: a full workout logs correct weights and rep counts with no manual
 resistance entry.
@@ -136,11 +168,15 @@ voltra/
   pyproject.toml
   pump_voltra/
     __init__.py
-    protocol.py      frame build/parse, CRC8/CRC16, parameter codec
-    registry.py      parameter ids and their widths
+    protocol.py      frame build/parse, CRC8/CRC16
+    registry.py      parameter ids, their widths, and the parameter codec
+    telemetry.py     0xAA subtype decoding
     client.py        BLE session: bootstrap, subscribe, read/write, keepalive
     transport.py     ESPHome-proxy wiring (bleak-esphome)
     session.py       set/rep state machine, set-completion detection
+    naming.py        resolves which exercise an auto-logged set belongs to
+    runner.py        wires telemetry to PUMP; also drives --replay
+    healthd.py       /healthz, /readyz, /metrics
     pump_client.py   POST/PATCH against PUMP, mirrors cv/pump_cv/pump_client.py
     config.py
     log.py
@@ -177,17 +213,19 @@ the one thing the proxy handles badly.
 
 ### Schema
 
-**Phase 1 requires no migration.** `Source: "voltra"` is a new *value* in an
-existing column, not a new column.
+`Source: "voltra"` needs no schema change — it is a new *value* in an existing
+column. **Migration v11 was still required**, for the per-exercise `voltra`
+flag; the claim that phase 1 needed no migration did not survive the decision
+to stop guessing from exercise names.
 
 Per [`AGENTS.md`](../AGENTS.md), schema migrations are irreversible once deployed
 and any table/column change requires a patch bump on the `pump-vX.Y.Z` tag line.
 Two candidates are deliberately deferred:
 
-- An `equipment_type` column on `exercises`, replacing the current
-  `"voltra" in name.lower()` heuristic. Already flagged as an open decision in
-  `cv-autolog-todo.md`. Worth doing when the name heuristic becomes unwieldy —
-  not before.
+- ~~An `equipment_type` column on `exercises`~~ — **shipped in v11**, as a
+  `voltra` boolean rather than an enum. If a second smart device ever appears,
+  migrate the column to a text `equipment_type` rather than adding a third
+  boolean.
 - Persisting the device's set number. Probably unnecessary; PUMP orders sets by
   insertion within a day.
 
@@ -196,12 +234,39 @@ Two candidates are deliberately deferred:
 No new endpoints. Phase 1 uses `POST /api/sets`; phases 2–3 use the existing
 `PATCH /api/sets/:id` and `POST /api/sets/:id/confirm`.
 
+`POST /api/sets` gates `Source: "voltra"` on `VOLTRA_AUTOLOG`, mirroring the
+existing `CVAutoLog` gate on `Source: "cv"`. The two are independent: enabling
+CV must not open the Voltra path.
+
+### The workout page's save mode — the trap this plan originally missed
+
+`index.js` chose between two save strategies based on `CVAutoLog`:
+
+- **on** → per-set `POST /api/sets` and `PATCH /api/sets/:id`, addressing rows
+  by id;
+- **off** → `saveWorkoutBulk()`, which POSTs the whole form to `/set/` and calls
+  `BulkReplaceSetsByDate` — deleting *every row for that date* and reinserting
+  only what the browser's DOM holds.
+
+With `CVAUTOLOG=false` and a sidecar writing, the next autosave silently
+destroys every auto-logged set. Worse, `setHandler` carries no `source`,
+`confidence`, `pending` or `clip_path`, so even rows that survive lose their
+provenance.
+
+The gate is now `Conf.AutoLog()` — true when *either* sidecar may write —
+threaded through the template and both JS call sites. Any future ingest source
+must be added to it. This applies to `pump-cv` too; it was only ever safe
+because CV and its gate happened to be the same flag.
+
 ### `runner.py`
 
-The Voltra branch (`is_voltra`) must not write a set when `pump-voltra` is
-active, or every Voltra set is logged twice. Gate it behind a config flag rather
-than deleting the branch — the opaque-load path stays the fallback when the
-trainer is unreachable.
+The Voltra branch must not write a set when `pump-voltra` is active, or every
+Voltra set is logged twice. It is gated behind `VOLTRA_ENABLED` rather than
+deleted — the opaque-load path stays the fallback when the trainer is
+unreachable or the sidecar is not deployed.
+
+`is_voltra` now comes from the exercise's `Voltra` flag via
+`GET /api/exercises`, refreshed on a timer, not from its name.
 
 ## Safety
 
