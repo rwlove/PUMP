@@ -1,0 +1,94 @@
+"""Layered configuration: YAML defaults, then environment overrides.
+
+Mirrors cv/pump_cv/config.py. Secrets — the proxy PSK, the trainer's BLE
+address, the PUMP API key — come from the environment only and must never be
+committed to a YAML file.
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import Any
+
+import yaml
+from pydantic import BaseModel, Field
+
+
+class PumpConfig(BaseModel):
+    base_url: str = "http://pump-api:8851"
+    api_key: str = ""
+    request_timeout_s: float = 10.0
+
+
+class ProxyConfig(BaseModel):
+    host: str = ""
+    port: int = 6053
+    psk: str = ""
+
+
+class VoltraConfig(BaseModel):
+    enabled: bool = False
+    address: str = ""
+    proxy: ProxyConfig = Field(default_factory=ProxyConfig)
+    pump: PumpConfig = Field(default_factory=PumpConfig)
+
+    # Exercise name written when no Voltra-flagged set exists yet today. Such
+    # sets are marked pending so the athlete corrects the name in the UI.
+    default_exercise: str = "Voltra"
+    # How often to re-read which exercises carry the Voltra flag, so newly
+    # flagged exercises are picked up without a restart.
+    exercise_refresh_seconds: float = 300.0
+    # Fallback set-completion timeout, used only when the device's own
+    # end-of-set summary never arrives.
+    set_idle_seconds: float = 30.0
+    # Slow poll of the trainer's target load. Deliberately not the 40 Hz
+    # stream: that is the one thing the ESPHome proxy handles badly.
+    load_poll_seconds: float = 5.0
+
+    healthd_host: str = "0.0.0.0"
+    healthd_port: int = 8080
+
+
+def _env_str(cfg: Any, attr: str, key: str) -> None:
+    if v := os.getenv(key):
+        setattr(cfg, attr, v)
+
+
+def _env_float(cfg: Any, attr: str, key: str) -> None:
+    if v := os.getenv(key):
+        try:
+            setattr(cfg, attr, float(v))
+        except ValueError:
+            pass
+
+
+def load(path: str | Path | None = None) -> VoltraConfig:
+    candidates = [path, os.getenv("PUMP_VOLTRA_CONFIG"), "configs/default.yaml"]
+    raw: dict = {}
+    for c in candidates:
+        if not c:
+            continue
+        p = Path(c)
+        if p.is_file():
+            raw = yaml.safe_load(p.read_text()) or {}
+            break
+
+    cfg = VoltraConfig(**raw)
+
+    if v := os.getenv("VOLTRA_ENABLED"):
+        cfg.enabled = v.strip().lower() in ("1", "true", "yes", "on")
+    _env_str(cfg, "address", "VOLTRA_ADDRESS")
+    _env_str(cfg, "default_exercise", "VOLTRA_DEFAULT_EXERCISE")
+    _env_float(cfg, "exercise_refresh_seconds", "VOLTRA_EXERCISE_REFRESH_SECONDS")
+    _env_float(cfg, "set_idle_seconds", "VOLTRA_SET_IDLE_SECONDS")
+    _env_float(cfg, "load_poll_seconds", "VOLTRA_LOAD_POLL_SECONDS")
+
+    _env_str(cfg.proxy, "host", "VOLTRA_PROXY_HOST")
+    _env_str(cfg.proxy, "psk", "VOLTRA_PROXY_PSK")
+
+    # Shared with pump-cv: same 1Password field, same server.
+    _env_str(cfg.pump, "base_url", "PUMP_API_BASE_URL")
+    _env_str(cfg.pump, "api_key", "PUMP_API_KEY")
+
+    return cfg

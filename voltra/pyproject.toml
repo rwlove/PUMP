@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pump-voltra"
+version = "0.1.0"
+description = "Beyond Power VOLTRA I sidecar for PUMP — auto-logs sets, reps and resistance"
+requires-python = ">=3.11"
+dependencies = [
+    "bleak>=0.22",
+    "bleak-esphome>=2.0",
+    "fastapi>=0.115",
+    "httpx>=0.27",
+    "httpx-sse>=0.4",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "structlog>=24.1",
+    "uvicorn>=0.30",
+]
+
+[project.optional-dependencies]
+# Everything the unit tests need, without the BLE stack. protocol, registry,
+# session and naming are pure and never import bleak, so CI can install the
+# package dep-free and run the whole suite from this list alone.
+test = [
+    "httpx>=0.27",
+    "httpx-sse>=0.4",
+    "pydantic>=2.7",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pyyaml>=6.0",
+    "respx>=0.21",
+    "ruff>=0.5",
+    "structlog>=24.1",
+]
+
+[project.scripts]
+pump-voltra = "pump_voltra.main:run"
+
+[tool.setuptools.packages.find]
+include = ["pump_voltra*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

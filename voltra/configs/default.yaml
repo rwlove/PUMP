@@ -1,0 +1,43 @@
+# pump-voltra defaults.
+#
+# Secrets and site-specific identifiers are DELIBERATELY absent and must come
+# from the environment (a Kubernetes Secret in the cluster):
+#
+#   VOLTRA_ADDRESS      the trainer's BLE MAC
+#   VOLTRA_PROXY_PSK    the ESPHome API Noise key
+#   PUMP_API_KEY        sent as X-Api-Key
+#
+# Never commit any of the three. This repository is public.
+
+enabled: false
+address: ""
+
+proxy:
+  host: ""
+  port: 6053
+  psk: ""
+
+pump:
+  base_url: http://pump-api:8851
+  api_key: ""
+  request_timeout_s: 10
+
+# Written on sets logged before the athlete has logged any set for a
+# Voltra-flagged exercise today. Such sets are marked pending.
+default_exercise: Voltra
+
+# Re-read which exercises carry the Voltra flag, so ticking the checkbox in
+# PUMP takes effect without restarting this service.
+exercise_refresh_seconds: 300
+
+# Fallback only. The device emits its own end-of-set summary; this closes a
+# set when that summary is lost in transport.
+set_idle_seconds: 30
+
+# Slow poll of the trainer's target load. There is deliberately no option to
+# enable the 40 Hz stream: it is not needed, and it is the one thing the
+# ESPHome proxy drops under backpressure.
+load_poll_seconds: 5
+
+healthd_host: 0.0.0.0
+healthd_port: 8080
