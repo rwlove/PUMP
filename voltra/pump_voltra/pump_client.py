@@ -43,6 +43,7 @@ class AutoLogDisabled(PermissionError):
 class PumpClient:
     def __init__(self, base_url: str, api_key: str = "", timeout_s: float = 10.0):
         self._base = base_url.rstrip("/")
+        self._timeout_s = timeout_s
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["X-Api-Key"] = api_key
@@ -78,8 +79,20 @@ class PumpClient:
         return int(r.json()["id"])
 
     async def stream_set_events(self) -> AsyncIterator[SetEvent]:
-        """Subscribe to the SSE feed. Reconnects are the caller's business."""
-        async with aconnect_sse(self._client, "GET", "/api/sets/stream") as source:
+        """Subscribe to the SSE feed. Reconnects are the caller's business.
+
+        The read timeout is disabled **for this request only**. An SSE stream
+        is idle by design between events, and PUMP only sends its keepalive
+        comment every 25 s (see getSetsStream in internal/api/server.go), so
+        the client-wide 10 s read timeout fires first and tears down a
+        perfectly healthy stream roughly every 15 s. Connect and write
+        timeouts are left in place — it is only "no bytes yet" that is normal
+        here.
+        """
+        timeout = httpx.Timeout(self._timeout_s, read=None)
+        async with aconnect_sse(
+            self._client, "GET", "/api/sets/stream", timeout=timeout
+        ) as source:
             async for sse in source.aiter_sse():
                 if not sse.data:
                     continue

@@ -53,7 +53,14 @@ class Runner:
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                logger.warning("sse stream dropped; reconnecting", error=str(e))
+                # Several httpx transport exceptions stringify to "", which
+                # made this log useless while diagnosing a read-timeout loop.
+                # Always carry the type.
+                logger.warning(
+                    "sse stream dropped; reconnecting",
+                    error=str(e) or "<no message>",
+                    error_type=type(e).__name__,
+                )
                 await asyncio.sleep(5)
 
     async def refresh_exercises_forever(self, interval_s: float) -> None:
