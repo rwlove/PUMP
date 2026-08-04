@@ -106,13 +106,27 @@ as of `pump-v0.0.82` / `pump-cv-v0.3.0`. Companion to
 
 - [ ] Form feedback overlays (depth on squat, bar path on bench, tempo)
 - [ ] Velocity-based training estimates from bar speed
-- [ ] **Voltra integration spike.** Time-boxed 1–2 weeks. Approach:
-  - **No Android app yet** ([confirmed by Beyond Power](https://help.beyond-power.com/en/articles/9932264-android-version-of-beyond)). Means no easy HCI-snoop path; need a hardware BLE sniffer from the start (nRF52840 dongle ~$15, or Ubertooth).
-  - **No community RE work** for the Voltra exists in 2026 (no GitHub, no HA integration, no Reddit thread). The voltraco/docs GitHub repo is a different company.
-  - **Voltra has WiFi for firmware updates** — worth scanning the local network for an mDNS service or HTTP endpoint *before* doing BLE work; might be a quick win.
-  - **Recommended order**: (a) `nmap` and `avahi-browse` the device's IP for HTTP/mDNS first; (b) email Beyond Power support to ask about a BLE protocol document for non-commercial integration; (c) only if both fail, do hardware BLE sniffing with the iOS app paired to the device.
-  - Decode at minimum: current resistance value + rep events.
-  - If successful, swap the Voltra branch from "opaque + manual confirm" to "BLE/HTTP subscriber + automatic logging."
+- [x] **Voltra integration spike — done (2026-08-03).** The BLE protocol was
+  reverse-engineered and validated end to end against real hardware. No BLE
+  sniffer was needed. Prior community work exists but is unlicensed, so the
+  implementation used here is independent and written from protocol facts only.
+  Full spec: [`voltra-ble-protocol.md`](voltra-ble-protocol.md).
+
+  Proven working: read and write target load, load and unload the motor, and read
+  live set number and rep count. A 5-rep set was reported by the device and read
+  back exactly.
+
+- [ ] **`pump-voltra` sidecar** — replaces the Voltra opaque-load branch in
+  `pump_cv/pipeline/runner.py`, which currently writes `pending=true` with
+  `weight=0` and a note asking the athlete to enter the resistance.
+  Design, phasing, config, safety rules and open questions:
+  [`voltra-integration-plan.md`](voltra-integration-plan.md).
+  - Phase 1 (read-only auto-logging) needs **no schema migration** — `Source:
+    "voltra"` is a new value in an existing column.
+  - Phase 2 (device control) must not merge without the motor-safety rules in the
+    plan implemented and tested.
+  - `runner.py`'s Voltra branch must be gated off when the sidecar is active, or
+    every Voltra set gets logged twice.
 
 ## Operations + docs
 
