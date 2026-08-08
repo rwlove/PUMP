@@ -62,10 +62,16 @@ class VoltraClient:
     # ─── notification plumbing ───────────────────────────────────────────
 
     def _handle(self, _sender, data: bytearray) -> None:
-        # Frames arrive already validated by the device; parse leniently so a
-        # capture-tool truncation doesn't drop a whole set.
-        frame = parse_frame(bytes(data), strict=False)
+        # Verify CRCs on live frames. The device is not the last hop — an ESP32
+        # proxy and a TCP link sit in between — and everything this cache feeds
+        # is a safety gate: WORKOUT_STATE authorises motor writes, and the
+        # TARGET_LOAD/FITNESS_MODE read-backs decide whether we engage. A
+        # corrupt frame that slips through can assert "workout active" or
+        # confirm a load that was never applied. Lenient parsing stays available
+        # to the capture-replay tests, which is what it was added for.
+        frame = parse_frame(bytes(data), strict=True)
         if frame is None:
+            logger.debug("dropped an unparseable or CRC-failing frame", nbytes=len(data))
             return
         if frame.command in PARAM_COMMANDS:
             self._params.update(registry.decode_reply(frame.payload))
@@ -84,7 +90,17 @@ class VoltraClient:
     # ─── parameters ──────────────────────────────────────────────────────
 
     async def read(self, *param_ids: int, settle_s: float = 0.6) -> dict[int, int]:
-        """Read parameters. Replies land asynchronously, hence the settle."""
+        """Read parameters. Replies land asynchronously, hence the settle.
+
+        Cached values for the requested ids are dropped first, so a returned
+        value is always one this call actually received. Without that, a reply
+        lost in the proxy is indistinguishable from a confirming one — read()
+        would hand back a minutes-old value and the motor read-back gate would
+        pass on it. An absent key means no reply arrived; callers must treat
+        that as failure, never as agreement.
+        """
+        for pid in param_ids:
+            self._params.pop(pid, None)
         await self._ble.write_gatt_char(
             TRANSPORT, registry.encode_read(list(param_ids), self._next_seq()), response=True
         )

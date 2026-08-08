@@ -29,6 +29,9 @@ class Controller:
         self._motor = motor
         self._max = max_load_lb
         self._armed_set_id = 0
+        # Startup counts as a reconnect: the first desired state we see was not
+        # necessarily produced by a human touching anything just now.
+        self._reconnected = True
 
     @property
     def armed_set_id(self) -> int:
@@ -49,10 +52,32 @@ class Controller:
         want_load = bool(state.get("WantLoad"))
         weight = _parse_weight(state.get("WeightLb"))
 
+        first_after_connect, self._reconnected = self._reconnected, False
+
         if not want_load or self._armed_set_id == 0:
             if self._motor.loaded:
                 await self._motor.unload()
                 await self._report()
+            return
+
+        # Never engage on the first state after connecting.
+        #
+        # PUMP keeps desired state in memory across a *sidecar* restart and
+        # deliberately replays it on connect, so a pod that was OOM-killed or
+        # rolled while loaded comes back to WantLoad=true. Treating that like a
+        # button press would re-tension the cable with no human action — the
+        # athlete has by then felt it go slack and let go or walked away.
+        # Engaging requires a fresh press, which arrives as a later event.
+        if first_after_connect:
+            logger.warning(
+                "ignoring a load already requested when we connected; "
+                "press LOAD again to engage",
+                set_id=self._armed_set_id,
+                weight_lb=weight,
+            )
+            await self._report(
+                error="reconnected while a load was pending — press LOAD again"
+            )
             return
 
         if weight is None:
@@ -96,11 +121,21 @@ class Controller:
                     error=str(e) or "<no message>",
                     error_type=type(e).__name__,
                 )
-                # Losing sight of intent must not leave the cable live. Stop
-                # asserting and let the device release.
+            finally:
+                # Losing sight of intent must not leave the cable live, however
+                # we lost it. A stream that ends *cleanly* — PUMP shutting down,
+                # an intermediary closing the SSE response — is just as blind as
+                # one that raised, and previously fell straight through to an
+                # immediate reconnect with the motor still engaged.
                 if self._motor.loaded:
                     await self._motor.unload()
-                await asyncio.sleep(5)
+
+            # Outside the try so a clean end backs off too, rather than
+            # spinning a tight reconnect loop against a PUMP that is down.
+            await asyncio.sleep(5)
+            # A reconnect must not silently re-apply whatever PUMP still wants;
+            # see _first_state_after_connect.
+            self._reconnected = True
 
     async def heartbeat(self, interval_s: float = 5.0) -> None:
         """Tell PUMP we are alive and what the motor is doing.
@@ -115,11 +150,17 @@ class Controller:
 
 
 def _parse_weight(raw) -> int | None:
-    """PUMP sends weight as a decimal string. The trainer takes whole pounds."""
+    """PUMP sends weight as a decimal string. The trainer takes whole pounds.
+
+    Returns None for anything unusable. OverflowError is caught alongside the
+    obvious failures because float("inf") parses fine and only explodes at
+    int() — and WeightLb is free text off a set row, so "inf" or "1e400" is a
+    typo away. Left uncaught it escaped apply() and tore down the state stream.
+    """
     if raw in (None, ""):
         return None
     try:
         w = int(round(float(raw)))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
     return w if w > 0 else None
