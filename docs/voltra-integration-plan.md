@@ -155,8 +155,8 @@ resistance entry.
 Designed 2026-08-08. Supersedes the sketch that previously sat here, and
 replaces phase 1's naming model: sets are attributed to an explicitly **armed**
 exercise rather than inferred from the day's most recent Voltra-flagged set.
-Nothing is recorded while nothing is armed, so a stray pull at an idle trainer
-no longer creates a set.
+Nothing records unless a set is both armed and loaded, so a stray pull at an
+idle trainer creates nothing.
 
 #### The unit of work is a set, not an exercise
 
@@ -189,6 +189,33 @@ before the motor engages.
 Advancing to a set never engages the motor as a side effect. The athlete
 presses LOAD. Changing the current set while loaded drops the load; they press
 LOAD again.
+
+#### Recording requires armed AND loaded
+
+Armed and loaded are distinct states, and **both** are required before a set is
+recorded:
+
+```
+armed      set selected; telemetry attributed to it; device untouched
+   │  LOAD press: write weight -> verify read-back -> engage
+   ▼
+loaded     recording enabled — PUMP's weight is now provably the device's
+   │  device reports 0x85/0x5F
+   ▼
+recorded   PUMP's weight + the device's rep count
+```
+
+Armed alone is not enough, and the reason is the weight-authority claim. PUMP's
+weight is only truthful *because it was written to the device and read back*.
+An armed-but-unloaded set would attribute PUMP's number to reps performed at
+whatever load the trainer happened to be sitting at — logging a weight that was
+never on the machine. Recording only when loaded keeps the claim honest.
+
+The cost is real and accepted: **forget to press LOAD and the set does not
+record.** The alternative silently logs a weight that was not lifted, which is
+worse than a missing row — a missing row is visible, a wrong number is not. The
+UI must therefore make armed-but-unloaded obvious *before* the set rather than
+after; a set that is selected but not engaged should not look ready.
 
 #### Weight changes require a full cycle
 
