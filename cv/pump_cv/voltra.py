@@ -22,6 +22,8 @@ from . import log
 logger = log.get(__name__)
 
 DEFAULT_REFRESH_SECONDS = 300.0
+# Retry cadence before the first successful read (see run_forever).
+FIRST_LOAD_RETRY_SECONDS = 5.0
 
 
 class VoltraFlags:
@@ -31,6 +33,17 @@ class VoltraFlags:
         self._pump = pump
         self._refresh_seconds = refresh_seconds
         self._names: set[str] = set()
+        self._loaded = False
+
+    @property
+    def loaded(self) -> bool:
+        """Whether the flag list has ever been read successfully.
+
+        Callers must consult this before trusting a False from __call__: an
+        empty cache and "no exercise uses the trainer" are indistinguishable
+        otherwise, and guessing wrong means every Voltra set gets logged twice.
+        """
+        return self._loaded
 
     def __call__(self, name: str | None) -> bool:
         """Callable so it can be passed straight to PipelineRunner."""
@@ -43,18 +56,30 @@ class VoltraFlags:
             for e in exercises
             if e.get("Voltra") and str(e.get("Name", "")).strip()
         }
-        if names != self._names:
+        if names != self._names or not self._loaded:
             logger.info("voltra-flagged exercises updated", count=len(names))
         self._names = names
+        self._loaded = True
 
     async def run_forever(self) -> None:
         """Re-read on a timer so ticking the checkbox in PUMP takes effect
-        without a rolling restart."""
+        without a rolling restart.
+
+        Until the first successful read, retry quickly rather than waiting the
+        full interval. The usual way to be un-loaded is that pump-cv started
+        before pump-api was serving — a node reboot rolls both — and every
+        second spent in that state is a second where the sidecar's exercises
+        are unaccounted for.
+        """
         while True:
             try:
                 await self.refresh()
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                logger.warning("voltra flag refresh failed", error=str(e))
-            await asyncio.sleep(self._refresh_seconds)
+                logger.warning("voltra flag refresh failed",
+                               error=str(e), ever_loaded=self._loaded)
+            if self._loaded:
+                await asyncio.sleep(self._refresh_seconds)
+            else:
+                await asyncio.sleep(FIRST_LOAD_RETRY_SECONDS)

@@ -34,7 +34,9 @@ Design choices worth noting:
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import AsyncIterator
+import time
+from collections import deque
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -48,7 +50,12 @@ from ..classify import (
 )
 from ..clipper import ClipBuffer
 from ..fsm import RepCounter, SetBoundary, keypoint_angle
-from ..fsm.set_boundary import RepObservedEvent, SetEndedEvent, SetStartedEvent
+from ..fsm.set_boundary import (
+    RepObservedEvent,
+    SetEndedEvent,
+    SetStartedEvent,
+    SetState,
+)
 from ..pose.types import FrameAndPoses, Pose
 from ..pump_client import PumpClient
 from ..snapshot import save_snapshot
@@ -92,6 +99,7 @@ class PipelineRunner:
         snapshot_dir: Path | None = None,
         clips_dir: Path | None = None,
         clip_capacity_seconds: float = 8.0,
+        clock: Callable[[], float] = time.time,
         wake_after_present_seconds: float = 1.0,
         sleep_after_absent_seconds: float = 600.0,
         on_set_committed=None,  # callable(pending: bool) -> None — for healthd metrics
@@ -128,7 +136,22 @@ class PipelineRunner:
 
         # Per-set buffers used by the classifier and weight detector.
         self._rep_params = (rep_amplitude_deg, rep_min_period_s, rep_smoothing_window)
-        self._pose_buffer: list[Pose] = []
+        self._pose_buffer: deque[Pose] = deque()
+        # Longest span of poses worth keeping for classification: a generous
+        # set, plus the quiet period that has to elapse before it closes.
+        #
+        # The buffer used to be cleared only on set commit, so any stretch
+        # where somebody is visible but no set ever completes — treadmill
+        # cardio in view of gym-front, stretching, tidying up — appended a
+        # ~1.5 KB pose every frame and never freed it. In a pod that runs for
+        # weeks that is a slow, permanent climb; the deployed pod was sitting
+        # at 93% of its memory limit.
+        self._pose_window_s = set_quiet_seconds + 180.0
+        # Wall clock used to keep time moving when nobody is in frame.
+        # Injectable so replays and tests stay deterministic.
+        self._clock = clock
+        self._last_pose_ts: float | None = None
+        self._last_pose_wall: float = 0.0
         self._latest_frame: np.ndarray | None = None
         self._latest_athlete_pose: Pose | None = None
 
@@ -138,14 +161,23 @@ class PipelineRunner:
                 self._latest_frame = frame
 
             athlete = pick_athlete(poses)
-            now = poses[0].timestamp if poses else 0.0
+            now = self._now(poses)
 
             # Wake/sleep signal to the wall display.
             await self._update_presence(athlete is not None, now)
 
             # Rolling clip buffer — stays warm across sets so the next
             # commit can dump it.
-            if self._clip_buffer is not None and frame is not None:
+            #
+            # Stop sampling once reps have stopped. The buffer holds 8 s but a
+            # set does not close until 25 s of quiet have passed, so recording
+            # through the rest meant the deque had turned over three times by
+            # the time the clip was written: every clip showed the athlete
+            # standing still, never a rep. Freezing during RESTING leaves the
+            # set's final seconds in the buffer, and costs nothing — enlarging
+            # it instead would be ~55 MB per 8 s per camera.
+            if (self._clip_buffer is not None and frame is not None
+                    and self._fsm.state != SetState.RESTING):
                 self._clip_buffer.push(frame, now)
 
             if athlete is not None:
@@ -162,10 +194,53 @@ class PipelineRunner:
                 if ang is not None:
                     self._counter.push(ang, athlete.timestamp)
                 self._pose_buffer.append(athlete)
+                self._trim_pose_buffer(now)
                 self._latest_athlete_pose = athlete
 
             for ev in self._fsm.tick(self._counter.count, now):
                 await self._handle_event(ev)
+
+    def _trim_pose_buffer(self, now: float) -> None:
+        """Drop poses older than the classification window.
+
+        Bounded by time rather than count so it does not depend on frame rate,
+        and cheap: the buffer is ordered, so this pops a handful of entries per
+        frame in the steady state.
+        """
+        cutoff = now - self._pose_window_s
+        buf = self._pose_buffer
+        while buf and buf[0].timestamp < cutoff:
+            buf.popleft()
+
+    def _now(self, poses: list[Pose]) -> float:
+        """The current time on the pose clock.
+
+        YOLO yields an empty pose list for every frame with nobody in view,
+        and this used to report 0.0 for those. Two things broke as a result,
+        both silently:
+
+          * A set never closed. SetBoundary closes on
+            ts - last_rep_at >= quiet_seconds, which with ts=0 is about -1.7e9
+            and can never be true. The final set of a workout stayed open until
+            somebody next walked in front of the camera — possibly the next
+            day, and then stamped with that later date.
+          * The kiosk never slept. _absent_since was set to 0.0 and every later
+            absent frame also read 0.0, so the elapsed time was permanently
+            zero and POST /api/wall/sleep was unreachable.
+
+        So when there are no poses, carry the last pose timestamp forward by
+        real elapsed time. That keeps the clock monotonic and moving on the
+        same scale the poses use, without assuming the pose clock is the wall
+        clock — it is not during file playback.
+        """
+        if poses:
+            self._last_pose_ts = poses[0].timestamp
+            self._last_pose_wall = self._clock()
+            return self._last_pose_ts
+        if self._last_pose_ts is None:
+            # Nobody has been seen yet; any monotonic origin will do.
+            return self._clock()
+        return self._last_pose_ts + (self._clock() - self._last_pose_wall)
 
     async def _update_presence(self, present: bool, now: float) -> None:
         if present:
@@ -207,7 +282,7 @@ class PipelineRunner:
         exercise_name = self._default_exercise.name
         classifier_conf = 1.0
         if self._prototypes and self._pose_buffer:
-            feats = pose_sequence_to_features(self._pose_buffer)
+            feats = pose_sequence_to_features(list(self._pose_buffer))
             result = classify_window(feats, self._prototypes)
             if result is not None:
                 exercise_name = result.name
@@ -231,6 +306,32 @@ class PipelineRunner:
         # on the exercise row in PUMP, not a guess from its name — plenty of
         # exercises have "cable" in the name and use a plate stack.
         is_voltra = bool(self._is_voltra_exercise and self._is_voltra_exercise(exercise_name))
+
+        # If we have never managed to read the flag list, we cannot tell a
+        # Voltra exercise from a barbell one — an empty cache and "nothing uses
+        # the trainer" look identical. Skip rather than guess.
+        #
+        # This used to fail open, so a pump-cv that started before pump-api was
+        # serving (a node reboot rolls both) wrote CV rows for up to five
+        # minutes for the very sets pump-voltra was also writing — every one
+        # logged twice, one of them with a plate-detected weight that is
+        # meaningless for electronic resistance. Failing closed loses a few
+        # sets, which is visible; failing open corrupts the log, which is not.
+        flags = self._is_voltra_exercise
+        flags_unknown = (
+            self._voltra_sidecar_enabled
+            and flags is not None
+            and getattr(flags, "loaded", True) is False
+        )
+        if flags_unknown:
+            logger.warning(
+                "voltra flags never loaded — skipping the write rather than "
+                "risk double-logging a trainer set",
+                exercise=exercise_name, reps=int(rep_count))
+            if self._on_set_failed:
+                self._on_set_failed()
+            self._reset_set_state()
+            return
 
         # When pump-voltra is running it owns these sets outright: it reads
         # the real resistance and the device's own rep count off the trainer,
@@ -341,7 +442,7 @@ class PipelineRunner:
         this, including the early return when the Voltra sidecar owns the
         set — otherwise the next set inherits this one's pose window."""
         self._counter.reset()
-        self._pose_buffer = []
+        self._pose_buffer.clear()
         self._latest_athlete_pose = None
 
     def _recount_reps(self, spec: ExerciseSpec) -> int:
