@@ -130,9 +130,15 @@ as of `pump-v0.0.82` / `pump-cv-v0.3.0`. Companion to
     page saved a day by bulk-replacing it from the DOM, which would have deleted
     every sidecar-written set. The save-mode gate is now `Conf.AutoLog()`.
 
-- [ ] **`pump-voltra` phase 2 — device control.** Set target load from PUMP,
-  load/unload. Must not merge without the motor-safety rules in the plan
-  implemented and tested.
+- [ ] **`pump-voltra` phase 2 — device control.** Designed 2026-08-08; see
+  [`voltra-integration-plan.md`](voltra-integration-plan.md) § Phase 2. Per-set
+  weights with PUMP authoritative, explicit LOAD press, keepalive held across
+  same-weight sets, disengage/rewrite/re-engage on a weight change, release on
+  disarm, device's own end-of-set trusted, 130 lb clamp. Replaces phase 1's
+  name-inheritance with an explicitly armed exercise: nothing records unless
+  something is armed. Must not merge without the motor-safety rules implemented
+  and tested. Open: where armed state lives (DOM state loses your place on
+  reload, and the sidecar needs to know too).
 - [ ] **`pump-voltra` phase 3 — CV fusion.** Correlate CV's exercise
   classification with the trainer's set boundaries and retire the naming anchor.
 
