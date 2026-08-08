@@ -53,7 +53,7 @@ jobs:
           # and from there the optimisation kicks in.
 
           SOURCE_TAG=""
-          for TAG in $(git tag --sort=-version:refname | grep '^pump-v' | grep -v "^${CURRENT_TAG}$"); do
+          for TAG in $(git tag --sort=-version:refname | grep '^pump-v[0-9]' | grep -v "^${CURRENT_TAG}$"); do
 
             CHANGED=$(git diff --name-only "${TAG}..${CURRENT_TAG}" -- \
               cmd/ internal/ go.mod go.sum Dockerfile.pump 2>/dev/null)

@@ -1,0 +1,47 @@
+# Keep the build context small and predictable.
+#
+# Dockerfile.pump does `COPY . .` with the repo root as context. Unignored,
+# that is 5.5 GB on a working checkout — almost entirely cv/.venv (5.4 GB) —
+# uploaded to the daemon before the build starts. CI is unaffected because it
+# builds from a fresh clone; this is for local builds.
+#
+# It also matters for safety. Nothing sensitive reaches a shipped layer today
+# (the final stage is FROM scratch and copies only the binary), but with
+# `COPY . .` in the context, adding one COPY to a final stage is all it would
+# take to publish local calibration captures or an env file to a public
+# registry.
+
+# Virtualenvs and Python build artefacts
+**/.venv
+**/__pycache__
+**/*.pyc
+**/*.egg-info
+**/.pytest_cache
+**/.ruff_cache
+
+# VCS and tooling
+.git
+.github
+.gitignore
+.claude
+
+# Docs, screenshots and design material — none of it ships in an image
+docs/
+assets/
+*.md
+
+# Local model weights, calibration output and captures. Large, machine
+# specific, and in the case of calibration, images of the room.
+cv/models/
+cv/calibration/
+cv/prototypes/
+cv/snapshots/
+clips/
+
+# Node tooling, if a local install ever appears
+node_modules/
+
+# Editor and OS noise
+.vscode/
+.idea/
+.DS_Store

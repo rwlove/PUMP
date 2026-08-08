@@ -6,7 +6,7 @@ name: Publish pump-cv Container Image
 # its own `pump-v*` tag line; the two release cadences are independent.
 on:
   push:
-    tags: ["pump-cv-v*"]
+    tags: ["pump-cv-v[0-9]*"]
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -47,7 +47,7 @@ jobs:
           CURRENT_TAG="${{ github.ref_name }}"
 
           SOURCE_TAG=""
-          for TAG in $(git tag --sort=-version:refname | grep '^pump-cv-v' | grep -v "^${CURRENT_TAG}$"); do
+          for TAG in $(git tag --sort=-version:refname | grep '^pump-cv-v[0-9]' | grep -v "^${CURRENT_TAG}$"); do
 
             CHANGED=$(git diff --name-only "${TAG}..${CURRENT_TAG}" -- cv/ 2>/dev/null)
 
