@@ -12,3 +12,7 @@ exercise_data/
 # Logs
 *.log
 .claude/worktrees/
+
+# Python bytecode (the repo root had no rule; cv/ and voltra/ have their own)
+__pycache__/
+*.pyc

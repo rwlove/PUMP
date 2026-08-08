@@ -35,7 +35,10 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          # Match the runtime. The image is built on
+          # nvcr.io/nvidia/pytorch:25.04-py3, which ships Python 3.12 — testing
+          # on 3.10 meant CI never exercised the interpreter production runs.
+          python-version: "3.12"
           cache: pip
 
       - name: Install test deps

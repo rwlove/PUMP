@@ -286,7 +286,7 @@ def apply_fixes(files: list[dict]) -> list[str]:
         rel = entry.get("path", "").strip().lstrip("/")
         content = entry.get("content", "")
         if not rel or not content:
-            print(f"[skip] empty path or content in fix entry")
+            print("[skip] empty path or content in fix entry")
             continue
 
         abs_p = os.path.abspath(os.path.join(repo_root, rel))
@@ -382,9 +382,16 @@ def main() -> None:
         gh_output("fixed", "false")
         return
     except Exception as e:
-        print(f"Claude API error: {e}")
+        # Fail the step rather than reporting green.
+        #
+        # This used to return quietly, so a run that never reached the model at
+        # all — expired token, persistent 429 — concluded "success" and printed
+        # the same "nothing to fix" line as a healthy one. Every autofix run in
+        # this repo's history reports success, and at least one of them was a
+        # rate-limit error. A permanently broken autofix should be visible.
+        print(f"::error::Claude API call failed: {e}")
         gh_output("fixed", "false")
-        return
+        raise SystemExit(1) from e
 
     print(f"Claude says can_fix={result.get('can_fix')}: {result.get('explanation')}")
 
