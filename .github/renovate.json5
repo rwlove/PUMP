@@ -1,0 +1,75 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // Renovate runs against this repo from the self-hosted renovate-operator in
+  // home-ops (kubernetes/apps/renovate/renovate-operator/jobs/pump.yaml). It
+  // needs the Renovate GitHub App to be installed on this repository; without
+  // that, autodiscover never sees it.
+  //
+  // The point of this config is mostly the github-actions manager: every
+  // `uses:` is pinned to a 40-character commit SHA with a `# vX.Y.Z` comment,
+  // and Renovate is what keeps those pins from going stale. A pin nobody
+  // updates is just an old version with extra steps.
+
+  extends: [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":timezone(America/New_York)",
+    "helpers:pinGitHubActionDigests",
+  ],
+
+  dependencyDashboardTitle: "Renovate Dashboard 🤖",
+  commitMessageTopic: "{{depName}}",
+  commitMessageExtra: "( {{currentVersion}} → {{newVersion}} )",
+
+  // The three release lines are tagged by hand after a deliberate pre-tag
+  // ritual (screenshots, README audit, cruft sweep — see AGENTS.md), so
+  // nothing here should ever push straight to main.
+  prConcurrentLimit: 5,
+  prHourlyLimit: 2,
+
+  packageRules: [
+    {
+      description: "GitHub Actions — the reason this config exists. Group them so pin refreshes arrive as one reviewable PR rather than fifteen.",
+      matchManagers: ["github-actions"],
+      groupName: "github actions",
+      semanticCommitType: "ci",
+      semanticCommitScope: "deps",
+      // Digest updates within a major line are the routine case and safe to
+      // batch; a major bump gets its own PR because it can change inputs.
+      separateMajorMinor: true,
+    },
+    {
+      description: "Go modules.",
+      matchManagers: ["gomod"],
+      groupName: "go modules",
+      semanticCommitType: "fix",
+      semanticCommitScope: "deps",
+    },
+    {
+      description: "Python deps for both sidecars.",
+      matchManagers: ["pep621", "pip_requirements"],
+      groupName: "python deps",
+      semanticCommitType: "fix",
+      semanticCommitScope: "deps",
+    },
+    {
+      description: "Base images. Deliberately pinned to a minor line — golang:alpine drifted a full minor version ahead of go.mod, so release binaries were built by a compiler nobody chose. Let Renovate propose the move rather than inheriting it silently.",
+      matchManagers: ["dockerfile"],
+      groupName: "base images",
+      semanticCommitType: "fix",
+      semanticCommitScope: "deps",
+    },
+  ],
+
+  // Security fixes bypass the groups above and the hourly limit, so they are
+  // never queued behind a routine dependency bump.
+  vulnerabilityAlerts: {
+    enabled: true,
+    labels: ["security"],
+    schedule: ["at any time"],
+  },
+
+  osvVulnerabilityAlerts: true,
+}
