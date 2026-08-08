@@ -152,9 +152,120 @@ resistance entry.
 
 ### Phase 2 — control
 
-- `PATCH`-style control endpoint or UI action to set target load from PUMP.
-- Load/unload with the safety rules below.
-- Enables programmed progression: PUMP sets the weight for the next set.
+Designed 2026-08-08. Supersedes the sketch that previously sat here, and
+replaces phase 1's naming model: sets are attributed to an explicitly **armed**
+exercise rather than inferred from the day's most recent Voltra-flagged set.
+Nothing is recorded while nothing is armed, so a stray pull at an idle trainer
+no longer creates a set.
+
+#### The unit of work is a set, not an exercise
+
+Different sets of the same exercise carry different weights, so arming an
+*exercise* cannot write one load. The load follows the **current set**. That is
+why "which set are we on" is load-bearing rather than cosmetic: it decides what
+gets written to the motor, so a wrong pointer means the wrong resistance.
+
+PUMP already models this — `getAutoFillData(name, setPosition, currentDate)`
+pre-fills each set position from the last time that exercise was performed.
+
+```
+Cable Row                              ● armed
+  set 1   50 lb x 12   ✓ done
+  set 2   50 lb x 10   ● CURRENT       [ LOAD 50 lb ]
+  set 3   60 lb        ○ next
+                              click any row to make it current
+```
+
+#### PUMP is authoritative for weight
+
+The weight in PUMP is what gets written to the trainer, and what gets recorded.
+The device's reported load is used **only** to verify the write landed. This
+inverts phase 1, where the trainer's load was the source of truth, and it means
+a silently-failed write cannot log the wrong number — the read-back catches it
+before the motor engages.
+
+#### Loading is an explicit press
+
+Advancing to a set never engages the motor as a side effect. The athlete
+presses LOAD. Changing the current set while loaded drops the load; they press
+LOAD again.
+
+#### Weight changes require a full cycle
+
+The motor must disengage before the weight changes. Never write a new target
+load under tension. This is also the only sequence proven on hardware
+(`spike/reps.py`):
+
+```
+0x3E89 = 0x0004    disengage
+0x3E86 = <weight>  write target load        (clamped, see below)
+0x3E86 -> read back and verify              <-- a silent write applies the OLD weight
+0x3E89 = 0x0005    re-engage
+0x3E89 -> read back and verify mode == 5
+```
+
+Abort on either read-back mismatch. Do not engage on an unverified weight.
+
+#### Holding across sets
+
+Load auto-expires after ~8 s unless re-asserted, so "loaded" is a keepalive,
+not a latch. The keepalive persists across consecutive sets **at the same
+weight** — re-loading between identical sets is pointless churn — and stops on
+disarm, on a weight change, or on shutdown. Tension then releases on the
+device's own expiry, which is the intended backstop: a crashed sidecar stops
+re-asserting and the trainer releases by itself. Do not defeat it.
+
+Note that "loaded" on a cable trainer means the motor is ready to resist, not
+that force is sitting on the athlete, so holding between sets is normal.
+
+#### Set completion is the device's call
+
+Close a set on `0xAA` subtype `0x85/0x5F`, the device's own end-of-set summary.
+Verified to fire **while the load is actively held** — in `hold.log` the
+keepalive writes bracket it (15.58 s → set-end 20.29 s → 23.71 s) — so holding
+the cable does not suppress it.
+
+The device declares a set over ~3.3 s after the last *new* rep (3.54 s and
+3.24 s across the two captures). A slow eccentric or a mid-set pause longer
+than that will read as two sets. That is the device's judgement and we take it;
+the alternative is second-guessing hardware that has ground truth we do not.
+
+#### Set numbering
+
+Position within the day's workout, counted from PUMP's own rows — the 3rd set
+of Cable Row today is set 3. That matches how the workout page reads and how
+autofill already keys. The device's internal counter is not used for display:
+it counts across everything done on the trainer, and in the spike the first
+logged set came back as "set 3".
+
+The pointer must be overridable by clicking a row. It drifts for real reasons —
+the device splits a set on a long pause, a set gets redone or skipped, the
+sidecar reconnects mid-exercise — and because the pointer selects the weight to
+write, a stale one is a wrong-resistance bug rather than a cosmetic one.
+
+#### Safety requirements
+
+Non-negotiable, and not deferrable to a follow-up:
+
+- **Clamp every write to `VOLTRA_MAX_LOAD_LB` (130).** A backstop against a bug
+  writing a garbage value, not a training limit. Sized just above the heaviest
+  cable set in the log (120 lb); the protocol accepts 200.
+- **Never load on reconnect or startup.** Only ever as the direct result of a
+  LOAD press.
+- **Verify target load by read-back before engaging.** Above.
+- **Always unload on SIGTERM and on unhandled exceptions.**
+- **Never replay a queued command after a reconnect** — discard pending intent,
+  the athlete has moved.
+- **Rely on the device's auto-unload as the backstop.**
+
+#### Open questions
+
+- **Where does armed state live?** If it is only in the DOM, a page reload
+  mid-workout loses the athlete's place — and the sidecar needs to know what is
+  armed too, which argues for server-side state rather than browser state.
+- **Can the pointer advance itself?** Auto-advancing to the next set on
+  completion is convenient but competes with the manual override; simplest is
+  to advance automatically and let a click correct it.
 
 ### Phase 3 — CV fusion (option A)
 
@@ -201,7 +312,7 @@ Follows the existing `TREADMILL_*` / `PUMP_CV_*` conventions.
 | `VOLTRA_ADDRESS` | Trainer BLE MAC; **site-specific, not in yaml** | `""` |
 | `VOLTRA_DEFAULT_EXERCISE` | Exercise name written on new sets | `Voltra` |
 | `VOLTRA_LOAD_REFRESH_SECONDS` | Keepalive interval for the motor load | `8` |
-| `VOLTRA_MAX_LOAD_LB` | Hard clamp on any weight this service will write | `50` |
+| `VOLTRA_MAX_LOAD_LB` | Hard clamp on any weight this service will write | `130` |
 | `VOLTRA_SET_IDLE_SECONDS` | Idle time before a set is considered complete | `30` |
 | `PUMP_URL` | PUMP base URL | `http://pump:8080` |
 | `PUMP_API_KEY` | Sent as `X-Api-Key`; **secret** | `""` |
@@ -277,8 +388,11 @@ control. These are requirements, not suggestions:
   explicit user action.
 - **Always verify target load by read-back before loading.** A silently failed
   weight write means the *previous* weight is applied.
-- **Clamp every write** to `VOLTRA_MAX_LOAD_LB`, defaulting low. The protocol
-  accepts up to 200 lb; the service should not.
+- **Clamp every write** to `VOLTRA_MAX_LOAD_LB` (130). The protocol accepts up
+  to 200 lb; the service should not. Sized just above the heaviest cable set in
+  the log — a backstop against a bug writing a garbage value, not a training
+  limit, so it should be raised if real work outgrows it rather than left to
+  silently reject sets.
 - **Always unload on shutdown**, including on SIGTERM and on unhandled
   exceptions.
 - **Never re-send a queued command after a reconnect.** Discard pending
@@ -314,6 +428,43 @@ New tag line, matching the existing split:
 Own Deployment, no GPU, small resource envelope. One replica — the trainer accepts
 a single BLE central, so **two replicas would fight over the connection**. Set
 `replicas: 1` with `strategy: Recreate`, not `RollingUpdate`, for the same reason.
+
+## Postmortem: the double-add regression (2026-08-04 to 08-08)
+
+Phase 1 set `VOLTRA_AUTOLOG=true`, which flipped the workout page into per-set
+save mode with SSE on — a mode this deployment had never run, because
+`CVAutoLog` is false. That exposed a race latent in the CV auto-log path since
+it was written: `postSet` publishes the add event *before* writing the HTTP
+response, so the echo reaches the browser before it learns the new row's id,
+the dedup cannot match, and a second DOM node is appended carrying the same
+`data-set-id`.
+
+Two nodes, one row. Editing either wrote to the same record; deleting either
+removed it and both nodes vanished, which is what "it always deletes two"
+actually was.
+
+Fixed in `pump-v0.0.108` by not echoing a write back to the client that made
+it (`X-Client-Id` on writes, matched against the stream subscriber).
+
+**What it cost.** Reconstructed from WAL via point-in-time recovery. Deletes
+fired 2–3 s after each insert and always *before* the editing phase began, so
+the deleted rows held autofill placeholders rather than entered values — a
+recovered row read `Cable Leg Curls 15 x 6` (the previous session's set-2
+autofill) while its survivor was later edited to `10 x 10`. Nothing typed was
+destroyed. What was lost is set *slots*: 08-07 and 08-08 each hold 2 sets per
+exercise where the historical norm is 3.
+
+**Lessons worth keeping.**
+
+- A gate that turns on a whole interaction mode is not a small change. `_autoLog`
+  read as a rename; it was the first activation of an untested code path.
+- Deletions leave `id` gaps and are therefore detectable after the fact.
+  Overwrites leave nothing. When aliasing is possible, the silent failure is
+  the one to reason about first.
+- WAL is a usable forensic record. `pg_waldump` on the segments a recovery pod
+  already fetched gives exact transaction times with no extra archive access,
+  which is what turned "roughly six sets, unknown values" into a precise
+  account.
 
 ## Failure modes
 
