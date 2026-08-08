@@ -87,28 +87,71 @@ func (s *PostgresStore) InsertEx(ctx context.Context, ex models.Exercise) error 
 // preserving the old delete+insert upsert semantics).
 func (s *PostgresStore) UpdateEx(ctx context.Context, ex models.Exercise) (bool, error) {
 	slog.Debug("db: UpdateEx", slog.Int("id", ex.ID), slog.String("name", ex.Name))
-	ct, err := s.pool.Exec(ctx,
+
+	// One transaction: the exercise row and the denormalized copy of its color
+	// on sets must move together, or a failure between them leaves the palette
+	// split — exercise in the new color, its whole logged history in the old.
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
+
+	var prevName, prevColor string
+	err = tx.QueryRow(ctx,
+		"SELECT name, color FROM exercises WHERE id = $1 FOR UPDATE", ex.ID).
+		Scan(&prevName, &prevColor)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	// An absent color must not erase one. PUT /api/exercises/:id binds into a
+	// zero-valued Exercise, so a caller that omits Color sends "" — and since
+	// the color is mirrored onto every logged set, treating that as "clear it"
+	// would blank the exercise's entire history from one incomplete request.
+	if ex.Color == "" {
+		ex.Color = prevColor
+	}
+
+	if _, err := tx.Exec(ctx,
 		`UPDATE exercises SET gr = $1, place = $2, name = $3, descr = $4,
 		        image = $5, color = $6, weight = $7, reps = $8, voltra = $9
 		 WHERE id = $10`,
 		ex.Group, ex.Place, ex.Name, ex.Descr, ex.Image, ex.Color,
-		ex.Weight.String(), ex.Reps, ex.Voltra, ex.ID)
-	if err != nil {
+		ex.Weight.String(), ex.Reps, ex.Voltra, ex.ID); err != nil {
 		slog.Debug("db: UpdateEx failed", slog.Int("id", ex.ID), slog.Any("error", err))
 		return false, err
 	}
-	if ct.RowsAffected() == 0 {
-		return false, nil
+
+	// Only propagate the color when the name is unchanged.
+	//
+	// sets reference exercises by free text, not by id, so the name is the only
+	// join. Recoloring by the *new* name after a rename would repaint whichever
+	// exercise already owned that name: renaming "Incline DB Press" to the
+	// existing "Bench Press" would overwrite every historical Bench Press
+	// stripe with the other exercise's color, unrecoverably. Recoloring by the
+	// old name is just as wrong — those rows are orphaned by the rename and
+	// their color is now historical. So a rename touches no sets at all.
+	//
+	// The IS DISTINCT FROM guard keeps this a no-op when the color did not
+	// change, so editing only reps or weight does not rewrite the largest
+	// table in the database.
+	if prevName == ex.Name {
+		if _, err := tx.Exec(ctx,
+			`UPDATE sets SET workout_color = $1
+			 WHERE name = $2 AND workout_color IS DISTINCT FROM $1`,
+			ex.Color, ex.Name); err != nil {
+			slog.Debug("db: UpdateEx set recolor failed",
+				slog.Int("id", ex.ID), slog.Any("error", err))
+			return false, err
+		}
 	}
-	// Keep the denormalized copy on sets in step with the exercise, for the
-	// same reason as UpdateExColor. Matching on the new name means a rename
-	// does not carry history with it — that is pre-existing behaviour here,
-	// since sets reference exercises by free text and not by id.
-	if _, err := s.pool.Exec(ctx,
-		"UPDATE sets SET workout_color = $1 WHERE name = $2", ex.Color, ex.Name,
-	); err != nil {
-		slog.Debug("db: UpdateEx set recolor failed", slog.Int("id", ex.ID), slog.Any("error", err))
-		return true, err
+
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
 	}
 	return true, nil
 }
@@ -323,7 +366,11 @@ func (s *PostgresStore) BulkReplaceSetsByDate(ctx context.Context, date string, 
 		b.Queue(
 			`INSERT INTO sets (date, name, color, workout_color, weight, reps, note)
 			 VALUES ($1::date, $2, $3, $4, $5, $6, $7)`,
-			set.Date, set.Name, set.Color, set.WorkoutColor,
+			// Bind the date argument, not set.Date. The DELETE above clears
+			// only the requested date, so honouring a per-row date would
+			// append rows to a day that was never cleared — emptying the
+			// target date and silently duplicating into a different one.
+			date, set.Name, set.Color, set.WorkoutColor,
 			set.Weight.String(), set.Reps, set.Note)
 	}
 	br := tx.SendBatch(ctx, b)
@@ -407,15 +454,21 @@ func (s *PostgresStore) InsertW(ctx context.Context, w models.BodyWeight) error 
 // DeleteW removes the body-weight entry the log shows for the given reading's
 // day. The log is day-oriented — SelectW returns one row per date via
 // DISTINCT ON — but a single day can hold several raw rows: the bt-scale
-// gateway burst-posts the same reading several times and there is no
-// ingest-side dedup. Deleting only the targeted id would leave the day's
-// duplicates behind, so SelectW would surface the next one and the value would
-// appear unchanged ("delete didn't work"). Delete every row sharing that id's
-// date so the displayed entry actually disappears.
+// gateway burst-posts the same reading several times as it settles. Deleting
+// only the targeted id would leave those duplicates behind, so SelectW would
+// surface the next one and the value would appear unchanged ("delete didn't
+// work").
+//
+// So delete every row sharing that id's date *and value*, not the whole day.
+// InsertW dedups identical same-day readings at ingest now, but still permits
+// genuinely different ones — weighing 272.4 in the morning and 270.8 at night
+// is supported and meaningful. Deleting by date alone would take the morning
+// reading with the evening one.
 func (s *PostgresStore) DeleteW(ctx context.Context, id int) error {
 	slog.Debug("db: DeleteW", slog.Int("id", id))
 	_, err := s.pool.Exec(ctx,
-		"DELETE FROM weight WHERE date = (SELECT date FROM weight WHERE id = $1)", id)
+		`DELETE FROM weight
+		 WHERE (date, weight) = (SELECT date, weight FROM weight WHERE id = $1)`, id)
 	return err
 }
 

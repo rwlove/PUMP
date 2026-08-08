@@ -106,13 +106,21 @@ func registerRoutes(r *gin.Engine) {
 	r.POST("/api/voltra/load", postVoltraLoad)
 	r.POST("/api/voltra/report", postVoltraReport)
 
-	// Body weight. POST is gated by WEIGHT_INGEST_KEY: off-cluster callers
-	// (e.g. the BLE-scale ESPHome firmware) reach it via a path-scoped Route
-	// that bypasses oauth2-proxy, and the header check is the only auth in
-	// that path.
-	r.GET("/api/weight", getWeight)
-	r.POST("/api/weight", ingestAuth(weightIngestKey, "weight ingest"), postWeight)
-	r.DELETE("/api/weight/:id", deleteWeight)
+	// Body weight, gated by WEIGHT_INGEST_KEY. Off-cluster callers (the
+	// BLE-scale ESPHome firmware) reach these via a path-scoped Route that
+	// bypasses gateway auth, so the header check is the only auth in that
+	// path.
+	//
+	// All three verbs are gated, not just POST. The Route matches on
+	// PathPrefix /api/weight with no method restriction, so GET and DELETE
+	// were reachable off-cluster unauthenticated — readable weight history and
+	// a destructive delete. Gating here rather than only narrowing the Route
+	// keeps it true regardless of how the ingress is configured later. No
+	// browser code calls these; the UI renders body weight server-side.
+	weightAuth := ingestAuth(weightIngestKey, "weight ingest")
+	r.GET("/api/weight", weightAuth, getWeight)
+	r.POST("/api/weight", weightAuth, postWeight)
+	r.DELETE("/api/weight/:id", weightAuth, deleteWeight)
 
 	// Wearable health (Android Health Connect via the HC Webhook bridge).
 	// POST is gated by HEALTH_INGEST_KEY for off-cluster ingest, mirroring

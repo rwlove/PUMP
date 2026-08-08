@@ -1,6 +1,7 @@
 package voltra
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -169,5 +170,60 @@ func TestUnsubscribeStopsDelivery(t *testing.T) {
 	Arm(1, "10") // must not panic on a closed channel
 	if _, open := <-ch; open {
 		t.Error("channel still delivering after unsubscribe")
+	}
+}
+
+// Correcting only on read left the browser believing the motor was engaged
+// after the sidecar died: the page reads state once at init and then follows
+// SSE, and nothing published the transition.
+func TestStalenessIsBroadcastToSubscribers(t *testing.T) {
+	t.Cleanup(Reset)
+	Reset()
+	Arm(4, "50")
+	SetWantLoad(true)
+	Report(true, "")
+
+	ch, unsub := Subscribe()
+	defer unsub()
+
+	mu.Lock()
+	current.SidecarSeen = time.Now().Add(-StaleAfter - time.Second)
+	mu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go WatchStale(ctx, 10*time.Millisecond)
+
+	select {
+	case s := <-ch:
+		if s.Loaded {
+			t.Error("broadcast still claims the motor is engaged")
+		}
+		if s.Recording() {
+			t.Error("broadcast still permits recording")
+		}
+		if s.Error == "" {
+			t.Error("broadcast gave no reason")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("staleness was never broadcast; the UI would keep saying 'loaded'")
+	}
+}
+
+// Re-arming the already-armed set must not republish a dead sidecar's last
+// "loaded" as if it were current.
+func TestReArmingDoesNotRepublishAStaleLoad(t *testing.T) {
+	t.Cleanup(Reset)
+	Reset()
+	Arm(4, "50")
+	SetWantLoad(true)
+	Report(true, "")
+
+	mu.Lock()
+	current.SidecarSeen = time.Now().Add(-StaleAfter - time.Second)
+	mu.Unlock()
+
+	if s := Arm(4, "50"); s.Loaded {
+		t.Error("re-arming republished a stale load as engaged")
 	}
 }

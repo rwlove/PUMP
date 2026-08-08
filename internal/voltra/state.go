@@ -18,6 +18,7 @@
 package voltra
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -78,18 +79,61 @@ var (
 	subs    = map[chan State]struct{}{}
 )
 
+const staleMsg = "sidecar stopped reporting; the trainer has released by now"
+
+// corrected applies the staleness rule to a snapshot. Everything that hands a
+// State outward goes through this, so no caller — HTTP response, SSE event, or
+// direct read — can observe a claim that the motor is engaged after the
+// sidecar has gone quiet.
+func corrected(s State) State {
+	if s.Stale(time.Now(), StaleAfter) {
+		s.Loaded = false
+		s.Error = staleMsg
+	}
+	return s
+}
+
 // Get returns a copy of the current state, with Loaded corrected to false when
-// the sidecar has gone quiet. Callers therefore cannot observe a stale claim
-// that the motor is engaged.
+// the sidecar has gone quiet.
 func Get() State {
 	mu.RLock()
 	s := current
 	mu.RUnlock()
-	if s.Stale(time.Now(), StaleAfter) {
-		s.Loaded = false
-		s.Error = "sidecar stopped reporting; the trainer has released by now"
+	return corrected(s)
+}
+
+// WatchStale flips Loaded false and tells subscribers once the sidecar stops
+// reporting.
+//
+// Correcting only on read is not enough: the browser reads /api/voltra/state
+// once at init and then relies entirely on SSE. Nothing published an event
+// when the sidecar simply went quiet, so a page that had been told
+// "loaded — recording" kept saying so indefinitely while the trainer had
+// physically released — and the athlete would perform the set believing it was
+// being captured against the right load. Publishing the transition is what
+// makes the UI's claim expire with the state it describes.
+func WatchStale(ctx context.Context, interval time.Duration) {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			mu.RLock()
+			stale := current.Stale(time.Now(), StaleAfter)
+			mu.RUnlock()
+			if !stale {
+				continue
+			}
+			// Clearing Loaded also makes this a one-shot: Stale() requires
+			// Loaded, so the next tick finds nothing to do.
+			mutate(func(s *State) {
+				s.Loaded = false
+				s.Error = staleMsg
+			})
+		}
 	}
-	return s
 }
 
 // Arm points recording at a set and clears any prior load. Arming never
@@ -144,7 +188,11 @@ func Report(loaded bool, errMsg string) State {
 func mutate(f func(*State)) State {
 	mu.Lock()
 	f(&current)
-	s := current
+	// Broadcast and return the corrected view, never the raw struct. Arming
+	// the already-armed set keeps Loaded as-is, so a dead sidecar's last
+	// "loaded" would otherwise be re-published as fact by the act of tapping
+	// the row again.
+	s := corrected(current)
 	for ch := range subs {
 		select {
 		case ch <- s:

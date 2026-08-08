@@ -354,11 +354,20 @@ function renderHealthDashboard() {
     sets.forEach(s => { byDay[s.Date] = (byDay[s.Date] || 0) + 1; });
     const days = Object.keys(byDay).sort();
     const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
-    const weekSets = sets.filter(s => new Date(s.Date) >= weekAgo).length;
+    // parseDateStr, not new Date(): the latter reads "YYYY-MM-DD" as UTC
+    // midnight, which is the previous day in western timezones and puts the
+    // boundary day of the window on the wrong side of the comparison.
+    const weekSets = sets.filter(s => parseDateStr(s.Date) >= weekAgo).length;
     hcSetText('hd-train-val', weekSets);
-    hcSetText('hd-train-sub', days.length ? (Object.keys(byDay).filter(d => new Date(d) >= weekAgo).length + ' days this week') : 'no sets yet');
+    hcSetText('hd-train-sub', days.length ? (Object.keys(byDay).filter(d => parseDateStr(d) >= weekAgo).length + ' days this week') : 'no sets yet');
     // Current streak: consecutive days ending today/yesterday with a set.
-    let streak = 0; const d = new Date(window._serverDate || new Date());
+    //
+    // Same UTC trap, worse consequence: new Date("2026-08-08") is UTC
+    // midnight, so localDateStr() below yielded yesterday and the walk started
+    // a day early. The "allow rest today" escape could then never match
+    // _serverDate, so training today after a rest day reported a streak of 0,
+    // and an unbroken streak was always one short.
+    let streak = 0; const d = window._serverDate ? parseDateStr(window._serverDate) : new Date();
     for (;;) {
         const key = localDateStr(d);
         if (byDay[key]) { streak++; d.setDate(d.getDate() - 1); }

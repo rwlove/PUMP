@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"time"
 	_ "time/tzdata"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +15,7 @@ import (
 	"github.com/rwlove/PUMP/internal/notify"
 	"github.com/rwlove/PUMP/internal/store"
 	"github.com/rwlove/PUMP/internal/treadmill"
+	"github.com/rwlove/PUMP/internal/voltra"
 	"github.com/rwlove/PUMP/internal/web"
 )
 
@@ -136,6 +138,13 @@ func main() {
 		slog.Info("serving CV clips", slog.String("from", clipsDir))
 	}
 	web.RegisterRoutes(r, pgStore)
+
+	// Expire the Voltra "motor engaged" claim when the sidecar stops
+	// reporting. Correcting on read is not enough — the workout page reads the
+	// state once and then follows SSE, so without something publishing the
+	// transition the UI keeps saying "loaded — recording" after the trainer has
+	// physically released.
+	go voltra.WatchStale(context.Background(), 5*time.Second)
 
 	// Treadmill cardio auto-capture: subscribe to the smart-plug wattage feed
 	// zwave-js-ui publishes to MQTT and log detected workouts as cardio. Inert

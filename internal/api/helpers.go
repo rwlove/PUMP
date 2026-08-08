@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -31,7 +32,9 @@ func ingestAuth(key, label string) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		if c.GetHeader("X-Api-Key") != key {
+		// Constant-time: this header is the only auth on the off-cluster
+		// ingest path, so it should not leak its own prefix through timing.
+		if subtle.ConstantTimeCompare([]byte(c.GetHeader("X-Api-Key")), []byte(key)) != 1 {
 			slog.Warn(label+": rejected",
 				slog.String("ip", c.ClientIP()),
 				slog.Bool("header_present", c.GetHeader("X-Api-Key") != ""))
