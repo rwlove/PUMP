@@ -7,7 +7,7 @@ import pytest
 from pump_voltra import registry
 from pump_voltra.control import Controller, _parse_weight
 from pump_voltra.motor import MotorController
-from tests.test_motor import FakeClient
+from tests.conftest import FakeClient
 
 
 class FakePump:
