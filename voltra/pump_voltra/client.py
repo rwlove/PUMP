@@ -91,6 +91,18 @@ class VoltraClient:
         await asyncio.sleep(settle_s)
         return {pid: self._params[pid] for pid in param_ids if pid in self._params}
 
+    async def write(self, param_id: int, value: int, settle_s: float = 0.4) -> None:
+        """Write one parameter. Width comes from the registry, never guessed.
+
+        Deliberately does NOT verify — callers that care must read back. The
+        device silently ignores writes when no workout is active, so a write
+        returning without error means nothing on its own.
+        """
+        await self._ble.write_gatt_char(
+            TRANSPORT, registry.encode_write(param_id, value, self._next_seq()), response=True
+        )
+        await asyncio.sleep(settle_s)
+
     def cached(self, param_id: int) -> int | None:
         return self._params.get(param_id)
 
