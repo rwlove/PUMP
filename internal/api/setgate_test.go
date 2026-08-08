@@ -13,6 +13,7 @@ import (
 	"github.com/rwlove/PUMP/internal/conf"
 	"github.com/rwlove/PUMP/internal/models"
 	"github.com/rwlove/PUMP/internal/store"
+	"github.com/rwlove/PUMP/internal/voltra"
 )
 
 // gateStore records InsertSet calls so a test can tell "refused" from
@@ -87,6 +88,10 @@ func postSetWithConf(t *testing.T, cfg models.Conf, source string) (int, *gateSt
 }
 
 func TestPostSet_VoltraRefusedWhenAutoLogOff(t *testing.T) {
+	t.Cleanup(voltra.Reset)
+	voltra.Arm(1, "50")
+	voltra.Report(true, "") // armed and loaded, so only the toggle is under test
+
 	code, gs := postSetWithConf(t, models.Conf{VoltraAutoLog: false}, "voltra")
 	if code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", code, http.StatusForbidden)
@@ -96,7 +101,11 @@ func TestPostSet_VoltraRefusedWhenAutoLogOff(t *testing.T) {
 	}
 }
 
-func TestPostSet_VoltraAcceptedWhenAutoLogOn(t *testing.T) {
+func TestPostSet_VoltraAcceptedWhenArmedAndLoaded(t *testing.T) {
+	t.Cleanup(voltra.Reset)
+	voltra.Arm(1, "50")
+	voltra.Report(true, "")
+
 	code, gs := postSetWithConf(t, models.Conf{VoltraAutoLog: true}, "voltra")
 	if code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d", code, http.StatusCreated)
@@ -106,10 +115,60 @@ func TestPostSet_VoltraAcceptedWhenAutoLogOn(t *testing.T) {
 	}
 }
 
+// The whole point of the armed+loaded gate: a set must not be recorded unless
+// the motor was actually engaged at PUMP's weight. Otherwise PUMP's number is
+// attributed to reps performed at whatever load the trainer was holding.
+func TestPostSet_VoltraRefusedWhenArmedButNotLoaded(t *testing.T) {
+	t.Cleanup(voltra.Reset)
+	voltra.Arm(1, "50") // armed, never loaded
+
+	code, gs := postSetWithConf(t, models.Conf{VoltraAutoLog: true}, "voltra")
+	if code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", code, http.StatusConflict)
+	}
+	if len(gs.inserted) != 0 {
+		t.Fatalf("wrote %d sets; an unloaded set must not be recorded", len(gs.inserted))
+	}
+}
+
+func TestPostSet_VoltraRefusedWhenNothingArmed(t *testing.T) {
+	t.Cleanup(voltra.Reset)
+	voltra.Report(true, "") // loaded, but nothing armed
+
+	code, gs := postSetWithConf(t, models.Conf{VoltraAutoLog: true}, "voltra")
+	if code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", code, http.StatusConflict)
+	}
+	if len(gs.inserted) != 0 {
+		t.Fatalf("wrote %d sets with nothing armed", len(gs.inserted))
+	}
+}
+
+// The gate is Voltra-only. Manual entry and CV must not be affected by whether
+// a cable machine happens to be engaged.
+func TestPostSet_ArmedStateDoesNotGateOtherSources(t *testing.T) {
+	t.Cleanup(voltra.Reset)
+	// Nothing armed, nothing loaded.
+	for _, src := range []string{"", "manual"} {
+		code, gs := postSetWithConf(t, models.Conf{}, src)
+		if code != http.StatusCreated || len(gs.inserted) != 1 {
+			t.Errorf("source %q: status=%d inserted=%d, want 201/1", src, code, len(gs.inserted))
+		}
+	}
+	code, _ := postSetWithConf(t, models.Conf{CVAutoLog: true}, "cv")
+	if code != http.StatusCreated {
+		t.Errorf("cv write blocked by voltra armed state: status=%d", code)
+	}
+}
+
 // The two gates are independent: turning CV on must not open the Voltra
 // path, and vice versa. A single shared toggle would pass the tests above
 // but fail these.
 func TestPostSet_GatesAreIndependent(t *testing.T) {
+	t.Cleanup(voltra.Reset)
+	voltra.Arm(1, "50")
+	voltra.Report(true, "")
+
 	if code, _ := postSetWithConf(t, models.Conf{CVAutoLog: true}, "voltra"); code != http.StatusForbidden {
 		t.Errorf("voltra write under CVAutoLog-only: status = %d, want %d", code, http.StatusForbidden)
 	}

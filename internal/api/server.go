@@ -14,6 +14,7 @@ import (
 	"github.com/rwlove/PUMP/internal/models"
 	"github.com/rwlove/PUMP/internal/notify"
 	"github.com/rwlove/PUMP/internal/store"
+	"github.com/rwlove/PUMP/internal/voltra"
 	"github.com/shopspring/decimal"
 )
 
@@ -96,6 +97,14 @@ func registerRoutes(r *gin.Engine) {
 	r.PATCH("/api/sets/:id", patchSet)
 	r.POST("/api/sets/:id/confirm", postSetConfirm)
 	r.DELETE("/api/sets/:id", deleteSet)
+
+	// Voltra phase-2 coordination between the workout UI and the sidecar.
+	r.GET("/api/voltra/state", getVoltraState)
+	r.GET("/api/voltra/stream", getVoltraStream)
+	r.POST("/api/voltra/arm", postVoltraArm)
+	r.POST("/api/voltra/disarm", postVoltraDisarm)
+	r.POST("/api/voltra/load", postVoltraLoad)
+	r.POST("/api/voltra/report", postVoltraReport)
 
 	// Body weight. POST is gated by WEIGHT_INGEST_KEY: off-cluster callers
 	// (e.g. the BLE-scale ESPHome firmware) reach it via a path-scoped Route
@@ -311,6 +320,17 @@ func postSet(c *gin.Context) {
 		slog.Warn("postSet: refused Voltra write — VoltraAutoLog is off",
 			slog.String("date", set.Date), slog.String("name", set.Name))
 		c.JSON(http.StatusForbidden, gin.H{"error": "Voltra auto-log is disabled"})
+		return
+	case set.Source == "voltra" && !voltra.Get().Recording():
+		// Belt and braces with the sidecar's own gate. The sidecar can be
+		// mid-reconnect holding stale state, and a set recorded while the
+		// motor was not engaged at PUMP's weight would claim a load that was
+		// never applied.
+		st := voltra.Get()
+		slog.Warn("postSet: refused Voltra write — not armed and loaded",
+			slog.Int("armed_set_id", st.ArmedSetID), slog.Bool("loaded", st.Loaded))
+		c.JSON(http.StatusConflict,
+			gin.H{"error": "no Voltra set is armed and loaded"})
 		return
 	}
 	stored, err := dataStore.InsertSet(c.Request.Context(), set)
