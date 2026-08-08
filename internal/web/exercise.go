@@ -91,10 +91,11 @@ func saveExerciseHandler(c *gin.Context) {
 		return
 	}
 
-	// Auto-assign a distinct color if none was provided.
+	// Auto-assign a color if none was provided: a shade from this exercise's
+	// muscle-group band, so it reads as part of the group on the workout page.
 	if oneEx.Color == "" {
 		if exs, err := dataStore.SelectEx(c.Request.Context()); err == nil {
-			oneEx.Color = nextExerciseColor(collectColors(exs))
+			oneEx.Color = nextExerciseColor(oneEx.Group, exercisesInGroup(exs, oneEx.Group))
 		}
 	}
 

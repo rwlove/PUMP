@@ -1,6 +1,8 @@
 package web
 
 import (
+	"fmt"
+	"math"
 	"regexp"
 	"testing"
 
@@ -13,9 +15,9 @@ func TestHslToHex_KnownAnchors(t *testing.T) {
 	// Anchor a few HSL points that must land near well-known CSS colors.
 	// hslToHex uses standard HSL→RGB math; these values are the reference.
 	cases := []struct {
-		name string
+		name    string
 		h, s, l float64
-		want string
+		want    string
 	}{
 		{"pure red", 0, 100, 50, "#ff0000"},
 		{"pure green", 120, 100, 50, "#00ff00"},
@@ -48,40 +50,176 @@ func TestHslToHex_AlwaysWellFormed(t *testing.T) {
 	}
 }
 
-func TestNextExerciseColor_GoldenAngleDeterministic(t *testing.T) {
-	// The color for N assigned exercises is derived only from N — same input
-	// count must give the same color, regardless of what colors are in the
-	// slice. That property is what makes the "backfill and restart" flow
-	// stable across runs.
-	// n=0 vs n=1 must differ (golden-angle rotation).
-	got0 := nextExerciseColor([]string{})
-	got1 := nextExerciseColor([]string{"#anything"})
-	if got1 == got0 {
-		t.Fatalf("distinct hues expected: n=0 %q == n=1 %q", got0, got1)
+// fillGroup returns a group filled to n exercises using the same lowest-free
+// rule the handler uses, which is how a group actually accumulates colors.
+func fillGroup(group string, n int) []models.Exercise {
+	exs := make([]models.Exercise, 0, n)
+	for i := 0; i < n; i++ {
+		exs = append(exs, models.Exercise{
+			Group: group,
+			Color: nextExerciseColor(group, exs),
+		})
 	}
-	// Only length matters — actual values in the slice are ignored.
-	got1prime := nextExerciseColor([]string{"#totally-different"})
-	if got1prime != got1 {
-		t.Fatalf("only slice length should affect output: %q vs %q", got1prime, got1)
+	return exs
+}
+
+// Adding an exercise must never recolor the ones already there. This is the
+// property the previous global golden-angle scheme lacked, and the reason
+// colors drifted as the catalogue grew.
+func TestNextExerciseColor_ExistingColorsAreStable(t *testing.T) {
+	before := fillGroup("Legs", 9)
+	after := fillGroup("Legs", 10)
+	for i := range before {
+		if before[i].Color != after[i].Color {
+			t.Fatalf("adding an exercise recolored index %d: %q became %q",
+				i, before[i].Color, after[i].Color)
+		}
 	}
-	if !hexColorRE.MatchString(got0) {
-		t.Fatalf("not a valid hex color: %q", got0)
+	if after[9].Color == "" || !hexColorRE.MatchString(after[9].Color) {
+		t.Fatalf("new exercise got invalid color %q", after[9].Color)
 	}
 }
 
-func TestNextExerciseColor_DistinctForSmallN(t *testing.T) {
-	// First ten sequential assignments must all be distinct. Weaker than the
-	// golden-angle "maximally distinct" promise but strong enough to catch a
-	// regression that made every color the same.
-	seen := map[string]int{}
-	for i := 0; i < 10; i++ {
-		colors := make([]string, i)
-		c := nextExerciseColor(colors)
-		if prev, dup := seen[c]; dup {
-			t.Fatalf("collision at n=%d: %q first seen at n=%d", i, c, prev)
+// A full group must hand out groupSlots distinct shades.
+func TestNextExerciseColor_DistinctWithinGroup(t *testing.T) {
+	for _, group := range []string{"Chest", "Deltoids", "Legs", "Cardio", "Back", "Arms"} {
+		seen := map[string]int{}
+		for i, ex := range fillGroup(group, groupSlots) {
+			if prev, dup := seen[ex.Color]; dup {
+				t.Errorf("%s: collision at slot %d: %q first seen at slot %d",
+					group, i, ex.Color, prev)
+			}
+			seen[ex.Color] = i
+			if !hexColorRE.MatchString(ex.Color) {
+				t.Errorf("%s slot %d: %q is not a valid hex color", group, i, ex.Color)
+			}
 		}
-		seen[c] = i
 	}
+}
+
+// Freeing a slot must make it available again rather than pushing the next
+// exercise to the end of the band.
+func TestNextExerciseColor_ReusesAFreedSlot(t *testing.T) {
+	exs := fillGroup("Back", 4)
+	freed := exs[1].Color
+	remaining := []models.Exercise{exs[0], exs[2], exs[3]}
+	if got := nextExerciseColor("Back", remaining); got != freed {
+		t.Fatalf("expected the freed slot %q to be reused, got %q", freed, got)
+	}
+}
+
+// The whole point of the scheme: any two exercises in a group must be closer
+// to each other than either is to an exercise in another group. Without this
+// the bands stop reading as groups, which is what the rebalance fixed.
+func TestGroupColors_CohereAndSeparate(t *testing.T) {
+	// Sizes matching the real catalogue at the time of the rebalance.
+	sizes := map[string]int{
+		"Chest": 6, "Deltoids": 7, "Legs": 9, "Cardio": 1, "Back": 4, "Arms": 5,
+	}
+	type swatch struct{ group, color string }
+	var all []swatch
+	worstWithin := math.Inf(1)
+	for group, n := range sizes {
+		exs := fillGroup(group, n)
+		for i, a := range exs {
+			all = append(all, swatch{group, a.Color})
+			for _, b := range exs[i+1:] {
+				if d := deltaE(a.Color, b.Color); d < worstWithin {
+					worstWithin = d
+				}
+			}
+		}
+	}
+	bestCross := math.Inf(1)
+	for i, a := range all {
+		for _, b := range all[i+1:] {
+			if a.group == b.group {
+				continue
+			}
+			if d := deltaE(a.color, b.color); d < bestCross {
+				bestCross = d
+			}
+		}
+	}
+	// Below ~5 two colors are hard to tell apart side by side.
+	if worstWithin < 7 {
+		t.Errorf("within-group ΔE %.1f is too low; exercises are hard to tell apart", worstWithin)
+	}
+	// Groups only read as groups while members are closer to each other than
+	// to outsiders.
+	if bestCross <= worstWithin {
+		t.Errorf("cross-group ΔE %.1f <= within-group ΔE %.1f; the bands have merged",
+			bestCross, worstWithin)
+	}
+	// Nothing may vanish into the dark theme background.
+	for _, s := range all {
+		if d := deltaE(s.color, "#212529"); d < 25 {
+			t.Errorf("%s %s is only ΔE %.1f from the page background", s.group, s.color, d)
+		}
+	}
+}
+
+// Two groups must not be handed the same shade.
+func TestGroupColors_DistinctAcrossGroups(t *testing.T) {
+	seen := map[string]string{}
+	for _, group := range []string{"Chest", "Deltoids", "Legs", "Cardio", "Back", "Arms"} {
+		for _, ex := range fillGroup(group, groupSlots) {
+			if prev, dup := seen[ex.Color]; dup {
+				t.Errorf("%q used by both %s and %s", ex.Color, prev, group)
+			}
+			seen[ex.Color] = group
+		}
+	}
+}
+
+// A group with no entry in groupHues still gets a stable band, so adding one
+// does not require a code change to avoid a crash or a black swatch.
+func TestGroupHue_UnknownGroupIsStableAndInRange(t *testing.T) {
+	a := nextExerciseColor("Forearms", nil)
+	b := nextExerciseColor("Forearms", nil)
+	if a != b {
+		t.Fatalf("unknown group is not deterministic: %q vs %q", a, b)
+	}
+	if !hexColorRE.MatchString(a) {
+		t.Fatalf("unknown group produced invalid color %q", a)
+	}
+	for _, g := range []string{"", "Forearms", "Neck", "ǅ"} {
+		if h := groupHue(g); h < 0 || h >= 360 {
+			t.Errorf("groupHue(%q) = %v, outside [0,360)", g, h)
+		}
+	}
+}
+
+// deltaE is CIE76 distance between two hex colors, used to assert the
+// separation properties above rather than eyeballing swatches.
+func deltaE(hexA, hexB string) float64 {
+	l1, a1, b1 := labOf(hexA)
+	l2, a2, b2 := labOf(hexB)
+	return math.Sqrt((l1-l2)*(l1-l2) + (a1-a2)*(a1-a2) + (b1-b2)*(b1-b2))
+}
+
+func labOf(hex string) (float64, float64, float64) {
+	var r8, g8, b8 int
+	fmt.Sscanf(hex, "#%02x%02x%02x", &r8, &g8, &b8)
+	lin := func(v int) float64 {
+		c := float64(v) / 255
+		if c <= 0.04045 {
+			return c / 12.92
+		}
+		return math.Pow((c+0.055)/1.055, 2.4)
+	}
+	r, g, b := lin(r8), lin(g8), lin(b8)
+	x := (0.4124*r + 0.3576*g + 0.1805*b) / 0.95047
+	y := 0.2126*r + 0.7152*g + 0.0722*b
+	z := (0.0193*r + 0.1192*g + 0.9505*b) / 1.08883
+	f := func(t float64) float64 {
+		if t > 0.008856 {
+			return math.Cbrt(t)
+		}
+		return 7.787*t + 16.0/116.0
+	}
+	fx, fy, fz := f(x), f(y), f(z)
+	return 116*fy - 16, 500 * (fx - fy), 200 * (fy - fz)
 }
 
 func TestNeedsColorBackfill(t *testing.T) {
@@ -93,30 +231,5 @@ func TestNeedsColorBackfill(t *testing.T) {
 	}
 	if needsColorBackfill(nil) {
 		t.Fatal("empty slice should not trigger backfill")
-	}
-}
-
-func TestCollectColors(t *testing.T) {
-	exs := []models.Exercise{
-		{Color: "#111"},
-		{Color: ""},
-		{Color: "#222"},
-		{Color: ""},
-		{Color: "#333"},
-	}
-	got := collectColors(exs)
-	want := []string{"#111", "#222", "#333"}
-	if len(got) != len(want) {
-		t.Fatalf("got %d colors, want %d: %v", len(got), len(want), got)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("index %d: got %q, want %q", i, got[i], want[i])
-		}
-	}
-	// Ordering is meaningful (feeds nextExerciseColor's index), so we also
-	// verify the empty case cleanly.
-	if len(collectColors(nil)) != 0 {
-		t.Fatal("collectColors(nil) should return empty, not nil-typed panic")
 	}
 }

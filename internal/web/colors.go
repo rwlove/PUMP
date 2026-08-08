@@ -5,17 +5,116 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"strings"
 
 	"github.com/rwlove/PUMP/internal/models"
 )
 
-// nextExerciseColor returns the next maximally-distinct color for a new exercise.
-// It uses the golden-angle method in HSL space: each successive hue is offset by
-// ~137.5° from the previous, which distributes colors evenly around the wheel
-// regardless of how many exercises already exist.
-func nextExerciseColor(existingColors []string) string {
-	hue := math.Mod(float64(len(existingColors))*137.508, 360)
-	return hslToHex(hue, 65, 48)
+// Exercise colors are organised by muscle group: each group owns a sector of
+// the hue wheel, and its exercises are shades within a narrow band centred on
+// that sector. Reading the workout list, the group is recognisable at a glance
+// from hue alone, while individual exercises stay tellable apart.
+//
+// Hue cannot do both jobs. Nine Legs exercises inside a 28° band are only ~3°
+// apart, which is invisible, so lightness carries the within-group separation
+// and saturation moves opposite it — keeping pale shades vivid instead of
+// letting them wash out to grey against the dark theme.
+const (
+	// groupHueBand is the width of a group's hue band. Groups are spaced 60°
+	// apart, so 28° leaves a 32° gap between adjacent bands. Measured on the
+	// current catalogue this yields a worst-case CIE76 ΔE of ~10.7 within a
+	// group and ~18.5 between groups: members are distinct, but any two
+	// members of one group are still closer to each other than to anything
+	// outside it, which is what makes the grouping read.
+	groupHueBand = 28.0
+	// groupSlots is how many exercises one group's band can hold. Fixing this
+	// is what keeps colors stable: a slot's color depends on its index alone,
+	// never on how many exercises the group currently has, so adding a tenth
+	// Legs exercise does not recolor the other nine. Past this the band wraps
+	// and shades repeat — widen the band rather than let that happen.
+	groupSlots = 12
+)
+
+// groupHues anchors each muscle group at the centre of its own 60° sector.
+// Unknown groups fall back to a hue derived from the name, so a group added
+// later still gets a consistent band without a code change.
+var groupHues = map[string]float64{
+	"Chest":    350, // red / crimson
+	"Deltoids": 50,  // amber / gold
+	"Legs":     110, // green
+	"Cardio":   170, // teal
+	"Back":     230, // blue
+	"Arms":     290, // purple / magenta
+}
+
+// slotHue and slotLight map a slot index to a position in its band. They are
+// deliberately not sequential: the pairing and the order slots are handed out
+// were chosen to maximise the *worst* separation across every group size from
+// two up to groupSlots, so a group looks right part-filled as well as full.
+// Sequential slots would put the first few exercises adjacent in both hue and
+// lightness, which is precisely when a group is small and most often seen.
+var (
+	slotHue   = [groupSlots]int{0, 2, 3, 6, 5, 10, 9, 7, 1, 8, 11, 4}
+	slotLight = [groupSlots]int{1, 7, 11, 9, 6, 8, 2, 4, 3, 0, 5, 10}
+)
+
+// groupHue returns the band centre for a muscle group.
+func groupHue(group string) float64 {
+	if h, ok := groupHues[group]; ok {
+		return h
+	}
+	// Deterministic fallback for a group not in the table: hash the name to a
+	// hue so it is at least stable across restarts.
+	var sum int
+	for _, r := range group {
+		sum = sum*31 + int(r)
+	}
+	return math.Mod(float64(sum), 360)
+}
+
+// groupSlotColor returns the color for slot i of a group's band.
+func groupSlotColor(group string, i int) string {
+	i = ((i % groupSlots) + groupSlots) % groupSlots
+	hs := float64(slotHue[i]) / float64(groupSlots-1)
+	u := float64(slotLight[i]) / float64(groupSlots-1)
+	hue := groupHue(group) - groupHueBand/2 + hs*groupHueBand
+	// Saturation runs opposite lightness: the lightest shades need the most
+	// saturation to stay legible, the darkest need the least to avoid glowing.
+	return hslToHex(math.Mod(hue+360, 360), 88-u*(88-45), 34+u*(78-34))
+}
+
+// nextExerciseColor returns a color for a new exercise in the given group: the
+// first slot in that group's band not already taken by one of its exercises.
+//
+// Lowest-free rather than next-in-sequence so that deleting an exercise frees
+// its shade for reuse, and so a group's colors never depend on how the caller
+// happened to order the slice.
+func nextExerciseColor(group string, groupExercises []models.Exercise) string {
+	taken := make(map[string]bool, len(groupExercises))
+	for _, ex := range groupExercises {
+		if ex.Color != "" {
+			taken[strings.ToLower(ex.Color)] = true
+		}
+	}
+	for i := 0; i < groupSlots; i++ {
+		c := groupSlotColor(group, i)
+		if !taken[strings.ToLower(c)] {
+			return c
+		}
+	}
+	// Band is full; wrapping repeats a shade, which beats returning nothing.
+	return groupSlotColor(group, len(groupExercises))
+}
+
+// exercisesInGroup returns the members of one muscle group.
+func exercisesInGroup(exs []models.Exercise, group string) []models.Exercise {
+	out := make([]models.Exercise, 0, len(exs))
+	for _, ex := range exs {
+		if ex.Group == group {
+			out = append(out, ex)
+		}
+	}
+	return out
 }
 
 // hslToHex converts HSL (h: 0-360, s: 0-100, l: 0-100) to a CSS hex color.
@@ -53,21 +152,18 @@ func hslToHex(h, s, l float64) string {
 // persisting the change to the store. Called lazily on the first page load that
 // finds exercises without colors.
 func backfillColors(ctx context.Context, exs []models.Exercise) {
-	// Collect the ordered list of already-assigned colors (preserving insertion
-	// order so the golden-angle sequence stays consistent across restarts).
-	assigned := make([]string, 0, len(exs))
-	for _, ex := range exs {
-		if ex.Color != "" {
-			assigned = append(assigned, ex.Color)
-		}
-	}
+	// Work against a local copy so each assignment is visible to the next one:
+	// two uncolored exercises in the same group must not both be handed the
+	// same lowest-free slot.
+	assigned := make([]models.Exercise, len(exs))
+	copy(assigned, exs)
 
-	for _, ex := range exs {
+	for i, ex := range assigned {
 		if ex.Color != "" {
 			continue
 		}
-		color := nextExerciseColor(assigned)
-		assigned = append(assigned, color)
+		color := nextExerciseColor(ex.Group, exercisesInGroup(assigned, ex.Group))
+		assigned[i].Color = color
 		if err := dataStore.UpdateExColor(ctx, ex.ID, color); err != nil {
 			slog.Warn("backfillColors failed", slog.Int("id", ex.ID), slog.String("name", ex.Name), slog.Any("error", err))
 		}
@@ -82,15 +178,4 @@ func needsColorBackfill(exs []models.Exercise) bool {
 		}
 	}
 	return false
-}
-
-// collectColors returns the non-empty Color values from a slice of exercises.
-func collectColors(exs []models.Exercise) []string {
-	colors := make([]string, 0, len(exs))
-	for _, ex := range exs {
-		if ex.Color != "" {
-			colors = append(colors, ex.Color)
-		}
-	}
-	return colors
 }
