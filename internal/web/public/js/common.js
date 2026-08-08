@@ -28,11 +28,36 @@ function parseDateStr(str) {
     return new Date(parts[0], parts[1] - 1, parts[2]);
 }
 
+// clientId identifies this page so the server can avoid echoing the page's
+// own writes back to it over SSE.
+//
+// The server publishes an event BEFORE writing the HTTP response, so an echo
+// reliably arrives before the client learns the new row's id — at which point
+// it can't tell the row is its own and renders it a second time. Suppressing
+// the echo at source is the only fix here that isn't a race.
+//
+// Kept in sessionStorage so a reload keeps the same identity, and scoped per
+// tab so two tabs still see each other's writes.
+function clientId() {
+    var id = window.sessionStorage.getItem('pumpClientId');
+    if (!id) {
+        id = 'c-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+        window.sessionStorage.setItem('pumpClientId', id);
+    }
+    return id;
+}
+
+// writeHeaders returns the headers every mutating /api/sets call must send so
+// the write is attributable to this page and its echo can be suppressed.
+function writeHeaders() {
+    return {'Content-Type': 'application/json', 'X-Client-Id': clientId()};
+}
+
 // subscribeSetEvents opens the set-lifecycle SSE stream and dispatches
 // parsed payloads to the given handlers ({add, update, delete, bulk} —
 // all optional — plus open/error passthroughs). Returns the EventSource.
 function subscribeSetEvents(handlers) {
-    var es = new EventSource('/api/sets/stream');
+    var es = new EventSource('/api/sets/stream?client=' + encodeURIComponent(clientId()));
     ['add', 'update', 'delete', 'bulk'].forEach(function(type) {
         if (!handlers[type]) return;
         es.addEventListener(type, function(ev) {
