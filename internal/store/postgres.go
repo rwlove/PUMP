@@ -97,7 +97,20 @@ func (s *PostgresStore) UpdateEx(ctx context.Context, ex models.Exercise) (bool,
 		slog.Debug("db: UpdateEx failed", slog.Int("id", ex.ID), slog.Any("error", err))
 		return false, err
 	}
-	return ct.RowsAffected() > 0, nil
+	if ct.RowsAffected() == 0 {
+		return false, nil
+	}
+	// Keep the denormalized copy on sets in step with the exercise, for the
+	// same reason as UpdateExColor. Matching on the new name means a rename
+	// does not carry history with it — that is pre-existing behaviour here,
+	// since sets reference exercises by free text and not by id.
+	if _, err := s.pool.Exec(ctx,
+		"UPDATE sets SET workout_color = $1 WHERE name = $2", ex.Color, ex.Name,
+	); err != nil {
+		slog.Debug("db: UpdateEx set recolor failed", slog.Int("id", ex.ID), slog.Any("error", err))
+		return true, err
+	}
+	return true, nil
 }
 
 func (s *PostgresStore) DeleteEx(ctx context.Context, id int) error {
@@ -111,8 +124,17 @@ func (s *PostgresStore) DeleteEx(ctx context.Context, id int) error {
 
 func (s *PostgresStore) UpdateExColor(ctx context.Context, id int, color string) error {
 	slog.Debug("db: UpdateExColor", slog.Int("id", id), slog.String("color", color))
+	// Recolor the exercise's logged sets in the same statement. sets carries a
+	// denormalized copy of the color, taken when the set was logged, and the
+	// workout page draws its stripes from that copy — so without this a color
+	// change leaves every past set showing the old shade, and one exercise ends
+	// up with several stripe colors across its history.
 	_, err := s.pool.Exec(ctx,
-		"UPDATE exercises SET color = $1 WHERE id = $2", color, id)
+		`WITH ex AS (
+		     UPDATE exercises SET color = $1 WHERE id = $2 RETURNING name
+		 )
+		 UPDATE sets SET workout_color = $1 FROM ex WHERE sets.name = ex.name`,
+		color, id)
 	return err
 }
 

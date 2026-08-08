@@ -121,7 +121,7 @@ SELECT date, count(*) FROM sets GROUP BY date ORDER BY date DESC LIMIT 5;
 Read `README.md` top to bottom and verify every claim matches the actual codebase:
 
 - Screenshot table rows/labels match the current tabs
-- Environment variable table (`HEATCOLOR`, `DISPLAY_DAYS`, `PAGESTEP`, etc.) lists every variable with the correct default
+- Environment variable table (`DISPLAY_DAYS`, `PAGESTEP`, `AUTOFILL`, etc.) lists every variable with the correct default. Diff it against the code rather than reading it — `grep -rohE 'Getenv\("[A-Z_]+"\)|env[A-Za-z]*\("[A-Z_]+"' --include=*.go internal/ cmd/` for the server, and `config.py` for each sidecar. `VOLTRA_MAX_LOAD_LB` shipped undocumented this way.
 - Architecture diagram reflects the current service layout
 - No references to removed features (e.g. deleted tabs, dropped config options)
 

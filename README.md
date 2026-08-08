@@ -146,7 +146,9 @@ Reads its configuration from a yaml file (mounted as a Kubernetes ConfigMap, def
 
 A separate Python service under [`voltra/`](voltra/) that reads set number, rep count and target load off a **Beyond Power VOLTRA I** cable trainer over BLE — via an ESPHome `bluetooth_proxy` — and logs each set automatically. The trainer's resistance is electronic and invisible to plate detection, so without it every Voltra set needs its weight typed in by hand.
 
-Which exercises use the trainer is a per-exercise checkbox ("Uses Voltra trainer") on the exercise configuration page. Set names are inherited from the day's most recent set for a flagged exercise. Read-only: it issues no motor commands.
+Which exercises use the trainer is a per-exercise checkbox ("Uses Voltra trainer") on the exercise configuration page. Set names are inherited from the day's most recent set for a flagged exercise.
+
+It also drives the motor. Clicking a Voltra set on the workout page **arms** it, so telemetry is attributed to that set; a separate **LOAD** press writes that set's weight to the trainer and engages it. Arming never engages anything by itself, and a set is only recorded once the sidecar confirms by read-back that the motor is holding the requested weight — an armed-but-unloaded set is drawn as deliberately unfinished rather than looking ready.
 
 Disabled by default — set `VOLTRA_AUTOLOG=true` on PUMP and `VOLTRA_ENABLED=true` on the sidecar. Same yaml + env-override pattern as `pump-cv`. See [`voltra/README.md`](voltra/README.md).
 
@@ -160,6 +162,7 @@ Disabled by default — set `VOLTRA_AUTOLOG=true` on PUMP and `VOLTRA_ENABLED=tr
 | `VOLTRA_EXERCISE_REFRESH_SECONDS` | How often to re-read which exercises carry the flag | `300` |
 | `VOLTRA_SET_IDLE_SECONDS` | Fallback set-completion timeout, used only if the device's end-of-set summary is lost | `30` |
 | `VOLTRA_LOAD_POLL_SECONDS` | Target-load poll interval | `5` |
+| `VOLTRA_MAX_LOAD_LB` | Ceiling on any weight written to the motor; requests above it are clamped | `130` |
 | `PUMP_API_BASE_URL` | PUMP base URL | `http://pump-api:8851` |
 | `PUMP_API_KEY` | Sent as `X-Api-Key`; **secret, not in yaml** | `""` |
 | `PUMP_VOLTRA_CONFIG` | Path to the yaml config | `configs/default.yaml` |
