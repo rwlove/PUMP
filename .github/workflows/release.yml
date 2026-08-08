@@ -1,0 +1,93 @@
+---
+name: Create GitHub Release
+
+# Publishes a GitHub Release for a tag once its image is actually in GHCR.
+#
+# This is load-bearing infrastructure, not bookkeeping. home-ops runs a webhook
+# (github-rwlove-pump-package) that fires on `release: published` and schedules
+# a RenovateJob, which opens the PR bumping the HelmRelease image digest. No
+# release event means no PR, which means the digest gets bumped by hand.
+#
+# Releases were being created manually and the habit lapsed on 2026-07-03;
+# every deploy since has been hand-rolled. Automating it is what makes that
+# chain reliable rather than remembered.
+#
+# workflow_run, not `on: push: tags`, because ordering matters: the release
+# event must arrive *after* the image exists, or Renovate wakes up, finds
+# nothing new in the registry, and opens nothing. Waiting for a successful
+# publish run guarantees the image is there.
+
+"on":
+  workflow_run:
+    workflows:
+      - "Publish Container Images"
+      - "Publish pump-cv Container Image"
+      - "Publish pump-voltra Container Image"
+    types: [completed]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  release:
+    name: Create release
+    # Only for successful tag builds in this repo. A failed publish must not
+    # produce a release announcing an image that was never pushed.
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.repository.full_name == github.repository &&
+      startsWith(github.event.workflow_run.head_branch, 'pump')
+
+    runs-on: ubuntu-latest
+
+    # The only write this needs. Deliberately not granted to the publish
+    # workflows themselves, which hold packages: write and should stay
+    # contents: read.
+    permissions:
+      contents: write
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ github.event.workflow_run.head_branch }}
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: Create the release
+        run: |
+          set -euo pipefail
+
+          # head_branch is the tag name for a tag-triggered run, but guard
+          # anyway — a mis-set ref here would create a junk release.
+          if ! git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "::error::${TAG} is not a tag in this repository."
+            exit 1
+          fi
+
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists — nothing to do."
+            echo "(Both a rebuild and a re-run land here; that is fine.)"
+            exit 0
+          fi
+
+          # The annotated tag message is already a written changelog — the
+          # pre-tag ritual produces one. Reuse it rather than generating
+          # something worse from commit subjects.
+          BODY=$(git tag -l --format='%(contents:body)' "${TAG}")
+          SUBJECT=$(git tag -l --format='%(contents:subject)' "${TAG}")
+          if [ -z "${BODY}" ] && [ -z "${SUBJECT}" ]; then
+            echo "::warning::${TAG} is a lightweight tag with no message."
+            SUBJECT="${TAG}"
+          fi
+
+          printf '%s\n' "${BODY}" > /tmp/release-notes.md
+          gh release create "${TAG}" \
+            --title "${TAG} — ${SUBJECT}" \
+            --notes-file /tmp/release-notes.md \
+            --verify-tag
+
+          echo "Created release ${TAG}."
+          echo "This fires the home-ops renovate webhook, which opens the"
+          echo "HelmRelease digest-bump PR."
