@@ -217,6 +217,34 @@ worse than a missing row — a missing row is visible, a wrong number is not. Th
 UI must therefore make armed-but-unloaded obvious *before* the set rather than
 after; a set that is selected but not engaged should not look ready.
 
+#### Showing armed-but-not-loaded
+
+Armed-but-unloaded is the state where a set would be performed and nothing
+recorded, so it has to read as *not ready* at a glance — mid-workout, from the
+machine, without reading text.
+
+A ghosted row carries that: the set is dimmed with a dashed outline and no
+solid fill until it is loaded, at which point it becomes solid and filled.
+Absence of substance reads as "not real yet" at distance, and it degrades
+gracefully — it does not depend on colour perception or on looking at one small
+badge.
+
+```
+ARMED, NOT LOADED                LOADED
+  set 1   50 x 12  done            set 1   50 x 12  done
+ ┌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┐          ███████████████████████
+ ┆ set 2   50 lb  [LOAD]┆         █ set 2  ● 50 lb  LOADED █
+ └╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┘          ███████████████████████
+```
+
+The LOAD control sits inside the row, so the fix is where the problem is rather
+than in a toolbar elsewhere.
+
+Rejected: a status chip (small, colour-dependent, easy to look past); a REC
+indicator (signals by absence, which is weak for catching a mistake you are
+about to make); and a blocking banner (impossible to miss, but shouts during
+every normal set-up).
+
 #### Weight changes require a full cycle
 
 The motor must disengage before the weight changes. Never write a new target
