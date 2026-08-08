@@ -34,6 +34,19 @@ func setHandler(c *gin.Context) {
 	// the autosave POST that follows the last delete carries no name fields.
 	formLen := len(formMap["name"])
 
+	// A ragged form is a bad request, not a panic. The loop is bounded by the
+	// name count, so indexing weight/reps unguarded meant any submission with
+	// fewer of those than names took down the handler — reachable in the wild,
+	// since a disabled input is simply not submitted.
+	if len(formMap["weight"]) < formLen || len(formMap["reps"]) < formLen {
+		slog.Warn("setHandler: ragged form",
+			slog.Int("names", formLen),
+			slog.Int("weights", len(formMap["weight"])),
+			slog.Int("reps", len(formMap["reps"])))
+		c.Status(http.StatusBadRequest)
+		return
+	}
+
 	for i := 0; i < formLen; i++ {
 		oneSet.Date = date
 		oneSet.Name = formMap["name"][i]

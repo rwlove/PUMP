@@ -1,0 +1,94 @@
+---
+name: go tests
+
+# Runs the Go suite on every push or PR that touches server code.
+#
+# This did not exist until 2026-08. CodeQL's autobuild compiled the code, so
+# broken *compiles* were caught, but nothing ran a single test — a logic
+# regression in the set gate, the SSE echo suppression or the weight
+# plausibility guard went green and shipped. The v0.0.108 double-add bug is
+# exactly that shape.
+#
+# The store tests need a real PostgreSQL: the defects they exist to catch are
+# an UPDATE matching more rows than intended, a transaction that isn't one, a
+# DELETE whose subquery selects too much. None of those can occur against an
+# in-memory fake. They skip when PUMP_TEST_DSN is unset, so a contributor
+# without a database still gets the rest of the suite.
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/go-test.yml"
+  pull_request:
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/go-test.yml"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  test:
+    name: go test
+    runs-on: ubuntu-latest
+
+    # Read-only: checks out, builds, tests. Never writes to the repo or
+    # publishes anything.
+    permissions:
+      contents: read
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: pumptest
+          POSTGRES_DB: pumptest
+        ports:
+          - 5432:5432
+        # Without this the job races initdb and the first connection fails.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # Track go.mod rather than pinning here, so the toolchain the tests
+          # run under cannot silently drift from the one the module declares.
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Check formatting
+        # gofmt exits 0 even when it reformats, so failure has to be derived
+        # from whether it named any files.
+        run: |
+          unformatted=$(gofmt -l . | grep -v '^vendor/' || true)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Test
+        # -race because the SSE brokers and the Voltra state package are
+        # concurrent by design and their failure mode is a silent data race.
+        env:
+          PUMP_TEST_DSN: >-
+            postgres://postgres:pumptest@localhost:5432/pumptest?sslmode=disable
+        run: go test -race ./...

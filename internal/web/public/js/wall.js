@@ -11,9 +11,13 @@
 (function() {
   'use strict';
 
-  // Today, in the page's local timezone (matches the server's timezone
-  // since the kiosk is in the same room as the server in practice).
-  const today = new Date().toISOString().slice(0, 10);
+  // Today, in the page's local timezone. Deliberately not toISOString(),
+  // which is UTC: in Eastern that rolls over at 20:00 and the kiosk spends
+  // every evening session filtering on tomorrow's date, showing "No sets yet
+  // today". todayStr() also prefers the server's date over the browser clock.
+  //
+  // Called at render time rather than captured at load, so a kiosk left up
+  // overnight rolls over instead of sticking on yesterday's date forever.
 
   const els = {
     date:     document.getElementById('wallDate'),
@@ -62,7 +66,7 @@
 
   function renderSets() {
     const todays = Array.from(sets.values())
-      .filter(s => s.Date === today)
+      .filter(s => s.Date === todayStr())
       .sort((a, b) => b.ID - a.ID); // newest first
 
     if (todays.length === 0) {

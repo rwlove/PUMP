@@ -63,9 +63,14 @@ function entryToSet(entry) {
 function saveWorkoutPerSet() {
     var dirty = document.querySelectorAll('.workout-entry[data-dirty="true"]');
     if (dirty.length === 0) return;
-    saveStatus('saving', 'Saving…');
     var promises = [];
     dirty.forEach(function(entry) {
+        // A create already in flight has no id yet. Starting a second one
+        // would POST the same row twice — type a weight within ~600 ms of
+        // adding an exercise on a slow connection and you get two sets, one
+        // blank. Leave it dirty; the next autosave PATCHes it with an id.
+        if (entry.dataset.saving === 'true') return;
+
         var sid = entry.dataset.setId;
         var body = entryToSet(entry);
         var p;
@@ -79,8 +84,14 @@ function saveWorkoutPerSet() {
                     Reps: body.Reps,
                     Note: body.Note,
                 }),
+            }).then(function(r) {
+                // Without this a 500 resolves normally, the entry is marked
+                // clean, and the UI reports "Saved" for an edit that was never
+                // persisted and will never be retried.
+                if (!r.ok) throw new Error('HTTP ' + r.status);
             });
         } else {
+            entry.dataset.saving = 'true';
             p = fetch('/api/sets', {
                 method: 'POST',
                 headers: writeHeaders(),
@@ -90,10 +101,14 @@ function saveWorkoutPerSet() {
                 return r.json();
             }).then(function(out) {
                 entry.dataset.setId = out.id;
+            }).finally(function() {
+                entry.dataset.saving = 'false';
             });
         }
         promises.push(p.then(function() { entry.dataset.dirty = 'false'; }));
     });
+    if (promises.length === 0) return;
+    saveStatus('saving', 'Saving…');
     Promise.all(promises)
         .then(function() { saveStatus('saved', 'Saved'); })
         .catch(function() { saveStatus('error', 'Error saving'); });
@@ -185,6 +200,11 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
     var safeReps   = (reps   !== undefined && reps   !== '' && reps   !== '0') ? reps   : '';
     var safeNote   = note || '';
     var priorNote  = (prior && prior.Note) ? prior.Note : '';
+    // Exercise names are unrestricted free text and this row is built with
+    // innerHTML, so an unescaped name is script. Names reach here both from
+    // the exercise list and from sidecar-written sets arriving over SSE, so an
+    // injected one would execute on every render of the workout page.
+    var safeName   = escapeHtml(name);
 
     var setBadge = '<span class="set-badge">Set ' + setNum + '</span>';
 
@@ -226,9 +246,9 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
         <div class="entry-main">
             <div class="entry-body">
                 <div class="entry-header">
-                    <input type="hidden" name="name" value="${name}" data-exname="${name}">
+                    <input type="hidden" name="name" value="${safeName}" data-exname="${safeName}">
                     ${sourceBadge}
-                    <span class="entry-name" title="${name}">${name}</span>
+                    <span class="entry-name" title="${safeName}">${safeName}</span>
                     ${setBadge}
                 </div>
                 ${pendingBanner}
@@ -334,8 +354,18 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
     updateEmptyState();
     refreshWeekStreak();
     // Mark new (no server id yet) entries dirty so the next autosave POSTs them.
-    if (!meta.id) markDirty(entry);
-    scheduleAutosave();
+    //
+    // Only schedule a save for genuinely new rows. Rendering a day calls this
+    // once per existing set, and an unconditional autosave meant simply
+    // *looking* at a day rewrote it: in bulk mode that is DELETE-the-day plus
+    // re-INSERT from the DOM, so any set the browser had not seen — one added
+    // from the wall kiosk or another tab since page load — was destroyed by a
+    // save the user never asked for. A row that arrived with a server id is
+    // already persisted and has nothing to write back.
+    if (!meta.id) {
+        markDirty(entry);
+        scheduleAutosave();
+    }
 }
 
 // removeEntry pulls an entry out of the DOM. When viaApi is true and the
@@ -383,8 +413,45 @@ function confirmEntry(entry) {
         }),
     }).then(function(r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
-        // SSE update event will refresh the entry visually.
+        // Clear the pending state locally rather than waiting for SSE.
+        //
+        // This used to rely on receiving its own update event, but the
+        // echo-suppression fix for the double-add bug means the server
+        // deliberately skips the originating client. Nothing arrived, so the
+        // banner and the ✓/✗ pair stayed on screen forever and the row never
+        // gained a delete button — until a reload.
+        clearPendingState(entry);
     }).catch(function() { saveStatus('error', 'Confirm failed'); });
+}
+
+// clearPendingState turns a confirmed row into an ordinary one: drop the
+// banner, swap the confirm/reject pair for a delete button. A pending row
+// renders one or the other, never both, so the delete button has to be built
+// rather than un-hidden.
+function clearPendingState(entry) {
+    entry.dataset.pending = 'false';
+
+    var banner = entry.querySelector('.entry-pending-banner');
+    if (banner) banner.remove();
+
+    var confirmBtn = entry.querySelector('.entry-confirm-btn');
+    var rejectBtn = entry.querySelector('.entry-reject-btn');
+    var anchor = confirmBtn || rejectBtn;
+    if (!anchor) return; // already an ordinary row
+
+    var del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'entry-del-btn';
+    del.title = 'Remove';
+    del.setAttribute('aria-label', 'Remove set');
+    del.innerHTML = '<i class="bi bi-x-lg"></i>';
+    del.addEventListener('click', function() {
+        removeEntry(entry, /*viaApi*/ window._autoLog);
+    });
+    anchor.parentNode.insertBefore(del, anchor);
+
+    if (confirmBtn) confirmBtn.remove();
+    if (rejectBtn) rejectBtn.remove();
 }
 
 // renderNote shows or hides the note row based on whether text is present.

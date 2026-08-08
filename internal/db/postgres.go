@@ -15,6 +15,16 @@ type pgMigration struct {
 	SQL         string
 }
 
+// Migrations exposes the ordered migration list for tests. The runner skips
+// any version already recorded in schema_version, so a gap in the sequence
+// makes it silently skip everything above the gap — a property worth asserting
+// rather than trusting to review.
+func Migrations() []pgMigration {
+	out := make([]pgMigration, len(pgMigrations))
+	copy(out, pgMigrations)
+	return out
+}
+
 // pgMigrations is the ordered list of all schema versions.
 // Always append — never modify an existing entry.
 var pgMigrations = []pgMigration{
