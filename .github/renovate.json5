@@ -55,11 +55,32 @@
       semanticCommitScope: "deps",
     },
     {
-      description: "Base images. Deliberately pinned to a minor line — golang:alpine drifted a full minor version ahead of go.mod, so release binaries were built by a compiler nobody chose. Let Renovate propose the move rather than inheriting it silently.",
+      description: "Base images.",
       matchManagers: ["dockerfile"],
       groupName: "base images",
       semanticCommitType: "fix",
       semanticCommitScope: "deps",
+    },
+    {
+      description: "The Go base image mirrors the `go` directive in go.mod and must not move on its own. golang:alpine had already drifted a full minor ahead, so release binaries were built by a compiler nobody chose and differed from what `go test` used locally. Bump go.mod first, then this to match — Renovate cannot see that coupling.",
+      matchManagers: ["dockerfile"],
+      matchDepNames: ["golang", "docker.io/library/golang"],
+      enabled: false,
+    },
+    {
+      description: "setup-python's python-version mirrors the interpreter in the runtime image — 3.12 from the nvidia pytorch base for pump-cv, python:3.12-slim for pump-voltra. Letting it track latest is precisely the bug that was just fixed: CI passing on an interpreter production never runs. Change the base image first, then this.",
+      matchManagers: ["github-actions"],
+      matchDepNames: ["python"],
+      enabled: false,
+    },
+    {
+      description: "The CUDA/PyTorch base is ~10 GB and a bump changes the CUDA runtime, the Python version and the torch API at once. Worth doing, never worth batching — keep it out of the grouped base-images PR so it gets reviewed on its own.",
+      matchManagers: ["dockerfile"],
+      matchDepNames: ["nvcr.io/nvidia/pytorch"],
+      groupName: null,
+      semanticCommitType: "fix",
+      semanticCommitScope: "deps",
+      prPriority: -5,
     },
   ],
 
