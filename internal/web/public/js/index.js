@@ -72,7 +72,7 @@ function saveWorkoutPerSet() {
         if (sid) {
             p = fetch('/api/sets/' + sid, {
                 method: 'PATCH',
-                headers: {'Content-Type': 'application/json'},
+                headers: writeHeaders(),
                 body: JSON.stringify({
                     Name: body.Name,
                     Weight: body.Weight,
@@ -83,7 +83,7 @@ function saveWorkoutPerSet() {
         } else {
             p = fetch('/api/sets', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: writeHeaders(),
                 body: JSON.stringify(body),
             }).then(function(r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -336,7 +336,7 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
 // entry has a server id, also fires DELETE /api/sets/:id (don't wait).
 function removeEntry(entry, viaApi) {
     if (viaApi && entry.dataset.setId) {
-        fetch('/api/sets/' + entry.dataset.setId, {method: 'DELETE'});
+        fetch('/api/sets/' + entry.dataset.setId, {method: 'DELETE', headers: writeHeaders()});
     }
     entry.remove();
     updateEmptyState();
@@ -368,7 +368,7 @@ function confirmEntry(entry) {
     var body = entryToSet(entry);
     fetch('/api/sets/' + sid + '/confirm', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: writeHeaders(),
         body: JSON.stringify({
             Name: body.Name,
             Weight: body.Weight,

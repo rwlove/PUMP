@@ -43,6 +43,18 @@ func ingestAuth(key, label string) gin.HandlerFunc {
 	}
 }
 
+// clientID returns the caller's self-assigned client id, used to keep a write
+// from being echoed back to the client that made it over /api/sets/stream.
+//
+// Purely an identity hint, never an authorisation check: a client picks its own
+// id and the only thing it can do with it is suppress its own echoes. Empty is
+// normal and means "echo this to everyone" — that is the correct behaviour for
+// pump-cv, pump-voltra and anything hand-rolled, whose writes every browser
+// does want to see.
+func clientID(c *gin.Context) string {
+	return c.GetHeader("X-Client-Id")
+}
+
 // sseHeaders prepares the response for server-sent events and emits the
 // initial ": connected" comment. Returns false when the write failed.
 func sseHeaders(c *gin.Context) bool {

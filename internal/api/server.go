@@ -255,7 +255,7 @@ func putSetsByDate(c *gin.Context) {
 		return
 	}
 	slog.Info("sets saved", slog.String("date", date), slog.Int("count", len(sets)))
-	publishSetEvent(SetEvent{Type: SetEventBulk, Date: date})
+	publishSetEvent(SetEvent{Type: SetEventBulk, Date: date}, clientID(c))
 	c.Status(http.StatusOK)
 }
 
@@ -268,7 +268,7 @@ func putSetsByDate(c *gin.Context) {
 // A keepalive comment is sent every 25 s to keep idle connections open
 // through proxies. Slow subscribers have events dropped silently.
 func getSetsStream(c *gin.Context) {
-	ch, unsub := setBroker.subscribe()
+	ch, unsub := setBroker.subscribe(c.Query("client"))
 	defer unsub()
 
 	if !sseHeaders(c) {
@@ -326,7 +326,7 @@ func postSet(c *gin.Context) {
 		slog.String("source", stored.Source),
 		slog.Bool("pending", stored.Pending),
 	)
-	publishSetEvent(SetEvent{Type: SetEventAdd, ID: stored.ID, Date: stored.Date, Set: &stored})
+	publishSetEvent(SetEvent{Type: SetEventAdd, ID: stored.ID, Date: stored.Date, Set: &stored}, clientID(c))
 	if stored.Pending {
 		pushover.SendAsync(buildPendingSetMessage(stored))
 	}
@@ -371,7 +371,7 @@ func patchSet(c *gin.Context) {
 	}
 	slog.Debug("set updated", slog.Int("id", id))
 	if stored.ID != 0 {
-		publishSetEvent(SetEvent{Type: SetEventUpdate, ID: id, Date: stored.Date, Set: &stored})
+		publishSetEvent(SetEvent{Type: SetEventUpdate, ID: id, Date: stored.Date, Set: &stored}, clientID(c))
 	}
 	c.Status(http.StatusOK)
 }
@@ -400,7 +400,7 @@ func postSetConfirm(c *gin.Context) {
 	}
 	slog.Info("set confirmed", slog.Int("id", id))
 	if stored.ID != 0 {
-		publishSetEvent(SetEvent{Type: SetEventUpdate, ID: id, Date: stored.Date, Set: &stored})
+		publishSetEvent(SetEvent{Type: SetEventUpdate, ID: id, Date: stored.Date, Set: &stored}, clientID(c))
 	}
 	c.Status(http.StatusOK)
 }
@@ -482,7 +482,7 @@ func deleteSet(c *gin.Context) {
 		return
 	}
 	slog.Info("set deleted", slog.Int("id", id))
-	publishSetEvent(SetEvent{Type: SetEventDelete, ID: id, Date: date})
+	publishSetEvent(SetEvent{Type: SetEventDelete, ID: id, Date: date}, clientID(c))
 	c.Status(http.StatusNoContent)
 }
 
