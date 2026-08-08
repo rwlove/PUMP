@@ -1,6 +1,6 @@
 # Single stage: unlike pump-cv there is no GPU stack here, so the whole image
 # is small enough that the split base/runtime build buys nothing.
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 
