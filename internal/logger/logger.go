@@ -20,7 +20,7 @@ import (
 	"strings"
 )
 
-// activeLevel holds the level chosen at Init time so IsDebug() is a cheap read.
+// activeLevel holds the level chosen at Init time.
 var activeLevel = slog.LevelInfo
 
 // Init configures the global slog default and redirects the legacy log package
@@ -47,12 +47,6 @@ func Init(level string) {
 		slog.String("level", activeLevel.String()),
 	)
 }
-
-// Level returns the currently active slog.Level.
-func Level() slog.Level { return activeLevel }
-
-// IsDebug returns true when DEBUG logging is active.
-func IsDebug() bool { return activeLevel <= slog.LevelDebug }
 
 func parseLevel(s string) slog.Level {
 	switch strings.ToLower(strings.TrimSpace(s)) {
