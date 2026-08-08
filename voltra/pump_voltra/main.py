@@ -49,6 +49,8 @@ async def _serve_probes(cfg) -> asyncio.Task | None:
 
 async def _run_live(cfg, pump: PumpClient, namer: ExerciseNamer) -> None:
     from .client import VoltraClient, WorkoutInactive
+    from .control import Controller
+    from .motor import MotorController
     from .transport import TrainerNotAdvertising, connect_proxy, connect_trainer
 
     tracker = SetTracker(idle_seconds=cfg.set_idle_seconds)
@@ -108,6 +110,15 @@ async def _run_live(cfg, pump: PumpClient, namer: ExerciseNamer) -> None:
                 continue
 
             client = VoltraClient(link.client, on_telemetry)
+            motor = MotorController(client, cfg.max_load_lb)
+            controller = Controller(pump, motor, cfg.max_load_lb)
+            runner.attach_controller(controller)
+            # Phase 2 tasks live and die with the BLE session: a controller
+            # holding a stale client would reconcile onto a dead connection.
+            session = [
+                asyncio.create_task(controller.watch()),
+                asyncio.create_task(controller.heartbeat()),
+            ]
             try:
                 await client.start()
                 await client.subscribe_telemetry()
@@ -134,6 +145,17 @@ async def _run_live(cfg, pump: PumpClient, namer: ExerciseNamer) -> None:
                 logger.warning("session ended; reconnecting", error=str(e))
             finally:
                 healthd.record_connected(False)
+                # Release before anything else. Every exit from a session —
+                # error, workout ended, shutdown — must leave the cable slack,
+                # and stopping the keepalive is what does it.
+                for t in session:
+                    t.cancel()
+                for t in session:
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
+                        await t
+                with contextlib.suppress(Exception):
+                    await motor.unload()
+                runner.attach_controller(None)
                 # Only the BLE half. The proxy session stays up so its single
                 # advertisement subscription is never surrendered — losing it
                 # is what makes the trainer look permanently absent.

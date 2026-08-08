@@ -30,6 +30,10 @@ default_exercise: Voltra
 # PUMP takes effect without restarting this service.
 exercise_refresh_seconds: 300
 
+# Hard clamp on any weight written to the trainer. A backstop against a bug
+# producing a garbage value, not a training limit; the protocol accepts 200.
+max_load_lb: 130
+
 # Fallback only. The device emits its own end-of-set summary; this closes a
 # set when that summary is lost in transport.
 set_idle_seconds: 30

@@ -46,6 +46,12 @@ class VoltraConfig(BaseModel):
     # pass. The proxy session is kept open across these, so a long wait costs
     # nothing and gives the scanner's advertisement subscription time to land.
     discovery_timeout_seconds: float = 300.0
+    # Hard clamp on any weight this service will write to the trainer. A
+    # backstop against a bug producing a garbage value, not a training limit —
+    # the protocol accepts 200. Raise it deliberately if real work outgrows it
+    # rather than leaving it to silently reject sets.
+    max_load_lb: int = 130
+
     # Slow poll of the trainer's target load. Deliberately not the 40 Hz
     # stream: that is the one thing the ESPHome proxy handles badly.
     load_poll_seconds: float = 5.0
@@ -87,6 +93,11 @@ def load(path: str | Path | None = None) -> VoltraConfig:
     _env_float(cfg, "exercise_refresh_seconds", "VOLTRA_EXERCISE_REFRESH_SECONDS")
     _env_float(cfg, "set_idle_seconds", "VOLTRA_SET_IDLE_SECONDS")
     _env_float(cfg, "load_poll_seconds", "VOLTRA_LOAD_POLL_SECONDS")
+    if v := os.getenv("VOLTRA_MAX_LOAD_LB"):
+        try:
+            cfg.max_load_lb = int(float(v))
+        except ValueError:
+            pass
 
     _env_str(cfg.proxy, "host", "VOLTRA_PROXY_HOST")
     _env_str(cfg.proxy, "psk", "VOLTRA_PROXY_PSK")

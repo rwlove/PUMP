@@ -25,10 +25,20 @@ def today_str() -> str:
 
 
 class Runner:
-    def __init__(self, pump: PumpClient, namer: ExerciseNamer, tracker: SetTracker):
+    def __init__(self, pump: PumpClient, namer: ExerciseNamer, tracker: SetTracker,
+                 controller=None):
         self._pump = pump
         self._namer = namer
         self._tracker = tracker
+        # Phase 2: when present, nothing is recorded unless a set is armed AND
+        # the motor is confirmed engaged at PUMP's weight.
+        self._controller = controller
+
+    def attach_controller(self, controller) -> None:
+        """Bind (or clear) the phase-2 gate. Cleared on session teardown so a
+        stale controller cannot keep recording enabled after the BLE link is
+        gone."""
+        self._controller = controller
 
     # ─── naming inputs ───────────────────────────────────────────────────
 
@@ -76,6 +86,17 @@ class Runner:
     # ─── the write path ──────────────────────────────────────────────────
 
     async def post(self, done: CompletedSet) -> None:
+        if self._controller is not None and not self._controller.recording():
+            # Not armed, or armed but the motor was never confirmed engaged.
+            # Recording anyway would attribute PUMP's weight to reps performed
+            # against whatever load the trainer happened to be holding.
+            logger.info(
+                "set not recorded — no armed and loaded Voltra set",
+                reps=done.reps,
+                device_set=done.set_number,
+            )
+            return
+
         today = today_str()
         anchor, pending = self._namer.resolve(today)
 
