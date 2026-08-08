@@ -78,6 +78,38 @@ class PumpClient:
         r.raise_for_status()
         return int(r.json()["id"])
 
+    # ─── voltra coordination ──────────────────────────────────────────────
+
+    async def report_voltra(self, loaded: bool, error: str = "") -> None:
+        """Tell PUMP what the motor is actually doing.
+
+        PUMP keeps desired and actual apart and disbelieves a stale Loaded
+        claim, so this doubles as the liveness signal.
+        """
+        r = await self._client.post(
+            "/api/voltra/report", json={"Loaded": loaded, "Error": error}
+        )
+        r.raise_for_status()
+
+    async def stream_voltra_state(self) -> AsyncIterator[dict]:
+        """Follow PUMP's desired Voltra state.
+
+        Read timeout disabled for the same reason as the sets stream: an SSE
+        connection is idle by design between changes, and the client-wide
+        timeout would tear down a healthy subscription.
+        """
+        timeout = httpx.Timeout(self._timeout_s, read=None)
+        async with aconnect_sse(
+            self._client, "GET", "/api/voltra/stream", timeout=timeout
+        ) as source:
+            async for sse in source.aiter_sse():
+                if not sse.data:
+                    continue
+                try:
+                    yield json.loads(sse.data)
+                except json.JSONDecodeError:
+                    logger.warning("voltra sse: bad json", raw=sse.data[:200])
+
     async def stream_set_events(self) -> AsyncIterator[SetEvent]:
         """Subscribe to the SSE feed. Reconnects are the caller's business.
 

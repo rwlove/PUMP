@@ -922,3 +922,84 @@
   .recovery-th:nth-child(3),
   .recovery-td:nth-child(3) { display: none; }
 }
+
+/* ── Voltra phase-2 controls ──────────────────────────────────────────────
+   Two states, and the distinction is a correctness concern rather than
+   styling: an armed-but-unloaded set is one you would perform and have
+   nothing recorded for.
+
+   So "not ready" is drawn as visually unfinished — dashed, faded, no fill —
+   and "ready" is solid and filled. That reads at a glance, from the machine,
+   without reading text. It deliberately does not depend on hue alone: the
+   difference survives colour-blindness, glare and a phone at arm's length,
+   because it is a difference in *substance* rather than colour.               */
+
+.voltra-ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 4px;
+}
+
+.voltra-load-btn {
+  border: 1px solid var(--bs-border-color);
+  background: transparent;
+  color: var(--bs-body-color);
+  border-radius: 6px;
+  padding: 2px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: 0.15s ease;
+}
+.voltra-load-btn:hover { border-color: var(--bs-primary); }
+
+/* Engaged: filled, so the control itself also reads as "on". */
+.voltra-load-btn.is-loaded {
+  background: var(--bs-success, #198754);
+  border-color: var(--bs-success, #198754);
+  color: #fff;
+}
+
+.voltra-status {
+  font-size: 0.7rem;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+.voltra-status-warn {
+  color: var(--bs-warning, #ffc107);
+  opacity: 1;
+  font-weight: 600;
+}
+
+/* ARMED, NOT LOADED — provisional. Dashed outline, faded content, no fill.
+   The row looks like it has not happened yet, because it has not.            */
+.workout-entry.voltra-armed {
+  outline: 2px dashed var(--bs-warning, #ffc107);
+  outline-offset: -3px;
+  background: transparent;
+}
+.workout-entry.voltra-armed .entry-name,
+.workout-entry.voltra-armed .entry-num,
+.workout-entry.voltra-armed .set-badge {
+  opacity: 0.55;
+}
+
+/* LOADED — solid and filled. Recording is live. */
+.workout-entry.voltra-loaded {
+  outline: 2px solid var(--bs-success, #198754);
+  outline-offset: -3px;
+  background: color-mix(in srgb, var(--bs-success, #198754) 12%, var(--bs-body-bg));
+}
+.workout-entry.voltra-loaded .entry-name { font-weight: 700; }
+
+/* A Voltra row that is neither armed nor loaded stays completely ordinary —
+   the controls should not shout at you on every cable exercise in the day.  */
+.workout-entry.voltra-set:not(.voltra-armed):not(.voltra-loaded) .voltra-status {
+  opacity: 0.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voltra-load-btn { transition: none; }
+}
