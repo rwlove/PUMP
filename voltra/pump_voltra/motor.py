@@ -77,14 +77,27 @@ class MotorController:
                 "no active workout on the trainer — start one on the device"
             )
 
-        # Weight only ever changes while disengaged.
-        await self._release_motor()
+        # Stop the previous keepalive before touching anything.
+        #
+        # Re-loading at a new weight used to leave the running task alive and
+        # then overwrite self._task, so unload() cancelled only the newest one.
+        # The orphan kept re-asserting MODE_LOADED every 5 s and the cable
+        # stayed live indefinitely while the UI reported it slack. An orphan
+        # could also satisfy the mode read-back below, hiding a write that
+        # never landed.
+        await self._stop_keepalive()
+
+        # Weight only ever changes while disengaged. A release that did not
+        # land must abort: writing a new target under tension is exactly what
+        # this ordering exists to prevent, and the device's ~8 s auto-expiry is
+        # far too slow to cover the ~0.4 s until the next write.
+        await self._release_motor(required=True)
 
         await self._client.write(registry.TARGET_LOAD, weight_lb)
         readback = (await self._client.read(registry.TARGET_LOAD)).get(registry.TARGET_LOAD)
         if readback != weight_lb:
             raise LoadRefused(
-                f"target load read back as {readback}, expected {weight_lb} — "
+                f"target load read back as {readback!r}, expected {weight_lb} — "
                 "not engaging; the device would have applied the previous weight"
             )
 
@@ -93,7 +106,7 @@ class MotorController:
         if mode != registry.MODE_LOADED:
             # Leave it released rather than half-engaged.
             await self._release_motor()
-            raise LoadRefused(f"fitness mode read back as {mode}, expected loaded")
+            raise LoadRefused(f"fitness mode read back as {mode!r}, expected loaded")
 
         self._weight = weight_lb
         self._task = asyncio.create_task(self._keepalive())
@@ -131,10 +144,20 @@ class MotorController:
             pass
         self._task = None
 
-    async def _release_motor(self) -> None:
+    async def _release_motor(self, required: bool = False) -> None:
+        """Tell the device to release.
+
+        required=True is for the disengage-before-write step, where auto-expiry
+        is not an acceptable backstop because the next write follows in
+        milliseconds. Everywhere else a failed release is survivable: we have
+        already stopped asserting, so the device drops the load within ~8 s.
+        """
         try:
             await self._client.write(registry.FITNESS_MODE, registry.MODE_UNLOADED)
         except Exception as e:
-            # The device's own expiry is the backstop, so a failed release is
-            # not fatal — but it is worth knowing about.
+            if required:
+                raise LoadRefused(
+                    f"could not release the motor before changing weight ({e}); "
+                    "refusing to write a new target under tension"
+                ) from e
             logger.warning("explicit release failed; relying on auto-expiry", error=str(e))

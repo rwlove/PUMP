@@ -14,7 +14,7 @@ import pytest
 
 from pump_voltra import registry
 from pump_voltra.client import WorkoutInactive
-from pump_voltra.motor import LoadRefused, MotorController
+from pump_voltra.motor import KEEPALIVE_S, LoadRefused, MotorController
 from tests.conftest import FakeClient
 
 
@@ -154,3 +154,79 @@ async def test_loaded_reports_false_before_any_load() -> None:
     m = MotorController(FakeClient(), max_load_lb=130)
     assert not m.loaded
     assert m.weight_lb is None
+
+
+# ─── regressions for the two defects that made the safety story untrue ───────
+
+
+class DroppingClient(FakeClient):
+    """A device whose replies never arrive — the proxy dropped them.
+
+    Writes are accepted (the ESP32 ACKs at the GATT layer) but no notification
+    comes back, so nothing new lands in the parameter cache.
+    """
+
+    async def write(self, param_id: int, value: int, settle_s: float = 0.0) -> None:
+        self.writes.append((param_id, value))  # deliberately does not cache
+
+    async def read(self, *param_ids: int, settle_s: float = 0.0) -> dict[int, int]:
+        # VoltraClient.read drops cached ids before requesting, so an absent
+        # reply yields an absent key rather than a stale value.
+        return {}
+
+
+async def test_load_refuses_when_no_readback_arrives() -> None:
+    """A dropped reply must never be read as agreement.
+
+    read() used to return whatever was already cached, so a congested proxy
+    made both read-back gates pass on minutes-old values and the motor was
+    reported engaged at a weight the device never confirmed.
+    """
+    ble = DroppingClient(workout=True)
+    motor = MotorController(ble, max_load_lb=130)
+    with pytest.raises(LoadRefused):
+        await motor.load(50)
+    assert not motor.loaded
+
+
+async def test_reload_does_not_orphan_the_previous_keepalive() -> None:
+    """Changing weight must not leave a second keepalive holding the cable.
+
+    load() overwrote self._task without cancelling the running one, so unload()
+    cancelled only the newest and the orphan kept re-asserting MODE_LOADED
+    every 5 s — cable live, UI reporting slack.
+    """
+    ble = FakeClient(workout=True)
+    motor = MotorController(ble, max_load_lb=130)
+
+    await motor.load(50)
+    first = motor._task
+    await motor.load(80)
+    assert first is not None and first.done(), "previous keepalive was left running"
+
+    await motor.unload()
+    assert not motor.loaded
+
+    # Nothing may assert MODE_LOADED after the release.
+    ble.writes.clear()
+    await asyncio.sleep(KEEPALIVE_S * 2.2)
+    assert registry.MODE_LOADED not in [
+        v for p, v in ble.writes if p == registry.FITNESS_MODE
+    ], "an orphaned keepalive re-engaged the motor after unload"
+
+
+async def test_failed_release_aborts_instead_of_writing_under_tension() -> None:
+    """If the disengage does not land, the new weight must not be written."""
+
+    class ReleaseFails(FakeClient):
+        async def write(self, param_id: int, value: int, settle_s: float = 0.0) -> None:
+            if param_id == registry.FITNESS_MODE and value == registry.MODE_UNLOADED:
+                raise RuntimeError("BLE write failed")
+            await super().write(param_id, value, settle_s)
+
+    ble = ReleaseFails(workout=True)
+    motor = MotorController(ble, max_load_lb=130)
+    with pytest.raises(LoadRefused):
+        await motor.load(50)
+    assert ble.loads_written() == [], "wrote a new target load under tension"
+    assert not motor.loaded

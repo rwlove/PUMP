@@ -86,9 +86,23 @@ async def _run_live(cfg, pump: PumpClient, namer: ExerciseNamer) -> None:
 
     try:
         while True:
+            # Proxy and trainer failures are handled separately on purpose. The
+            # proxy session owns the ESP32's single advertisement subscription,
+            # and surrendering it is what makes the trainer look permanently
+            # absent — so only a proxy-level failure may tear it down.
             try:
                 if link is None:
                     link = await connect_proxy(cfg.proxy.host, cfg.proxy.port, cfg.proxy.psk)
+            except Exception as e:
+                logger.warning("proxy connect failed; retrying",
+                               error=str(e), retry_in_s=backoff)
+                healthd.record_connected(False)
+                link = None
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, MAX_BACKOFF_S)
+                continue
+
+            try:
                 await connect_trainer(link, cfg.address, cfg.discovery_timeout_seconds)
                 backoff = MIN_BACKOFF_S
             except TrainerNotAdvertising as e:
@@ -99,12 +113,13 @@ async def _run_live(cfg, pump: PumpClient, namer: ExerciseNamer) -> None:
                 await asyncio.sleep(MIN_BACKOFF_S)
                 continue
             except Exception as e:
-                logger.warning("connect failed; retrying", error=str(e), retry_in_s=backoff)
+                # A transient BLE failure (establish_connection exhausting its
+                # attempts, say) is not a reason to drop the proxy session.
+                logger.warning("trainer connect failed; retrying",
+                               error=str(e), retry_in_s=backoff)
                 healthd.record_connected(False)
-                if link is not None:
-                    with contextlib.suppress(Exception):
-                        await link.close()
-                    link = None
+                with contextlib.suppress(Exception):
+                    await link.close_trainer()
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, MAX_BACKOFF_S)
                 continue
@@ -115,13 +130,20 @@ async def _run_live(cfg, pump: PumpClient, namer: ExerciseNamer) -> None:
             runner.attach_controller(controller)
             # Phase 2 tasks live and die with the BLE session: a controller
             # holding a stale client would reconcile onto a dead connection.
-            session = [
-                asyncio.create_task(controller.watch()),
-                asyncio.create_task(controller.heartbeat()),
-            ]
+            session: list[asyncio.Task] = []
             try:
                 await client.start()
                 await client.subscribe_telemetry()
+
+                # Only now start the reconciler. Started any earlier, the first
+                # await inside the bootstrap yields to watch(), which can call
+                # motor.load() and interleave GATT writes with the handshake
+                # frames — corrupting the handshake and driving the motor
+                # before the device is configured.
+                session = [
+                    asyncio.create_task(controller.watch()),
+                    asyncio.create_task(controller.heartbeat()),
+                ]
                 healthd.record_connected(True)
                 healthd.record_workout_active(True)
                 tracker.reset_workout()
