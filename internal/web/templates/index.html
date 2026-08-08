@@ -3,6 +3,7 @@
     <link rel="stylesheet" type="text/css" href="/fs/public/css/index.css">
 {{ template "page-body" . }}
 <script src="/fs/public/js/index.js"></script>
+<script src="/fs/public/js/voltra.js"></script>
 
 <!-- ── Exercise Detail Modals ────────────────────────────────────────────── -->
 {{ range .ExData.Exs }}
@@ -219,6 +220,9 @@
   if (window._autoLog) {
     openSetsStream();
   }
+  // Voltra per-set load controls. Inert unless an exercise carries the Voltra
+  // flag, so this costs nothing on a barbell day.
+  voltraInit();
 </script>
 {{ template "footer.html" }}
 {{ end }}

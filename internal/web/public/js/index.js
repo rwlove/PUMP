@@ -324,6 +324,12 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
     }
 
     container.appendChild(entry);
+    // Voltra sets get their per-set LOAD control and row-click arming. No-op
+    // for every other exercise.
+    if (typeof voltraDecorate === 'function') {
+        voltraDecorate(entry);
+        voltraBindRowClick(entry);
+    }
     refreshSetBadges();
     updateEmptyState();
     refreshWeekStreak();
