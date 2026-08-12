@@ -28,7 +28,7 @@
 #     is the right call now that pump-cv is moving to the Spark/GB10 node.
 #   - Image is large (~10 GB) but heavy layers stay in the ZOT pull-through
 #     cache; code-only tag bumps still ship in ~1 min via the runtime image.
-FROM nvcr.io/nvidia/pytorch:25.12-py3
+FROM nvcr.io/nvidia/pytorch:26.07-py3
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
