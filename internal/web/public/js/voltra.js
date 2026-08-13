@@ -137,6 +137,7 @@ function voltraFlash(entry, msg) {
     var s = entry.querySelector('.voltra-status');
     if (!s) return;
     s.textContent = msg;
+    s.title = '';
     s.classList.add('voltra-status-warn');
     setTimeout(function() { s.classList.remove('voltra-status-warn'); voltraPaint(entry); }, 2500);
 }
@@ -161,10 +162,14 @@ function voltraPaint(entry) {
     btn.classList.toggle('is-loaded', loaded);
 
     if (status.classList.contains('voltra-status-warn')) return;
+    status.title = '';
     if (loaded) {
         status.textContent = 'loaded — recording';
     } else if (armed && _voltraState.Error) {
-        status.textContent = _voltraState.Error;
+        // The raw error is a BLE/GATT string that overflows the row and reads
+        // as noise. Show a short label and keep the full text on hover.
+        status.textContent = 'trainer error';
+        status.title = _voltraState.Error;
     } else if (armed) {
         status.textContent = 'not loaded — press LOAD';
     } else {

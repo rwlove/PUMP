@@ -68,6 +68,15 @@ func (s State) Stale(now time.Time, after time.Duration) bool {
 	return s.Loaded && !s.SidecarSeen.IsZero() && now.Sub(s.SidecarSeen) > after
 }
 
+// sidecarQuiet reports whether the sidecar has gone silent for long enough that
+// its last Error no longer describes the trainer. Unlike Stale it does not
+// require Loaded: an armed-but-unloaded set can carry a load error whose sidecar
+// has since disconnected (or the trainer was switched off), and that dead
+// complaint should expire rather than stay pinned to the row.
+func (s State) sidecarQuiet(now time.Time, after time.Duration) bool {
+	return s.SidecarSeen.IsZero() || now.Sub(s.SidecarSeen) > after
+}
+
 // StaleAfter is how long without a sidecar report before Loaded is disbelieved.
 // Comfortably above the sidecar's report cadence, comfortably below the point
 // where a human would notice the UI lying.
@@ -86,9 +95,19 @@ const staleMsg = "sidecar stopped reporting; the trainer has released by now"
 // direct read — can observe a claim that the motor is engaged after the
 // sidecar has gone quiet.
 func corrected(s State) State {
-	if s.Stale(time.Now(), StaleAfter) {
+	now := time.Now()
+	if s.Stale(now, StaleAfter) {
 		s.Loaded = false
 		s.Error = staleMsg
+		return s
+	}
+	// A sidecar-reported error outlives its truth once the sidecar goes quiet:
+	// the failure it described no longer reflects the trainer, yet it stays
+	// pinned to the armed set and lingers after the trainer is switched off.
+	// Drop it once the heartbeat lapses. staleMsg is exempt — it is set by this
+	// very correction and carries no fresh SidecarSeen of its own.
+	if s.Error != "" && s.Error != staleMsg && s.sidecarQuiet(now, StaleAfter) {
+		s.Error = ""
 	}
 	return s
 }
@@ -120,17 +139,29 @@ func WatchStale(ctx context.Context, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			now := time.Now()
 			mu.RLock()
-			stale := current.Stale(time.Now(), StaleAfter)
+			loadedStale := current.Stale(now, StaleAfter)
+			errStale := current.Error != "" && current.Error != staleMsg &&
+				current.sidecarQuiet(now, StaleAfter)
 			mu.RUnlock()
-			if !stale {
+			if !loadedStale && !errStale {
 				continue
 			}
-			// Clearing Loaded also makes this a one-shot: Stale() requires
-			// Loaded, so the next tick finds nothing to do.
+			// Correcting only on read is not enough: the browser reads state
+			// once at init and then follows SSE, so a lingering error (or a
+			// released motor) never reaches the page unless the transition is
+			// broadcast. Clearing Loaded/Error here also makes each case a
+			// one-shot — the next tick's predicate finds nothing left to do.
 			mutate(func(s *State) {
-				s.Loaded = false
-				s.Error = staleMsg
+				now := time.Now()
+				switch {
+				case s.Stale(now, StaleAfter):
+					s.Loaded = false
+					s.Error = staleMsg
+				case s.Error != "" && s.Error != staleMsg && s.sidecarQuiet(now, StaleAfter):
+					s.Error = ""
+				}
 			})
 		}
 	}

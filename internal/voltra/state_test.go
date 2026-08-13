@@ -145,6 +145,58 @@ func TestStaleSidecarReportIsDisbelieved(t *testing.T) {
 	}
 }
 
+// An armed-but-unloaded set can carry a load error the sidecar reported just
+// before it went away (trainer switched off, sidecar stopped). Stale() only
+// covers loaded sets, so nothing used to expire this error — it stayed pinned
+// to the row indefinitely. Once the heartbeat lapses the complaint is history.
+func TestStaleSidecarErrorIsCleared(t *testing.T) {
+	t.Cleanup(Reset)
+	Reset()
+	Arm(4, "50")
+	Report(false, "Characteristic a0180000-… write failed")
+
+	if Get().Error == "" {
+		t.Fatal("precondition: a fresh sidecar error should be visible")
+	}
+
+	mu.Lock()
+	current.SidecarSeen = time.Now().Add(-StaleAfter - time.Second)
+	mu.Unlock()
+
+	if s := Get(); s.Error != "" {
+		t.Errorf("stale sidecar error still shown: %q", s.Error)
+	}
+}
+
+// The cleared error must reach the page: the browser follows SSE after init, so
+// the transition has to be broadcast, not merely corrected on the next read.
+func TestStaleErrorClearIsBroadcast(t *testing.T) {
+	t.Cleanup(Reset)
+	Reset()
+	Arm(4, "50")
+	Report(false, "Characteristic a0180000-… write failed")
+
+	ch, unsub := Subscribe()
+	defer unsub()
+
+	mu.Lock()
+	current.SidecarSeen = time.Now().Add(-StaleAfter - time.Second)
+	mu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go WatchStale(ctx, 10*time.Millisecond)
+
+	select {
+	case s := <-ch:
+		if s.Error != "" {
+			t.Errorf("broadcast still carries the dead error: %q", s.Error)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("stale error clear was never broadcast; the row would keep showing it")
+	}
+}
+
 func TestSubscribersSeeChanges(t *testing.T) {
 	t.Cleanup(Reset)
 	Reset()
