@@ -51,6 +51,13 @@ func (g *gateStore) GetAppConfig(context.Context) (models.Conf, bool, error) {
 	return models.Conf{}, false, nil
 }
 func (g *gateStore) SaveAppConfig(context.Context, models.Conf) error { return nil }
+func (g *gateStore) ReorderSets(context.Context, string, []int) error { return nil }
+func (g *gateStore) LastPerformed(context.Context) (map[string]models.ExerciseRecency, error) {
+	return nil, nil
+}
+func (g *gateStore) SelectMuscles(context.Context) ([]models.Muscle, error) { return nil, nil }
+func (g *gateStore) InsertMuscle(context.Context, models.Muscle) error      { return nil }
+func (g *gateStore) DeleteMuscle(context.Context, int) error                { return nil }
 
 var _ store.Store = (*gateStore)(nil)
 

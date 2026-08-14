@@ -22,12 +22,9 @@
                     </button></td>
                     <td><input name="pagestep" type="number" class="form-control" value="{{ .Config.PageStep }}"></td>
                 </tr>
-                <tr>
-                    <td>Exercise sort window (days)<button type="button" class="btn tip-button" mytitle="Exercises are sorted by how often they were used in the last N days. Higher = appears at the top.">
-                        <i class="bi bi-question-circle"></i>
-                    </button></td>
-                    <td><input name="frequencydays" type="number" min="1" class="form-control" value="{{ .Config.FrequencyDays }}"></td>
-                </tr>
+                {{/* Exercise ordering is now automatic (most-recently-performed
+                     first, last session's order preserved), so the old sort
+                     window control is gone. */}}
                 <tr>
                     <td>Main page history<button type="button" class="btn tip-button" mytitle="How many days of workouts are available on the main page for review.">
                         <i class="bi bi-question-circle"></i>
@@ -115,10 +112,47 @@
             <div class="card-body">
                 <p>PUMP — Please Use More Protein — open source workout tracker</p>
             </div>
-        </div>
+            </div>
+
+            <!-- ── Muscle catalog (focus muscles per group) ─────────────── -->
+            <div class="card border-primary mb-4">
+                <div class="card-header">Muscle groups &amp; focus muscles</div>
+                <div class="card-body" id="muscleCatalog">
+                    <p class="small text-body-secondary">
+                        Each muscle group has a set of focus muscles. When creating an exercise you
+                        pick its focus from its group's list — later, workout plans use these to
+                        ensure every muscle in a group is covered.
+                    </p>
+                    <div id="muscleGroups"></div>
+
+                    <hr>
+                    <div class="row g-2 align-items-end">
+                        <div class="col-12">
+                            <label class="form-label small mb-1">Add a muscle</label>
+                        </div>
+                        <div class="col-5">
+                            <input list="muscleGroupOptions" id="newMuscleGroup" class="form-control form-control-sm"
+                                placeholder="Group" autocomplete="off">
+                            <datalist id="muscleGroupOptions">
+                                {{ range .GroupMap }}<option value="{{ . }}"></option>{{ end }}
+                            </datalist>
+                        </div>
+                        <div class="col-5">
+                            <input id="newMuscleName" class="form-control form-control-sm" placeholder="Muscle" autocomplete="off">
+                        </div>
+                        <div class="col-2">
+                            <button type="button" id="addMuscleBtn" class="btn btn-sm btn-primary w-100">Add</button>
+                        </div>
+                    </div>
+                    <div id="muscleStatus" class="small mt-2"></div>
+                </div>
+            </div>
         </div>
     </div>
     </div>
+
+    <script>window._muscles = {{ .Muscles }};</script>
+    <script src="/fs/public/js/config.js"></script>
 
 {{ template "footer.html" }}
 {{ end }}

@@ -9,13 +9,12 @@ import (
 
 // Conf - web gui config
 type Conf struct {
-	Color         string
-	NodePath      string
-	PageStep      int
-	FrequencyDays int  // days to look back when sorting exercises by usage frequency
-	DisplayDays   int  // days of history shown on main page (7/30/90/365)
-	AutoFill      bool // pre-fill weight/reps from last performance of that exercise
-	CVAutoLog     bool // when true, accept set writes from the pump-cv sidecar
+	Color       string
+	NodePath    string
+	PageStep    int
+	DisplayDays int  // days of history shown on main page (7/30/90/365)
+	AutoFill    bool // pre-fill weight/reps from last performance of that exercise
+	CVAutoLog   bool // when true, accept set writes from the pump-cv sidecar
 
 	// VoltraAutoLog gates set writes from the pump-voltra sidecar. Env-only
 	// (VOLTRA_AUTOLOG); unlike CVAutoLog it is not persisted in app_config,
@@ -62,6 +61,36 @@ type Exercise struct {
 	// see electronic resistance). A flag rather than a name heuristic:
 	// plenty of exercises have "cable" in the name and use a plate stack.
 	Voltra bool `db:"VOLTRA"`
+	// Focus is the primary muscle this exercise targets within its group
+	// (e.g. "Hamstrings" for an RDL in the Legs group). Free text validated
+	// against the group's muscle catalog on the create form; used by future
+	// workout plans to ensure every focus muscle in a group is covered.
+	Focus string `db:"FOCUS"`
+	// Bodyweight marks an exercise whose load is the athlete's own body
+	// weight (lunges, pull-ups). When set, the workout log pre-fills the
+	// most recent body-weight reading and offers an optional added-weight
+	// field for holding dumbbells / a weight belt.
+	Bodyweight bool `db:"BODYWEIGHT"`
+}
+
+// ExerciseRecency is the last-performed signal used to order the exercise
+// picker (Feature 2): the most recent date an exercise was logged and its
+// position within that session. Keyed by exercise name.
+type ExerciseRecency struct {
+	LastDate string // YYYY-MM-DD of the most recent session containing it
+	Pos      int    // its position (order performed) in that session
+}
+
+// Muscle is one entry in the DB-editable muscle catalog. Muscles are keyed
+// by group name (matching Exercise.Group), so a group's focus options are all
+// muscles sharing its Group. The group list the UI offers is the union of
+// exercise groups and catalog groups, so a group created here with no
+// exercises yet is still selectable.
+type Muscle struct {
+	ID    int    `db:"ID" json:"ID"`
+	Group string `db:"GR" json:"Group"`
+	Name  string `db:"NAME" json:"Name"`
+	Sort  int    `db:"SORT_ORDER" json:"Sort"`
 }
 
 // Set - one set
@@ -78,17 +107,28 @@ type Set struct {
 	Confidence   float64         `db:"CONFIDENCE" json:"Confidence"` // 0.0–1.0
 	Pending      bool            `db:"PENDING" json:"Pending"`
 	ClipPath     string          `db:"CLIP_PATH" json:"ClipPath"` // path under PUMP_CLIPS_DIR, served at /clips/<...>
+	// Position orders sets within a single date. It is assigned on insert
+	// (append to the end of the day) and rewritten by a drag-and-drop
+	// reorder. Sets are read back in (date, position, id) order, so the
+	// workout log renders in the athlete's chosen order rather than by id.
+	Position int `db:"POSITION" json:"Position"`
+	// AddedWeight is the extra load on a bodyweight exercise (dumbbells, a
+	// weight belt). Nil for ordinary weighted sets — a non-nil value (even 0)
+	// marks the row as a bodyweight set whose Weight is the body-weight
+	// snapshot taken when it was logged. Total load = Weight + AddedWeight.
+	AddedWeight *decimal.Decimal `db:"ADDED_WEIGHT" json:"AddedWeight,omitempty"`
 }
 
 // SetUpdate - partial update for one set. Only non-nil fields are applied.
 type SetUpdate struct {
-	Name       *string          `json:"Name,omitempty"`
-	Weight     *decimal.Decimal `json:"Weight,omitempty"`
-	Reps       *int             `json:"Reps,omitempty"`
-	Note       *string          `json:"Note,omitempty"`
-	Confidence *float64         `json:"Confidence,omitempty"`
-	Pending    *bool            `json:"Pending,omitempty"`
-	ClipPath   *string          `json:"ClipPath,omitempty"`
+	Name        *string          `json:"Name,omitempty"`
+	Weight      *decimal.Decimal `json:"Weight,omitempty"`
+	Reps        *int             `json:"Reps,omitempty"`
+	Note        *string          `json:"Note,omitempty"`
+	Confidence  *float64         `json:"Confidence,omitempty"`
+	Pending     *bool            `json:"Pending,omitempty"`
+	ClipPath    *string          `json:"ClipPath,omitempty"`
+	AddedWeight *decimal.Decimal `json:"AddedWeight,omitempty"`
 }
 
 // AllExData - all sets and exercises
@@ -187,6 +227,7 @@ type GuiData struct {
 	ExData     AllExData
 	GroupMap   []string // unique exercise groups, in display order
 	OneEx      Exercise
+	Muscles    []Muscle // DB-editable muscle catalog (focus options per group)
 	Version    string
 	ServerDate string      // today's date in server timezone (YYYY-MM-DD)
 	Health     HealthStats // wearable aggregates (Health page + Stats tabs)

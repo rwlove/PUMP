@@ -2,7 +2,6 @@ package web
 
 import (
 	"testing"
-	"time"
 
 	"github.com/rwlove/PUMP/internal/models"
 )
@@ -42,77 +41,57 @@ func TestBuildGroupList_EmptyGroupIsGroup(t *testing.T) {
 	}
 }
 
-func TestSortExsByFrequency(t *testing.T) {
-	// Frequency window covers everything.
-	today := time.Now().Format("2006-01-02")
-	older := time.Now().AddDate(0, 0, -3).Format("2006-01-02")
-
+func TestSortExsByRecency_MostRecentFirst(t *testing.T) {
+	// Squat done most recently → top; never-done Deadlift → bottom.
 	exs := []models.Exercise{
-		{Name: "Bench", Place: "3"},
-		{Name: "Squat", Place: "1"},
-		{Name: "Deadlift", Place: "2"},
+		{Name: "Bench"},
+		{Name: "Squat"},
+		{Name: "Deadlift"},
 	}
-	sets := []models.Set{
-		{Name: "Bench", Date: today},
-		{Name: "Bench", Date: today},
-		{Name: "Bench", Date: older},
-		{Name: "Squat", Date: today},
-		// Deadlift: zero sets in window.
+	recency := map[string]models.ExerciseRecency{
+		"Bench": {LastDate: "2026-08-10", Pos: 0},
+		"Squat": {LastDate: "2026-08-13", Pos: 0},
+		// Deadlift: never performed.
 	}
-	sortExsByFrequency(exs, sets, 30)
+	sortExsByRecency(exs, recency)
 
-	if exs[0].Name != "Bench" {
-		t.Fatalf("most-frequent should come first, got %q", exs[0].Name)
+	if exs[0].Name != "Squat" {
+		t.Fatalf("most-recent Squat should come first, got %q", exs[0].Name)
 	}
-	if exs[1].Name != "Squat" {
-		t.Fatalf("2nd should be next-frequent Squat, got %q", exs[1].Name)
+	if exs[1].Name != "Bench" {
+		t.Fatalf("2nd should be Bench, got %q", exs[1].Name)
 	}
-	// Deadlift is untouched (0 sets), sorted by Place among ties.
 	if exs[2].Name != "Deadlift" {
-		t.Fatalf("least-frequent Deadlift last, got %q", exs[2].Name)
+		t.Fatalf("never-performed Deadlift should sink to last, got %q", exs[2].Name)
 	}
 }
 
-func TestSortExsByFrequency_TiebreakByPlace(t *testing.T) {
-	// All zero-set exercises tie on frequency; sort must fall through to Place.
+func TestSortExsByRecency_LastSessionOrderPreserved(t *testing.T) {
+	// All three performed in the same last session; the order they were done
+	// that day (Pos) must be preserved: Squat, RDL, Leg Press.
 	exs := []models.Exercise{
-		{Name: "Z", Place: "3"},
-		{Name: "A", Place: "1"},
-		{Name: "M", Place: "2"},
+		{Name: "Leg Press"},
+		{Name: "Squat"},
+		{Name: "RDL"},
 	}
-	sortExsByFrequency(exs, nil, 30)
-	if exs[0].Place != "1" || exs[1].Place != "2" || exs[2].Place != "3" {
-		t.Fatalf("expected Place ascending as tiebreak, got %v %v %v",
-			exs[0].Place, exs[1].Place, exs[2].Place)
+	recency := map[string]models.ExerciseRecency{
+		"Squat":     {LastDate: "2026-08-14", Pos: 0},
+		"RDL":       {LastDate: "2026-08-14", Pos: 1},
+		"Leg Press": {LastDate: "2026-08-14", Pos: 2},
 	}
-}
-
-func TestSortExsByFrequency_WindowRespected(t *testing.T) {
-	// Set outside the frequency window must not count.
-	today := time.Now().Format("2006-01-02")
-	stale := time.Now().AddDate(0, 0, -60).Format("2006-01-02")
-	exs := []models.Exercise{
-		{Name: "Rare", Place: "1"},
-		{Name: "Today", Place: "2"},
-	}
-	sets := []models.Set{
-		{Name: "Rare", Date: stale},
-		{Name: "Rare", Date: stale},
-		{Name: "Rare", Date: stale},
-		{Name: "Today", Date: today},
-	}
-	sortExsByFrequency(exs, sets, 30) // 30-day window excludes stale sets
-	if exs[0].Name != "Today" {
-		t.Fatalf("Today should win when Rare's sets are outside the window, got %q", exs[0].Name)
+	sortExsByRecency(exs, recency)
+	if exs[0].Name != "Squat" || exs[1].Name != "RDL" || exs[2].Name != "Leg Press" {
+		t.Fatalf("last-session order not preserved, got %q %q %q",
+			exs[0].Name, exs[1].Name, exs[2].Name)
 	}
 }
 
-func TestSortExsByFrequency_StableForZeroDays(t *testing.T) {
-	// days=0 → cutoff is today; only today's sets count.
-	today := time.Now().Format("2006-01-02")
-	exs := []models.Exercise{{Name: "A", Place: "1"}, {Name: "B", Place: "2"}}
-	sortExsByFrequency(exs, []models.Set{{Name: "B", Date: today}}, 0)
-	if exs[0].Name != "B" {
-		t.Fatalf("B (only today's set) should come first, got %q", exs[0].Name)
+func TestSortExsByRecency_NeverPerformedAlphabetical(t *testing.T) {
+	// No history at all → stable, alphabetical.
+	exs := []models.Exercise{{Name: "Z"}, {Name: "A"}, {Name: "M"}}
+	sortExsByRecency(exs, nil)
+	if exs[0].Name != "A" || exs[1].Name != "M" || exs[2].Name != "Z" {
+		t.Fatalf("expected alphabetical for no-history, got %q %q %q",
+			exs[0].Name, exs[1].Name, exs[2].Name)
 	}
 }

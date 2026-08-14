@@ -66,7 +66,6 @@ func main() {
 		slog.String("port", port),
 		slog.String("color", cfg.Color),
 		slog.Int("pagestep", cfg.PageStep),
-		slog.Int("frequency_days", cfg.FrequencyDays),
 		slog.Int("display_days", cfg.DisplayDays),
 		slog.Bool("cv_autolog", cfg.CVAutoLog),
 		slog.Bool("pushover_configured", cfg.PushoverConfigured()),
@@ -107,7 +106,6 @@ func main() {
 	} else if ok {
 		cfg.Color = persisted.Color
 		cfg.PageStep = persisted.PageStep
-		cfg.FrequencyDays = persisted.FrequencyDays
 		cfg.DisplayDays = persisted.DisplayDays
 		cfg.AutoFill = persisted.AutoFill
 		cfg.CVAutoLog = persisted.CVAutoLog

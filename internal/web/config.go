@@ -17,6 +17,16 @@ func configHandler(c *gin.Context) {
 	guiData.Config = conf.Get()
 	guiData.Version = Version
 
+	// The muscle-catalog editor lives on this page. Show the current groups
+	// (from exercises + catalog) and their muscles.
+	exs, err := dataStore.SelectEx(c.Request.Context())
+	if err != nil {
+		slog.Warn("configHandler: SelectEx failed", slog.Any("error", err))
+	}
+	muscles := selectMusclesSoft(c, "configHandler")
+	guiData.Muscles = muscles
+	guiData.GroupMap = mergeGroupList(exs, muscles)
+
 	c.HTML(http.StatusOK, "config.html", guiData)
 }
 
@@ -24,7 +34,6 @@ func saveConfigHandler(c *gin.Context) {
 	cfg := conf.Get()
 	cfg.Color = c.PostForm("color")
 	cfg.PageStep, _ = strconv.Atoi(c.PostForm("pagestep"))
-	cfg.FrequencyDays, _ = strconv.Atoi(c.PostForm("frequencydays"))
 	cfg.DisplayDays, _ = strconv.Atoi(c.PostForm("displaydays"))
 	cfg.AutoFill = c.PostForm("autofill") == "on"
 	cfg.CVAutoLog = c.PostForm("cvautolog") == "on"

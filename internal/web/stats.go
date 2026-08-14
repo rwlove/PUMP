@@ -27,7 +27,7 @@ func statsHandler(c *gin.Context) {
 	sort.Slice(sets, func(i, j int) bool { return sets[i].Date < sets[j].Date })
 	sort.Slice(weights, func(i, j int) bool { return weights[i].Date < weights[j].Date })
 	cfg := conf.Get()
-	sortExsByFrequency(exs, sets, cfg.FrequencyDays)
+	sortExsByRecency(exs, lastPerformed(c, "statsHandler"))
 
 	var guiData models.GuiData
 	guiData.Config = cfg

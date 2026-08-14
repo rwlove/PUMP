@@ -118,7 +118,11 @@
       <div class="panel" style="min-height:340px;">
         <div class="panel-header">
           <span class="panel-title">Exercises</span>
-          <a href="/exercise/?id=new" class="btn btn-sm btn-primary rounded-pill px-3" style="font-size:0.78rem;">
+          {{/* A new exercise is added to the currently-selected group, so this
+               stays disabled until a group chip is chosen (Feature 1). JS sets
+               its href to /exercise/?id=new&group=<group> in selectGroup(). */}}
+          <a id="newExerciseBtn" href="#" class="btn btn-sm btn-primary rounded-pill px-3 disabled"
+            aria-disabled="true" title="Select a group first" style="font-size:0.78rem;">
             <i class="bi bi-plus me-1"></i>New
           </a>
         </div>
@@ -209,6 +213,9 @@
 <script>
   window._allSets    = {{ .ExData.Sets }};
   window._allExs     = {{ .ExData.Exs }};
+  // Body-weight history (oldest-first), used to pre-fill bodyweight exercises
+  // with the most recent reading on or before the viewed day (Feature 6).
+  window._allWeight  = {{ .ExData.Weight }};
   window._autoFill   = {{ .Config.AutoFill }};
   // True when any sidecar (pump-cv or pump-voltra) may write sets. Gates the
   // per-set save mode: the bulk /set/ path rewrites the whole day from the
