@@ -382,16 +382,24 @@ def main() -> None:
         gh_output("fixed", "false")
         return
     except Exception as e:
-        # Fail the step rather than reporting green.
+        # Whether a Claude API error should fail the run depends on what the
+        # build was doing.
         #
-        # This used to return quietly, so a run that never reached the model at
-        # all — expired token, persistent 429 — concluded "success" and printed
-        # the same "nothing to fix" line as a healthy one. Every autofix run in
-        # this repo's history reports success, and at least one of them was a
-        # rate-limit error. A permanently broken autofix should be visible.
-        print(f"::error::Claude API call failed: {e}")
+        # On a *failure* build, autofix is the safety net for a real problem, so
+        # a model it can't reach is worth surfacing — the run is already red and
+        # the failure email is about something genuine.
+        #
+        # On a *success* build this step is opportunistic warning cleanup. A
+        # transient error here (a 429 rate limit, most often) must not turn a
+        # green build's follow-up workflow red and email a failure for a
+        # non-problem — which is exactly what a burst of rate limits was doing,
+        # failing the autofix run on several consecutive healthy releases.
+        level = "error" if conclusion == "failure" else "warning"
+        print(f"::{level}::Claude API call failed: {e}")
         gh_output("fixed", "false")
-        raise SystemExit(1) from e
+        if conclusion == "failure":
+            raise SystemExit(1) from e
+        return
 
     print(f"Claude says can_fix={result.get('can_fix')}: {result.get('explanation')}")
 
