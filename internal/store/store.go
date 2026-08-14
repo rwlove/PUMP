@@ -25,6 +25,10 @@ type Store interface {
 	// Used by the manual-entry form path. Per-set ops below are used by the
 	// CV auto-log path and any UI that edits one set at a time.
 	BulkReplaceSetsByDate(ctx context.Context, date string, sets []models.Set) error
+	// ReorderSets rewrites the per-day position of the given set ids to match
+	// their order in orderedIDs (index 0 = top). Used by the drag-and-drop
+	// reorder in per-set save mode.
+	ReorderSets(ctx context.Context, date string, orderedIDs []int) error
 
 	GetSet(ctx context.Context, id int) (models.Set, error)
 	// InsertSet appends a single set and returns the stored row. Empty
@@ -49,6 +53,18 @@ type Store interface {
 	// SaveAppConfig upserts the UI-editable settings (single row).
 	// Pushover credentials and NodePath are env-only and never persisted.
 	SaveAppConfig(ctx context.Context, cfg models.Conf) error
+
+	// LastPerformed returns each exercise name's most recent session date and
+	// its position in that session, driving the picker's recency ordering.
+	LastPerformed(ctx context.Context) (map[string]models.ExerciseRecency, error)
+
+	// SelectMuscles returns the full DB-editable muscle catalog, ordered by
+	// group then sort order.
+	SelectMuscles(ctx context.Context) ([]models.Muscle, error)
+	// InsertMuscle adds a muscle to a group (duplicate group+name is a no-op).
+	InsertMuscle(ctx context.Context, m models.Muscle) error
+	// DeleteMuscle removes a catalog muscle by id.
+	DeleteMuscle(ctx context.Context, id int) error
 }
 
 // HealthStore persists wearable health records ingested from Android Health

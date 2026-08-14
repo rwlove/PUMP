@@ -164,6 +164,63 @@ CREATE TABLE IF NOT EXISTS app_config (
 ALTER TABLE exercises ADD COLUMN IF NOT EXISTS voltra BOOLEAN NOT NULL DEFAULT FALSE;
 `,
 	},
+	{
+		Version:     12,
+		Description: "add exercises.focus (target muscle) and exercises.bodyweight",
+		SQL: `
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS focus      TEXT    NOT NULL DEFAULT '';
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS bodyweight BOOLEAN NOT NULL DEFAULT FALSE;
+`,
+	},
+	{
+		Version:     13,
+		Description: "add sets.position (per-day ordering) and sets.added_weight (bodyweight extra load)",
+		SQL: `
+ALTER TABLE sets ADD COLUMN IF NOT EXISTS position     INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sets ADD COLUMN IF NOT EXISTS added_weight NUMERIC(10,2);
+-- Backfill position from the existing id order within each date so the
+-- current on-screen order is preserved. Re-running recomputes the same
+-- values, so this is safe under at-least-once migration delivery.
+WITH ranked AS (
+    SELECT id, (row_number() OVER (PARTITION BY date ORDER BY id) - 1) AS pos
+    FROM sets
+)
+UPDATE sets s SET position = ranked.pos FROM ranked WHERE s.id = ranked.id;
+CREATE INDEX IF NOT EXISTS sets_date_position_idx ON sets (date, position, id);
+`,
+	},
+	{
+		Version:     14,
+		Description: "create muscles catalog table and seed default muscles per group",
+		SQL: `
+CREATE TABLE IF NOT EXISTS muscles (
+    id         SERIAL PRIMARY KEY,
+    gr         TEXT    NOT NULL DEFAULT '',
+    name       TEXT    NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    CONSTRAINT muscles_group_name_uniq UNIQUE (gr, name)
+);
+INSERT INTO muscles (gr, name, sort_order) VALUES
+    ('Chest',    'Upper Chest',  0),
+    ('Chest',    'Mid Chest',    1),
+    ('Chest',    'Lower Chest',  2),
+    ('Back',     'Lats',         0),
+    ('Back',     'Traps',        1),
+    ('Back',     'Rhomboids',    2),
+    ('Back',     'Lower Back',   3),
+    ('Legs',     'Quadriceps',   0),
+    ('Legs',     'Hamstrings',   1),
+    ('Legs',     'Glutes',       2),
+    ('Legs',     'Calves',       3),
+    ('Deltoids', 'Front Delts',  0),
+    ('Deltoids', 'Side Delts',   1),
+    ('Deltoids', 'Rear Delts',   2),
+    ('Arms',     'Biceps',       0),
+    ('Arms',     'Triceps',      1),
+    ('Arms',     'Forearms',     2)
+ON CONFLICT ON CONSTRAINT muscles_group_name_uniq DO NOTHING;
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any

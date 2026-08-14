@@ -48,7 +48,7 @@ function entryToSet(entry) {
     var color  = entry.querySelector('input[name="workout_color"]').value;
     var note   = entry.querySelector('input[name="note"]').value;
     var dateInput = document.getElementById('formDate');
-    return {
+    var out = {
         Date: dateInput ? dateInput.value : (today || ''),
         Name: name,
         Color: color,
@@ -58,6 +58,14 @@ function entryToSet(entry) {
         Note: note,
         Source: entry.dataset.source || 'manual',
     };
+    // Only bodyweight rows carry AddedWeight; leaving it off keeps ordinary
+    // sets' added_weight NULL server-side.
+    if (entry.dataset.bodyweight === 'true') {
+        var addedInput = entry.querySelector('input[name="added_weight"]');
+        var raw = addedInput ? addedInput.value : '';
+        out.AddedWeight = raw === '' ? '0' : raw;
+    }
+    return out;
 }
 
 function saveWorkoutPerSet() {
@@ -75,15 +83,17 @@ function saveWorkoutPerSet() {
         var body = entryToSet(entry);
         var p;
         if (sid) {
+            var patch = {
+                Name: body.Name,
+                Weight: body.Weight,
+                Reps: body.Reps,
+                Note: body.Note,
+            };
+            if (body.AddedWeight !== undefined) patch.AddedWeight = body.AddedWeight;
             p = fetch('/api/sets/' + sid, {
                 method: 'PATCH',
                 headers: writeHeaders(),
-                body: JSON.stringify({
-                    Name: body.Name,
-                    Weight: body.Weight,
-                    Reps: body.Reps,
-                    Note: body.Note,
-                }),
+                body: JSON.stringify(patch),
             }).then(function(r) {
                 // Without this a 500 resolves normally, the entry is marked
                 // clean, and the UI reports "Saved" for an edit that was never
@@ -151,6 +161,28 @@ function getAutoFillData(name, setPosition, currentDate) {
     return daySets[idx];
 }
 
+// exerciseByName returns the exercise metadata object (from window._allExs)
+// for a name, or null. Used to read the Bodyweight flag when building a row.
+function exerciseByName(name) {
+    var exs = window._allExs || [];
+    for (var i = 0; i < exs.length; i++) {
+        if (exs[i].Name === name) return exs[i];
+    }
+    return null;
+}
+
+// bodyWeightOnOrBefore returns the most recent body-weight reading on or
+// before dateStr (YYYY-MM-DD), or null. window._allWeight is oldest-first.
+function bodyWeightOnOrBefore(dateStr) {
+    var ws = window._allWeight || [];
+    var best = null;
+    for (var i = 0; i < ws.length; i++) {
+        if (ws[i].Date <= dateStr) best = ws[i];
+        else break;
+    }
+    return best ? best.Weight : null;
+}
+
 // Count how many entries for `name` already exist in #todayEx.
 function countExistingEntries(name) {
     var inputs = document.querySelectorAll('#todayEx input[data-exname]');
@@ -194,6 +226,30 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
     if (fromPicker && window._autoFill && prior) {
         weight = prior.Weight;
         reps   = prior.Reps;
+    }
+
+    // Bodyweight handling (Feature 6). An exercise flagged bodyweight logs the
+    // athlete's body weight as the base load (Weight), with an optional
+    // added-weight field. A saved row is a bodyweight set when it carries an
+    // AddedWeight value (nil for ordinary weighted sets).
+    var exMeta        = exerciseByName(name);
+    var addedProvided = meta.addedWeight !== undefined && meta.addedWeight !== null;
+    var isBodyweight  = addedProvided || !!(exMeta && exMeta.Bodyweight);
+    var addedVal      = '';
+    if (isBodyweight) {
+        if (addedProvided) {
+            addedVal = String(meta.addedWeight);
+        } else if (prior && prior.AddedWeight !== undefined && prior.AddedWeight !== null) {
+            addedVal = String(prior.AddedWeight);
+        } else {
+            addedVal = '0';
+        }
+        // From the picker, seed the base with the most recent body weight
+        // rather than a stale prior snapshot.
+        if (fromPicker) {
+            var bw = bodyWeightOnOrBefore(today || todayStr());
+            if (bw !== null && bw !== undefined) weight = bw;
+        }
     }
 
     var safeWeight = (weight !== undefined && weight !== '' && weight !== '0') ? weight : '';
@@ -242,10 +298,28 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
            </div>`
         : '';
 
+    // Bodyweight rows label the base field "BW" and add a "+ lbs" added-weight
+    // field; ordinary rows carry an empty hidden added_weight so the bulk-save
+    // form's parallel arrays stay aligned (every row emits exactly one).
+    var weightLabel = isBodyweight ? 'BW' : 'lbs';
+    var addedField = isBodyweight
+        ? `<div class="entry-field">
+               <span class="entry-label">+ lbs</span>
+               <input type="number" class="form-control entry-num entry-added" name="added_weight"
+                   value="${escapeHtml(addedVal)}" min="0" step="any" placeholder="0">
+           </div>`
+        : `<input type="hidden" name="added_weight" value="">`;
+    // Drag handle for reordering (Feature 5). touch-action:none (CSS) lets a
+    // touch drag work without the page scrolling.
+    var dragHandle = `<button type="button" class="entry-drag-handle" title="Drag to reorder" aria-label="Drag to reorder"><i class="bi bi-grip-vertical"></i></button>`;
+
+    entry.dataset.bodyweight = isBodyweight ? 'true' : 'false';
+
     entry.innerHTML = `
         <div class="entry-main">
             <div class="entry-body">
                 <div class="entry-header">
+                    ${dragHandle}
                     <input type="hidden" name="name" value="${safeName}" data-exname="${safeName}">
                     ${sourceBadge}
                     <span class="entry-name" title="${safeName}">${safeName}</span>
@@ -254,10 +328,11 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
                 ${pendingBanner}
                 <div class="entry-controls">
                     <div class="entry-field">
-                        <span class="entry-label">lbs</span>
+                        <span class="entry-label">${weightLabel}</span>
                         <input type="number" class="form-control entry-num" name="weight"
                             value="${safeWeight}" min="0" step="any" placeholder="—">
                     </div>
+                    ${addedField}
                     <div class="entry-field">
                         <span class="entry-label">reps</span>
                         <input type="number" class="form-control entry-num" name="reps"
@@ -295,13 +370,17 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
         });
     }
 
-    // Wire up weight/reps inputs → autosave (and mark dirty for per-set save)
+    // Wire up weight/reps/added inputs → autosave (and mark dirty for per-set save)
     entry.querySelectorAll('.entry-num').forEach(function(inp) {
         inp.addEventListener('change', function() {
             markDirty(entry);
             scheduleAutosave();
         });
     });
+
+    // Drag handle → pointer-based reorder (works with mouse and touch).
+    var dragBtn = entry.querySelector('.entry-drag-handle');
+    if (dragBtn) dragBtn.addEventListener('pointerdown', onDragHandlePointerDown);
 
     // Mic dictation
     if (speechSupported) {
@@ -381,6 +460,81 @@ function removeEntry(entry, viaApi) {
     if (!viaApi) scheduleAutosave();
 }
 
+// ── Drag-and-drop reorder of workout entries (Feature 5) ─────────────────────
+// Pointer-based so it works with both mouse and touch (the gym kiosk/phone).
+// Entries live inside per-name .workout-entry-group wrappers; we move the
+// dragged entry within the DOM live, then refreshSetBadges() re-wraps the whole
+// list from document order after the drop, so intermediate wrapper membership
+// doesn't matter.
+var _drag = null;
+
+function onDragHandlePointerDown(e) {
+    var handle = e.currentTarget;
+    var entry = handle.closest('.workout-entry');
+    if (!entry) return;
+    e.preventDefault();
+    _drag = { entry: entry, handle: handle };
+    entry.classList.add('dragging');
+    try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+    handle.addEventListener('pointermove', onDragPointerMove);
+    handle.addEventListener('pointerup', onDragPointerUp);
+    handle.addEventListener('pointercancel', onDragPointerUp);
+}
+
+function onDragPointerMove(e) {
+    if (!_drag) return;
+    var container = document.getElementById('todayEx');
+    if (!container) return;
+    var el = document.elementFromPoint(e.clientX, e.clientY);
+    var over = el ? el.closest('.workout-entry') : null;
+    if (!over || over === _drag.entry || !container.contains(over)) return;
+    // Insert before or after `over` based on the pointer vs its midpoint.
+    var rect = over.getBoundingClientRect();
+    var after = e.clientY > rect.top + rect.height / 2;
+    over.parentNode.insertBefore(_drag.entry, after ? over.nextSibling : over);
+}
+
+function onDragPointerUp(e) {
+    if (!_drag) return;
+    var handle = _drag.handle;
+    _drag.entry.classList.remove('dragging');
+    try { handle.releasePointerCapture(e.pointerId); } catch (_) {}
+    handle.removeEventListener('pointermove', onDragPointerMove);
+    handle.removeEventListener('pointerup', onDragPointerUp);
+    handle.removeEventListener('pointercancel', onDragPointerUp);
+    _drag = null;
+    // Re-wrap contiguous same-name runs / renumber, then persist the new order.
+    refreshSetBadges();
+    persistOrder();
+}
+
+// persistOrder saves the current top-to-bottom entry order. In per-set mode it
+// sends the explicit id order to the reorder endpoint; in bulk mode the DOM
+// order is the save order, so a normal autosave (which rewrites the whole day)
+// reassigns position from insertion index.
+function persistOrder() {
+    if (window._autoLog) {
+        var ids = [];
+        document.querySelectorAll('#todayEx .workout-entry').forEach(function(en) {
+            if (en.dataset.setId) ids.push(parseInt(en.dataset.setId, 10));
+        });
+        if (!ids.length) return;
+        var dateInput = document.getElementById('formDate');
+        var date = dateInput ? dateInput.value : today;
+        saveStatus('saving', 'Saving…');
+        fetch('/api/sets/reorder', {
+            method: 'POST',
+            headers: writeHeaders(),
+            body: JSON.stringify({ date: date, ids: ids }),
+        }).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            saveStatus('saved', 'Saved');
+        }).catch(function() { saveStatus('error', 'Error saving'); });
+    } else {
+        scheduleAutosave();
+    }
+}
+
 // refreshWeekStreak recomputes the "Last 7 days" panel using a snapshot
 // that overrides the currently-viewed date with the live #todayEx count.
 // This keeps the today bubble in sync the moment a set is added or
@@ -402,15 +556,17 @@ function confirmEntry(entry) {
     var sid = entry.dataset.setId;
     if (!sid) return;
     var body = entryToSet(entry);
+    var confirmBody = {
+        Name: body.Name,
+        Weight: body.Weight,
+        Reps: body.Reps,
+        Note: body.Note,
+    };
+    if (body.AddedWeight !== undefined) confirmBody.AddedWeight = body.AddedWeight;
     fetch('/api/sets/' + sid + '/confirm', {
         method: 'POST',
         headers: writeHeaders(),
-        body: JSON.stringify({
-            Name: body.Name,
-            Weight: body.Weight,
-            Reps: body.Reps,
-            Note: body.Note,
-        }),
+        body: JSON.stringify(confirmBody),
     }).then(function(r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         // Clear the pending state locally rather than waiting for SSE.
@@ -605,10 +761,11 @@ function setFormContent(sets, date) {
             if (sets[i].Date == date) {
                 // fromPicker=false: loading saved data, no auto-fill override
                 addExercise(sets[i].Name, sets[i].Weight, sets[i].Reps, sets[i].WorkoutColor, false, sets[i].Note, {
-                    id:         sets[i].ID,
-                    source:     sets[i].Source,
-                    pending:    sets[i].Pending,
-                    confidence: sets[i].Confidence,
+                    id:          sets[i].ID,
+                    source:      sets[i].Source,
+                    pending:     sets[i].Pending,
+                    confidence:  sets[i].Confidence,
+                    addedWeight: sets[i].AddedWeight,
                 });
             }
         }
@@ -637,7 +794,7 @@ function openSetsStream() {
         addExercise(
             e.set.Name, e.set.Weight, e.set.Reps, e.set.WorkoutColor,
             false, e.set.Note,
-            {id: e.id, source: e.set.Source, pending: e.set.Pending, confidence: e.set.Confidence}
+            {id: e.id, source: e.set.Source, pending: e.set.Pending, confidence: e.set.Confidence, addedWeight: e.set.AddedWeight}
         );
     },
 
@@ -665,7 +822,7 @@ function openSetsStream() {
             addExercise(
                 e.set.Name, e.set.Weight, e.set.Reps, e.set.WorkoutColor,
                 false, e.set.Note,
-                {id: e.id, source: e.set.Source, pending: isPending, confidence: e.set.Confidence}
+                {id: e.id, source: e.set.Source, pending: isPending, confidence: e.set.Confidence, addedWeight: e.set.AddedWeight}
             );
         }
     },
@@ -725,6 +882,16 @@ function selectGroup(gr) {
         chip.classList.toggle('active', chip.getAttribute('data-group') === gr);
     });
 
+    // Enable "New" and point it at this group — a new exercise is created in
+    // the selected group, which the exercise dialog shows read-only.
+    var newBtn = document.getElementById('newExerciseBtn');
+    if (newBtn) {
+        newBtn.href = '/exercise/?id=new&group=' + encodeURIComponent(gr);
+        newBtn.classList.remove('disabled');
+        newBtn.removeAttribute('aria-disabled');
+        newBtn.title = 'New exercise in ' + gr;
+    }
+
     var header = document.getElementById('groupHeader');
     var noGroup = document.getElementById('noGroupState');
     var searchInput = document.getElementById('exSearch');
@@ -746,6 +913,14 @@ function clearGroup() {
     document.querySelectorAll('.group-chip').forEach(function(chip) {
         chip.classList.remove('active');
     });
+
+    var newBtn = document.getElementById('newExerciseBtn');
+    if (newBtn) {
+        newBtn.href = '#';
+        newBtn.classList.add('disabled');
+        newBtn.setAttribute('aria-disabled', 'true');
+        newBtn.title = 'Select a group first';
+    }
 
     var header = document.getElementById('groupHeader');
     var noGroup = document.getElementById('noGroupState');

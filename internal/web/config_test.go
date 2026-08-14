@@ -50,7 +50,14 @@ func (f *fakeStore) UpdateExColor(context.Context, int, string) error           
 func (f *fakeStore) SelectSet(context.Context) ([]models.Set, error)                   { return nil, nil }
 func (f *fakeStore) SelectSetsSince(context.Context, string) ([]models.Set, error)     { return nil, nil }
 func (f *fakeStore) BulkReplaceSetsByDate(context.Context, string, []models.Set) error { return nil }
-func (f *fakeStore) GetSet(context.Context, int) (models.Set, error)                   { return models.Set{}, nil }
+func (f *fakeStore) ReorderSets(context.Context, string, []int) error                  { return nil }
+func (f *fakeStore) LastPerformed(context.Context) (map[string]models.ExerciseRecency, error) {
+	return nil, nil
+}
+func (f *fakeStore) SelectMuscles(context.Context) ([]models.Muscle, error) { return nil, nil }
+func (f *fakeStore) InsertMuscle(context.Context, models.Muscle) error      { return nil }
+func (f *fakeStore) DeleteMuscle(context.Context, int) error                { return nil }
+func (f *fakeStore) GetSet(context.Context, int) (models.Set, error)        { return models.Set{}, nil }
 func (f *fakeStore) InsertSet(context.Context, models.Set) (models.Set, error) {
 	return models.Set{}, nil
 }
@@ -81,12 +88,11 @@ func TestSaveConfigHandler_PersistsToStore(t *testing.T) {
 	defer withFakes(t, fs, models.Conf{Color: "dark", PageStep: 10})()
 
 	form := url.Values{
-		"color":         {"light"},
-		"pagestep":      {"25"},
-		"frequencydays": {"7"},
-		"displaydays":   {"90"},
-		"autofill":      {"on"},
-		"cvautolog":     {"on"},
+		"color":       {"light"},
+		"pagestep":    {"25"},
+		"displaydays": {"90"},
+		"autofill":    {"on"},
+		"cvautolog":   {"on"},
 	}
 	req := httptest.NewRequest("POST", "/config/", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -109,9 +115,6 @@ func TestSaveConfigHandler_PersistsToStore(t *testing.T) {
 	}
 	if saved.PageStep != 25 {
 		t.Errorf("PageStep=%d, want 25", saved.PageStep)
-	}
-	if saved.FrequencyDays != 7 {
-		t.Errorf("FrequencyDays=%d, want 7", saved.FrequencyDays)
 	}
 	if saved.DisplayDays != 90 {
 		t.Errorf("DisplayDays=%d, want 90", saved.DisplayDays)
@@ -136,7 +139,7 @@ func TestSaveConfigHandler_StoreFailureIsSoftFail(t *testing.T) {
 	fs := &fakeStore{fail: errFakeSave}
 	defer withFakes(t, fs, models.Conf{Color: "dark"})()
 
-	form := url.Values{"color": {"light"}, "pagestep": {"10"}, "frequencydays": {"30"},
+	form := url.Values{"color": {"light"}, "pagestep": {"10"},
 		"displaydays": {"30"}, "autofill": {"on"}, "cvautolog": {""}}
 	req := httptest.NewRequest("POST", "/config/", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

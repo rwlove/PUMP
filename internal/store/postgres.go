@@ -47,7 +47,7 @@ func (s *PostgresStore) Pool() *pgxpool.Pool {
 func (s *PostgresStore) SelectEx(ctx context.Context) ([]models.Exercise, error) {
 	slog.Debug("db: SelectEx")
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, gr, place, name, descr, image, color, weight::text, reps, voltra
+		`SELECT id, gr, place, name, descr, image, color, weight::text, reps, voltra, focus, bodyweight
 		 FROM exercises ORDER BY id ASC`)
 	if err != nil {
 		return nil, err
@@ -59,7 +59,8 @@ func (s *PostgresStore) SelectEx(ctx context.Context) ([]models.Exercise, error)
 		var ex models.Exercise
 		var weightStr string
 		if err := rows.Scan(&ex.ID, &ex.Group, &ex.Place, &ex.Name, &ex.Descr,
-			&ex.Image, &ex.Color, &weightStr, &ex.Reps, &ex.Voltra); err != nil {
+			&ex.Image, &ex.Color, &weightStr, &ex.Reps, &ex.Voltra,
+			&ex.Focus, &ex.Bodyweight); err != nil {
 			return nil, err
 		}
 		ex.Weight, _ = decimal.NewFromString(weightStr)
@@ -72,10 +73,10 @@ func (s *PostgresStore) SelectEx(ctx context.Context) ([]models.Exercise, error)
 func (s *PostgresStore) InsertEx(ctx context.Context, ex models.Exercise) error {
 	slog.Debug("db: InsertEx", slog.String("name", ex.Name), slog.String("group", ex.Group))
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO exercises (gr, place, name, descr, image, color, weight, reps, voltra)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		`INSERT INTO exercises (gr, place, name, descr, image, color, weight, reps, voltra, focus, bodyweight)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		ex.Group, ex.Place, ex.Name, ex.Descr, ex.Image, ex.Color,
-		ex.Weight.String(), ex.Reps, ex.Voltra)
+		ex.Weight.String(), ex.Reps, ex.Voltra, ex.Focus, ex.Bodyweight)
 	if err != nil {
 		slog.Debug("db: InsertEx failed", slog.Any("error", err))
 	}
@@ -118,10 +119,11 @@ func (s *PostgresStore) UpdateEx(ctx context.Context, ex models.Exercise) (bool,
 
 	if _, err := tx.Exec(ctx,
 		`UPDATE exercises SET gr = $1, place = $2, name = $3, descr = $4,
-		        image = $5, color = $6, weight = $7, reps = $8, voltra = $9
-		 WHERE id = $10`,
+		        image = $5, color = $6, weight = $7, reps = $8, voltra = $9,
+		        focus = $10, bodyweight = $11
+		 WHERE id = $12`,
 		ex.Group, ex.Place, ex.Name, ex.Descr, ex.Image, ex.Color,
-		ex.Weight.String(), ex.Reps, ex.Voltra, ex.ID); err != nil {
+		ex.Weight.String(), ex.Reps, ex.Voltra, ex.Focus, ex.Bodyweight, ex.ID); err != nil {
 		slog.Debug("db: UpdateEx failed", slog.Int("id", ex.ID), slog.Any("error", err))
 		return false, err
 	}
@@ -184,17 +186,25 @@ func (s *PostgresStore) UpdateExColor(ctx context.Context, id int, color string)
 // ─── sets ─────────────────────────────────────────────────────────────────────
 
 const setColumns = `id, date::text, name, color, workout_color,
-	weight::text, reps, note, source, confidence, pending, clip_path`
+	weight::text, reps, note, source, confidence, pending, clip_path,
+	position, added_weight::text`
 
 func scanSet(row interface{ Scan(...any) error }) (models.Set, error) {
 	var set models.Set
 	var weightStr string
+	var addedStr *string
 	if err := row.Scan(&set.ID, &set.Date, &set.Name, &set.Color,
 		&set.WorkoutColor, &weightStr, &set.Reps, &set.Note,
-		&set.Source, &set.Confidence, &set.Pending, &set.ClipPath); err != nil {
+		&set.Source, &set.Confidence, &set.Pending, &set.ClipPath,
+		&set.Position, &addedStr); err != nil {
 		return set, err
 	}
 	set.Weight, _ = decimal.NewFromString(weightStr)
+	if addedStr != nil {
+		if d, err := decimal.NewFromString(*addedStr); err == nil {
+			set.AddedWeight = &d
+		}
+	}
 	return set, nil
 }
 
@@ -225,7 +235,8 @@ func (s *PostgresStore) SelectSet(ctx context.Context) ([]models.Set, error) {
 func (s *PostgresStore) SelectSetsSince(ctx context.Context, cutoff string) ([]models.Set, error) {
 	slog.Debug("db: SelectSetsSince", slog.String("cutoff", cutoff))
 	rows, err := s.pool.Query(ctx,
-		`SELECT `+setColumns+` FROM sets WHERE date >= $1::date ORDER BY id ASC`, cutoff)
+		`SELECT `+setColumns+` FROM sets WHERE date >= $1::date
+		 ORDER BY date ASC, position ASC, id ASC`, cutoff)
 	if err != nil {
 		return nil, err
 	}
@@ -263,15 +274,25 @@ func (s *PostgresStore) InsertSet(ctx context.Context, set models.Set) (models.S
 	if confidence == 0 {
 		confidence = 1.0
 	}
+	var added interface{}
+	if set.AddedWeight != nil {
+		added = set.AddedWeight.String()
+	}
 
+	// position defaults to one past the current max for the date so a new set
+	// appends to the bottom of the day's log. COALESCE handles the first set of
+	// a new day (no existing rows → -1 + 1 = 0).
 	row := s.pool.QueryRow(ctx,
 		`INSERT INTO sets (date, name, color, workout_color, weight, reps,
-		                   note, source, confidence, pending, clip_path)
-		 VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		                   note, source, confidence, pending, clip_path,
+		                   position, added_weight)
+		 VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+		         (SELECT COALESCE(MAX(position), -1) + 1 FROM sets WHERE date = $1::date),
+		         $12::numeric)
 		 RETURNING `+setColumns,
 		set.Date, set.Name, set.Color, set.WorkoutColor,
 		set.Weight.String(), set.Reps, set.Note,
-		source, confidence, set.Pending, set.ClipPath)
+		source, confidence, set.Pending, set.ClipPath, added)
 	stored, err := scanSet(row)
 	if err != nil {
 		slog.Debug("db: InsertSet failed", slog.Any("error", err))
@@ -309,6 +330,9 @@ func (s *PostgresStore) UpdateSet(ctx context.Context, id int, upd models.SetUpd
 	}
 	if upd.ClipPath != nil {
 		add("clip_path", *upd.ClipPath)
+	}
+	if upd.AddedWeight != nil {
+		add("added_weight", upd.AddedWeight.String())
 	}
 
 	if len(cols) == 0 {
@@ -362,16 +386,23 @@ func (s *PostgresStore) BulkReplaceSetsByDate(ctx context.Context, date string, 
 	slog.Debug("db: deleted existing sets for date", slog.String("date", date))
 
 	b := &pgx.Batch{}
-	for _, set := range sets {
+	for i, set := range sets {
+		var added interface{}
+		if set.AddedWeight != nil {
+			added = set.AddedWeight.String()
+		}
 		b.Queue(
-			`INSERT INTO sets (date, name, color, workout_color, weight, reps, note)
-			 VALUES ($1::date, $2, $3, $4, $5, $6, $7)`,
+			`INSERT INTO sets (date, name, color, workout_color, weight, reps, note, position, added_weight)
+			 VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8, $9::numeric)`,
 			// Bind the date argument, not set.Date. The DELETE above clears
 			// only the requested date, so honouring a per-row date would
 			// append rows to a day that was never cleared — emptying the
 			// target date and silently duplicating into a different one.
+			//
+			// position is the row's index in the submitted order, so the
+			// DOM order the browser sent is what the day reloads in.
 			date, set.Name, set.Color, set.WorkoutColor,
-			set.Weight.String(), set.Reps, set.Note)
+			set.Weight.String(), set.Reps, set.Note, i, added)
 	}
 	br := tx.SendBatch(ctx, b)
 	for i := range sets {
@@ -390,6 +421,115 @@ func (s *PostgresStore) BulkReplaceSetsByDate(ctx context.Context, date string, 
 	}
 	slog.Debug("db: BulkReplaceSetsByDate committed", slog.String("date", date), slog.Int("count", len(sets)))
 	return nil
+}
+
+// ReorderSets rewrites the position of each set on a date to match the order
+// of orderedIDs (index 0 = top of the log). Used by the per-set save path
+// where rows are addressed by id — the bulk path assigns position from
+// insertion order instead. Ids not on the given date are ignored, so a stale
+// client list can't move rows into another day.
+func (s *PostgresStore) ReorderSets(ctx context.Context, date string, orderedIDs []int) error {
+	slog.Debug("db: ReorderSets", slog.String("date", date), slog.Int("count", len(orderedIDs)))
+	if len(orderedIDs) == 0 {
+		return nil
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	b := &pgx.Batch{}
+	for i, id := range orderedIDs {
+		b.Queue(
+			`UPDATE sets SET position = $1 WHERE id = $2 AND date = $3::date`,
+			i, id, date)
+	}
+	br := tx.SendBatch(ctx, b)
+	for range orderedIDs {
+		if _, err := br.Exec(); err != nil {
+			_ = br.Close()
+			return err
+		}
+	}
+	if err := br.Close(); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// LastPerformed returns, for every exercise name that has ever been logged,
+// the most recent date it was performed and its position (order performed) in
+// that session. It drives the picker's recency ordering (Feature 2) — an
+// exercise's rank comes from when it was last done, not from a display window,
+// so a group's last session is honoured however long ago it was.
+func (s *PostgresStore) LastPerformed(ctx context.Context) (map[string]models.ExerciseRecency, error) {
+	slog.Debug("db: LastPerformed")
+	// DISTINCT ON (name) with this ORDER keeps, per name, the row on the latest
+	// date and — among that date's rows — the smallest position (first done).
+	rows, err := s.pool.Query(ctx,
+		`SELECT DISTINCT ON (name) name, date::text, position
+		 FROM sets ORDER BY name, date DESC, position ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[string]models.ExerciseRecency)
+	for rows.Next() {
+		var name string
+		var r models.ExerciseRecency
+		if err := rows.Scan(&name, &r.LastDate, &r.Pos); err != nil {
+			return nil, err
+		}
+		out[name] = r
+	}
+	return out, rows.Err()
+}
+
+// ─── muscles (DB-editable focus-muscle catalog) ────────────────────────────────
+
+// SelectMuscles returns the full muscle catalog ordered by group then sort
+// order then name, so the UI can render each group's muscles in a stable order.
+func (s *PostgresStore) SelectMuscles(ctx context.Context) ([]models.Muscle, error) {
+	slog.Debug("db: SelectMuscles")
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, gr, name, sort_order FROM muscles
+		 ORDER BY gr ASC, sort_order ASC, name ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.Muscle
+	for rows.Next() {
+		var m models.Muscle
+		if err := rows.Scan(&m.ID, &m.Group, &m.Name, &m.Sort); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// InsertMuscle adds a muscle to a group. Duplicate (group, name) pairs are a
+// no-op via the unique constraint, so re-adding is harmless.
+func (s *PostgresStore) InsertMuscle(ctx context.Context, m models.Muscle) error {
+	slog.Debug("db: InsertMuscle", slog.String("group", m.Group), slog.String("name", m.Name))
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO muscles (gr, name, sort_order) VALUES ($1, $2, $3)
+		 ON CONFLICT ON CONSTRAINT muscles_group_name_uniq DO NOTHING`,
+		m.Group, m.Name, m.Sort)
+	return err
+}
+
+// DeleteMuscle removes a muscle from the catalog by id. Exercises that
+// referenced it keep their focus text — the catalog only gates the create
+// form's dropdown, it is not a foreign key.
+func (s *PostgresStore) DeleteMuscle(ctx context.Context, id int) error {
+	slog.Debug("db: DeleteMuscle", slog.Int("id", id))
+	_, err := s.pool.Exec(ctx, "DELETE FROM muscles WHERE id = $1", id)
+	return err
 }
 
 // ─── weight ───────────────────────────────────────────────────────────────────
@@ -480,10 +620,13 @@ func (s *PostgresStore) DeleteW(ctx context.Context, id int) error {
 func (s *PostgresStore) GetAppConfig(ctx context.Context) (models.Conf, bool, error) {
 	slog.Debug("db: GetAppConfig")
 	var cfg models.Conf
+	// frequency_days is a vestigial column (the frequency-based exercise sort
+	// was replaced by recency ordering); it stays in the schema but is no
+	// longer read or written here.
 	err := s.pool.QueryRow(ctx,
-		`SELECT color, page_step, frequency_days, display_days, autofill, cv_autolog
+		`SELECT color, page_step, display_days, autofill, cv_autolog
 		 FROM app_config WHERE id = 1`).Scan(
-		&cfg.Color, &cfg.PageStep, &cfg.FrequencyDays, &cfg.DisplayDays,
+		&cfg.Color, &cfg.PageStep, &cfg.DisplayDays,
 		&cfg.AutoFill, &cfg.CVAutoLog)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return models.Conf{}, false, nil
@@ -500,18 +643,19 @@ func (s *PostgresStore) SaveAppConfig(ctx context.Context, cfg models.Conf) erro
 	slog.Debug("db: SaveAppConfig",
 		slog.String("color", cfg.Color),
 		slog.Bool("cv_autolog", cfg.CVAutoLog))
+	// frequency_days is intentionally omitted — see GetAppConfig. Fresh rows
+	// keep the column's schema DEFAULT; existing rows keep their stored value.
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO app_config (id, color, page_step, frequency_days, display_days, autofill, cv_autolog, updated_at)
-		 VALUES (1, $1, $2, $3, $4, $5, $6, NOW())
+		`INSERT INTO app_config (id, color, page_step, display_days, autofill, cv_autolog, updated_at)
+		 VALUES (1, $1, $2, $3, $4, $5, NOW())
 		 ON CONFLICT (id) DO UPDATE SET
-		     color          = EXCLUDED.color,
-		     page_step      = EXCLUDED.page_step,
-		     frequency_days = EXCLUDED.frequency_days,
-		     display_days   = EXCLUDED.display_days,
-		     autofill       = EXCLUDED.autofill,
-		     cv_autolog     = EXCLUDED.cv_autolog,
-		     updated_at     = NOW()`,
-		cfg.Color, cfg.PageStep, cfg.FrequencyDays, cfg.DisplayDays,
+		     color        = EXCLUDED.color,
+		     page_step    = EXCLUDED.page_step,
+		     display_days = EXCLUDED.display_days,
+		     autofill     = EXCLUDED.autofill,
+		     cv_autolog   = EXCLUDED.cv_autolog,
+		     updated_at   = NOW()`,
+		cfg.Color, cfg.PageStep, cfg.DisplayDays,
 		cfg.AutoFill, cfg.CVAutoLog)
 	return err
 }

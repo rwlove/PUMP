@@ -289,11 +289,15 @@ function updateVolumeChart(sets, exercises, period, exerciseName) {
         return d >= start && d <= end;
     });
 
-    // Determine whether this exercise belongs to a "legs" group so we can
-    // substitute missing/zero weight with the nearest body weight entry.
-    const groupMap = {};
-    (exercises || []).forEach(ex => { groupMap[ex.Name] = (ex.Group || '').toLowerCase(); });
-    const isLegs = (groupMap[exerciseName] || '').includes('leg');
+    // Bodyweight model (Feature 6): a bodyweight set carries AddedWeight (may be
+    // 0), and its logged Weight is the body-weight snapshot from when it was
+    // done. Total load = Weight + AddedWeight. Legacy zero-weight leg/bodyweight
+    // sets predate the flag, so we still substitute body weight for those.
+    const exMap = {};
+    (exercises || []).forEach(ex => { exMap[ex.Name] = ex; });
+    const exObj = exMap[exerciseName] || {};
+    const isBodyweight = !!exObj.Bodyweight;
+    const isLegs = ((exObj.Group || '').toLowerCase()).includes('leg');
 
     // Group by date, preserving set order within each day.
     const setsByDate = {};   // date → [{weight, reps, vol, bodyWeightUsed}, ...]
@@ -301,8 +305,13 @@ function updateVolumeChart(sets, exercises, period, exerciseName) {
     filtered.forEach(s => {
         let w = parseFloat(s.Weight);
         let bodyWeightUsed = false;
-        // For leg exercises with no weight (0, NaN, blank), fall back to body weight.
-        if (isLegs && (isNaN(w) || w === 0)) {
+        const hasAdded = s.AddedWeight !== undefined && s.AddedWeight !== null;
+        if (hasAdded) {
+            // New bodyweight set: Weight is the snapshot; add the extra load.
+            if (isNaN(w)) w = 0;
+            w += (parseFloat(s.AddedWeight) || 0);
+            bodyWeightUsed = true;
+        } else if ((isBodyweight || isLegs) && (isNaN(w) || w === 0)) {
             const bw = getBodyWeightOnOrBefore(s.Date);
             if (bw !== null) { w = bw; bodyWeightUsed = true; }
         }

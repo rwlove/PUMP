@@ -65,7 +65,6 @@ func GetFromEnv() models.Conf {
 	return models.Conf{
 		Color:         EnvOr("COLOR", "dark"),
 		PageStep:      envInt("PAGESTEP", 10),
-		FrequencyDays: envInt("FREQUENCY_DAYS", 30),
 		DisplayDays:   envInt("DISPLAY_DAYS", 30),
 		AutoFill:      envBool("AUTOFILL", true),
 		CVAutoLog:     envBool("CVAUTOLOG", false),

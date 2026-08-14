@@ -395,6 +395,26 @@
   border-top: 1px solid var(--bs-border-color);
 }
 
+/* Drag handle for reordering entries (Feature 5). touch-action:none lets a
+   touch drag proceed without the page scrolling under the finger. */
+.entry-drag-handle {
+  border: none;
+  background: transparent;
+  color: var(--bs-secondary-color);
+  padding: 2px 4px;
+  cursor: grab;
+  touch-action: none;
+  flex-shrink: 0;
+  opacity: 0.5;
+  line-height: 1;
+}
+.entry-drag-handle:hover { opacity: 1; }
+.entry-drag-handle:active { cursor: grabbing; }
+.workout-entry.dragging {
+  opacity: 0.6;
+  background: var(--bs-secondary-bg);
+}
+
 .entry-main {
   display: flex;
   align-items: stretch;

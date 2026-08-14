@@ -88,10 +88,16 @@ func registerRoutes(r *gin.Engine) {
 	r.PATCH("/api/exercises/:id/color", patchExerciseColor)
 	r.DELETE("/api/exercises/:id", deleteExercise)
 
+	// Muscle catalog (focus muscles per group)
+	r.GET("/api/muscles", getMuscles)
+	r.POST("/api/muscles", postMuscle)
+	r.DELETE("/api/muscles/:id", deleteMuscle)
+
 	// Sets
 	r.GET("/api/sets", getSets)
 	r.GET("/api/sets/stream", getSetsStream)
 	r.PUT("/api/sets/date/:date", putSetsByDate)
+	r.POST("/api/sets/reorder", postSetsReorder)
 	r.GET("/api/sets/:id", getSet)
 	r.POST("/api/sets", postSet)
 	r.PATCH("/api/sets/:id", patchSet)
@@ -601,7 +607,6 @@ func putConfig(c *gin.Context) {
 	cur := conf.Get()
 	cur.Color = cfg.Color
 	cur.PageStep = cfg.PageStep
-	cur.FrequencyDays = cfg.FrequencyDays
 	cur.DisplayDays = cfg.DisplayDays
 	cur.AutoFill = cfg.AutoFill
 	cur.CVAutoLog = cfg.CVAutoLog

@@ -34,32 +34,37 @@ func exerciseHandler(c *gin.Context) {
 	if !ok {
 		return
 	}
-	// Sets are only used for the frequency sort — fetch just that window.
-	window := cfg.FrequencyDays
-	if window < 0 {
-		window = 0
-	}
-	fetchCutoff := time.Now().AddDate(0, 0, -window).Format("2006-01-02")
-	sets, ok := selectSetsSinceOr500(c, "exerciseHandler", fetchCutoff)
-	if !ok {
-		return
-	}
+	sortExsByRecency(exs, lastPerformed(c, "exerciseHandler"))
 
-	sortExsByFrequency(exs, sets, cfg.FrequencyDays)
+	muscles := selectMusclesSoft(c, "exerciseHandler")
 
 	var guiData models.GuiData
 	guiData.Config = cfg
 	guiData.ExData.Exs = exs
-	guiData.GroupMap = buildGroupList(exs)
+	guiData.GroupMap = mergeGroupList(exs, muscles)
+	guiData.Muscles = muscles
 
 	idStr, ok := c.GetQuery("id")
-	if ok && idStr != "new" {
+	switch {
+	case ok && idStr != "new":
+		// Editing an existing exercise: load it.
 		id, _ := strconv.Atoi(idStr)
 		for _, oneEx := range exs {
 			if oneEx.ID == id {
 				guiData.OneEx = oneEx
 				break
 			}
+		}
+	case ok && idStr == "new":
+		// Creating a new exercise. The group is chosen on the workout page and
+		// carried here as ?group=, so the form shows it read-only rather than
+		// asking. Pre-fill the color with this group's next free shade so the
+		// picker shows a real color instead of black — the athlete can still
+		// override it. (Feature 1 + Feature 3.)
+		group := c.Query("group")
+		guiData.OneEx.Group = group
+		if group != "" {
+			guiData.OneEx.Color = nextExerciseColor(group, exercisesInGroup(exs, group))
 		}
 	}
 
@@ -76,6 +81,8 @@ func saveExerciseHandler(c *gin.Context) {
 	oneEx.Image = c.PostForm("image")
 	oneEx.Color = c.PostForm("color")
 	oneEx.Voltra = c.PostForm("voltra") == "on"
+	oneEx.Focus = c.PostForm("focus")
+	oneEx.Bodyweight = c.PostForm("bodyweight") == "on"
 
 	var ok bool
 	if oneEx.ID, ok = formInt(c.PostForm("id")); !ok {

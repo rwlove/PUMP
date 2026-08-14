@@ -3,6 +3,7 @@ package web
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -66,6 +67,19 @@ func setHandler(c *gin.Context) {
 		}
 		if n, ok := formMap["note"]; ok && i < len(n) {
 			oneSet.Note = n[i]
+		}
+		// added_weight is present for every row (empty for ordinary sets, a
+		// value — possibly "0" — for bodyweight sets). An empty string leaves
+		// AddedWeight nil, which the store writes as NULL; a value marks the row
+		// as a bodyweight set whose weight is the body-weight snapshot.
+		oneSet.AddedWeight = nil
+		if aw, ok := formMap["added_weight"]; ok && i < len(aw) && strings.TrimSpace(aw[i]) != "" {
+			d, ok := formDecimal(aw[i])
+			if !ok {
+				c.Status(http.StatusBadRequest)
+				return
+			}
+			oneSet.AddedWeight = &d
 		}
 		formData = append(formData, oneSet)
 	}

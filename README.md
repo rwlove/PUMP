@@ -94,7 +94,6 @@ All configuration is via environment variables. No config file is required.
 | `COLOR` | UI color mode: `light` or `dark` | `dark` |
 | `PAGESTEP` | Rows per page on the body weight log | `10` |
 | `DISPLAY_DAYS` | Days of workout history shown on the main page (7/30/90/365) | `30` |
-| `FREQUENCY_DAYS` | Look-back window (days) for sorting exercises by usage frequency | `30` |
 | `AUTOFILL` | Pre-fill weight/reps from last performance when adding a set | `true` |
 | `CVAUTOLOG` | Accept set writes from the `pump-cv` camera sidecar; toggleable in the UI | `false` |
 | `VOLTRA_AUTOLOG` | Accept set writes from the `pump-voltra` trainer sidecar; env-only | `false` |
