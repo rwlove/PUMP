@@ -13,12 +13,12 @@ env:
 jobs:
   autofix:
     name: Diagnose and fix
-    # Run on failures AND successes — successful builds may still contain
-    # warnings worth cleaning up. The consecutive-attempt check below
-    # prevents infinite loops regardless of conclusion.
+    # Only run on failed builds. Scanning every *successful* build for warnings
+    # called Claude needlessly against the plan's shared rate limit and turned
+    # transient 429s into false-failure emails on healthy releases. The
+    # consecutive-attempt check below still prevents infinite fix loops.
     if: |
-      (github.event.workflow_run.conclusion == 'failure' ||
-       github.event.workflow_run.conclusion == 'success') &&
+      github.event.workflow_run.conclusion == 'failure' &&
       github.event.workflow_run.repository.full_name == github.repository
 
     runs-on: ubuntu-latest
