@@ -31,6 +31,10 @@
 |---|---|---|
 | ![Stats Progressive Overload](assets/screenshot-stats-overload.png) | ![Stats Consistency](assets/screenshot-stats-consistency.png) | ![Stats Recovery](assets/screenshot-stats-recovery.png) |
 
+| Stats: Grip & Hang — grip strength (left/right) and dead-hang time |
+|---|
+| ![Stats Grip & Hang](assets/screenshot-stats-grip.png) |
+
 - [Architecture](#architecture)
 - [Configuration](#configuration)
 
