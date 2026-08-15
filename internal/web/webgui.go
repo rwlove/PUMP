@@ -36,6 +36,13 @@ func RegisterRoutes(r *gin.Engine, s *store.PostgresStore) {
 	// to make PUMP installable as a PWA over the whole app.
 	r.GET("/sw.js", serviceWorkerHandler)
 
+	// Serve the web app manifest from the root with no-cache. The /fs static
+	// server sets no cache headers, so browsers heuristically cache the manifest
+	// (and its icons) and never re-read them — an install then stays pinned to a
+	// stale icon set even after the icons are fixed. A root URL + no-cache makes
+	// the manifest always revalidate so icon updates reach installed PWAs.
+	r.GET("/manifest.json", manifestHandler)
+
 	r.GET("/", indexHandler)
 	r.GET("/admin/", adminHandler)
 	r.GET("/config/", configHandler)
@@ -67,4 +74,16 @@ func serviceWorkerHandler(c *gin.Context) {
 	}
 	c.Header("Cache-Control", "no-cache")
 	c.Data(http.StatusOK, "application/javascript; charset=utf-8", data)
+}
+
+// manifestHandler serves the web app manifest with no-cache (see the /manifest.json
+// route comment). Served with the correct application/manifest+json type.
+func manifestHandler(c *gin.Context) {
+	data, err := pubFS.ReadFile("public/manifest.json")
+	if err != nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	c.Header("Cache-Control", "no-cache")
+	c.Data(http.StatusOK, "application/manifest+json", data)
 }
