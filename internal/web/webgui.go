@@ -36,6 +36,7 @@ func RegisterRoutes(r *gin.Engine, s *store.PostgresStore) {
 	r.GET("/config/", configHandler)
 	r.GET("/exercise/", exerciseHandler)
 	r.GET("/stats/", statsHandler)
+	r.GET("/library/", libraryHandler)
 	r.GET("/health/", healthHandler)
 	r.GET("/wall/", wallHandler)
 
