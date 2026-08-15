@@ -1,0 +1,68 @@
+{{ define "library.html" }}
+{{ template "page-head" . }}
+{{ template "page-body" . }}
+<div class="container-xl py-4">
+
+  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+    <h4 class="mb-0"><i class="bi bi-collection me-2"></i>Exercise Library</h4>
+    <input type="text" id="librarySearch" class="form-control form-control-sm" style="max-width:260px;"
+      placeholder="Filter exercises…" oninput="filterLibrary()" autocomplete="off">
+  </div>
+
+  {{ range .GroupMap }}
+  {{ $grp := . }}
+  <div class="card mb-3 library-group" data-group="{{ $grp }}">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <span class="fw-semibold">{{ if $grp }}{{ $grp }}{{ else }}(no group){{ end }}</span>
+      <a href="/exercise/?id=new&group={{ $grp }}" class="btn btn-sm btn-primary rounded-pill px-3">
+        <i class="bi bi-plus me-1"></i>New
+      </a>
+    </div>
+    <div class="list-group list-group-flush">
+      {{ range $.ExData.Exs }}
+      {{ if eq .Group $grp }}
+      <div class="list-group-item d-flex align-items-center gap-2 library-item" data-name="{{ .Name }}">
+        <span style="width:12px;height:12px;border-radius:50%;background:{{ .Color }};flex-shrink:0;"></span>
+        <span class="flex-grow-1 text-truncate">{{ .Name }}</span>
+        {{ if .Bodyweight }}<span class="badge text-bg-secondary" title="Bodyweight exercise">BW</span>{{ end }}
+        {{ if .Voltra }}<span class="badge text-bg-info" title="Uses Voltra trainer">Voltra</span>{{ end }}
+        <a href="/exercise/?id={{ .ID }}" class="btn btn-sm btn-outline-secondary" title="Edit {{ .Name }}" aria-label="Edit {{ .Name }}">
+          <i class="bi bi-pencil"></i>
+        </a>
+      </div>
+      {{ end }}
+      {{ end }}
+    </div>
+  </div>
+  {{ end }}
+
+  <div id="libraryEmpty" class="empty-state" style="display:none;padding:28px 20px;">
+    <div class="empty-icon"><i class="bi bi-search"></i></div>
+    <p>No exercises match your filter.</p>
+  </div>
+
+</div>
+
+<script>
+function filterLibrary() {
+  var q = document.getElementById('librarySearch').value.trim().toLowerCase();
+  var anyVisible = false;
+  document.querySelectorAll('.library-group').forEach(function(g) {
+    var groupHasMatch = false;
+    g.querySelectorAll('.library-item').forEach(function(it) {
+      var match = it.getAttribute('data-name').toLowerCase().indexOf(q) !== -1;
+      it.style.display = match ? '' : 'none';
+      if (match) groupHasMatch = true;
+    });
+    // Keep a group card visible when its name matches even with no exercises,
+    // and always when the filter is empty, so its "New" button stays reachable.
+    var show = (q === '') || groupHasMatch ||
+      (g.getAttribute('data-group').toLowerCase().indexOf(q) !== -1);
+    g.style.display = show ? '' : 'none';
+    if (show) anyVisible = true;
+  });
+  document.getElementById('libraryEmpty').style.display = anyVisible ? 'none' : '';
+}
+</script>
+{{ template "footer.html" }}
+{{ end }}

@@ -882,16 +882,6 @@ function selectGroup(gr) {
         chip.classList.toggle('active', chip.getAttribute('data-group') === gr);
     });
 
-    // Enable "New" and point it at this group — a new exercise is created in
-    // the selected group, which the exercise dialog shows read-only.
-    var newBtn = document.getElementById('newExerciseBtn');
-    if (newBtn) {
-        newBtn.href = '/exercise/?id=new&group=' + encodeURIComponent(gr);
-        newBtn.classList.remove('disabled');
-        newBtn.removeAttribute('aria-disabled');
-        newBtn.title = 'New exercise in ' + gr;
-    }
-
     var header = document.getElementById('groupHeader');
     var noGroup = document.getElementById('noGroupState');
     var searchInput = document.getElementById('exSearch');
@@ -913,14 +903,6 @@ function clearGroup() {
     document.querySelectorAll('.group-chip').forEach(function(chip) {
         chip.classList.remove('active');
     });
-
-    var newBtn = document.getElementById('newExerciseBtn');
-    if (newBtn) {
-        newBtn.href = '#';
-        newBtn.classList.add('disabled');
-        newBtn.setAttribute('aria-disabled', 'true');
-        newBtn.title = 'Select a group first';
-    }
 
     var header = document.getElementById('groupHeader');
     var noGroup = document.getElementById('noGroupState');
