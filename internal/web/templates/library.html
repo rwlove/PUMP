@@ -9,6 +9,38 @@
       placeholder="Filter exercises…" oninput="filterLibrary()" autocomplete="off">
   </div>
 
+  <!-- ── Group management ─────────────────────────────────────────────────── -->
+  <div class="card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <span class="fw-semibold"><i class="bi bi-diagram-3 me-2"></i>Groups</span>
+    </div>
+    <div class="card-body">
+      <p class="small text-body-secondary">
+        Groups organize exercises and set the display order used across the
+        picker, this page, and Muscle Balance. Renaming a group cascades to every
+        exercise and focus muscle in it. A group can't be deleted while any
+        exercise or muscle still uses it.
+      </p>
+      <ul class="list-group mb-3" id="groupList">
+        {{ range .Groups }}
+        <li class="list-group-item d-flex align-items-center gap-2" data-group="{{ .Name }}">
+          <span class="flex-grow-1 text-truncate">{{ .Name }}</span>
+          <button type="button" class="btn btn-sm btn-outline-secondary" title="Move up" onclick="groupMove(this,-1)"><i class="bi bi-arrow-up"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" title="Move down" onclick="groupMove(this,1)"><i class="bi bi-arrow-down"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" title="Rename" onclick='groupRename("{{ .Name }}")'><i class="bi bi-pencil"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-danger" title="Delete" onclick='groupDelete("{{ .Name }}")'><i class="bi bi-trash"></i></button>
+        </li>
+        {{ end }}
+      </ul>
+      <div class="input-group input-group-sm" style="max-width:360px;">
+        <input type="text" id="newGroupName" class="form-control" placeholder="New group name" autocomplete="off"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();groupAdd();}">
+        <button type="button" class="btn btn-primary" onclick="groupAdd()"><i class="bi bi-plus me-1"></i>Add group</button>
+      </div>
+      <div id="groupStatus" class="small mt-2"></div>
+    </div>
+  </div>
+
   {{ range .GroupMap }}
   {{ $grp := . }}
   <div class="card mb-3 library-group" data-group="{{ $grp }}">
@@ -44,6 +76,58 @@
 </div>
 
 <script>
+// ── Group management ─────────────────────────────────────────────────────────
+function groupStatus(msg, isErr) {
+  var el = document.getElementById('groupStatus');
+  if (el) { el.textContent = msg; el.className = 'small mt-2 ' + (isErr ? 'text-danger' : 'text-success'); }
+}
+function groupApi(method, url, body) {
+  return fetch(url, {
+    method: method,
+    headers: {'Content-Type': 'application/json'},
+    body: body ? JSON.stringify(body) : undefined
+  }).then(function(r) {
+    if (r.ok) { location.reload(); return; }
+    return r.json().catch(function() { return {}; }).then(function(j) {
+      var msg = j.error || ('HTTP ' + r.status);
+      if (j.inUse) { msg += ' — ' + j.inUse + ' exercise(s)/muscle(s) still use it'; }
+      groupStatus(msg, true);
+    });
+  }).catch(function(e) { groupStatus(e.message || 'request failed', true); });
+}
+function groupAdd() {
+  var input = document.getElementById('newGroupName');
+  var name = input.value.trim();
+  if (!name) return;
+  groupApi('POST', '/api/groups', {Name: name});
+}
+function groupRename(old) {
+  var nw = prompt('Rename group "' + old + '" to:', old);
+  if (nw === null) return;
+  nw = nw.trim();
+  if (!nw || nw === old) return;
+  groupApi('PUT', '/api/groups', {OldName: old, NewName: nw});
+}
+function groupDelete(name) {
+  if (!confirm('Delete group "' + name + '"?\nThis only works if no exercises or muscles use it.')) return;
+  groupApi('DELETE', '/api/groups?name=' + encodeURIComponent(name), null);
+}
+function groupMove(btn, dir) {
+  var li = btn.closest('li');
+  var list = document.getElementById('groupList');
+  if (dir < 0) {
+    if (!li.previousElementSibling) return;
+    list.insertBefore(li, li.previousElementSibling);
+  } else {
+    if (!li.nextElementSibling) return;
+    list.insertBefore(li.nextElementSibling, li);
+  }
+  var names = Array.prototype.map.call(list.querySelectorAll('li'), function(x) {
+    return x.getAttribute('data-group');
+  });
+  groupApi('POST', '/api/groups/reorder', {Names: names});
+}
+
 function filterLibrary() {
   var q = document.getElementById('librarySearch').value.trim().toLowerCase();
   var anyVisible = false;

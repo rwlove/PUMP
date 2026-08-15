@@ -68,7 +68,7 @@ func indexHandler(c *gin.Context) {
 	guiData.ExData.Exs = exs
 	guiData.ExData.Sets = displaySets
 	guiData.ExData.Weight = weights
-	guiData.GroupMap = mergeGroupList(exs, muscles)
+	guiData.GroupMap = orderedGroups(selectGroupsSoft(c, "indexHandler"), exs, muscles)
 	guiData.Muscles = muscles
 	guiData.ServerDate = time.Now().Format("2006-01-02")
 
@@ -109,6 +109,41 @@ func mergeGroupList(exs []models.Exercise, muscles []models.Muscle) []string {
 		}
 	}
 	return groups
+}
+
+// selectGroupsSoft loads the managed groups, degrading to nil on error rather
+// than failing the page — group order is a nicety, not correctness.
+func selectGroupsSoft(c *gin.Context, who string) []models.Group {
+	groups, err := dataStore.SelectGroups(c.Request.Context())
+	if err != nil {
+		slog.Warn(who+": SelectGroups failed", slog.Any("error", err))
+		return nil
+	}
+	return groups
+}
+
+// orderedGroups returns group names in display order: the managed groups first
+// (by their stored sort_order), then any group still only emergent — used by an
+// exercise or catalog muscle but not yet promoted into the table — appended
+// alphabetically so nothing ever vanishes from the picker.
+func orderedGroups(groups []models.Group, exs []models.Exercise, muscles []models.Muscle) []string {
+	seen := make(map[string]bool, len(groups))
+	out := make([]string, 0, len(groups))
+	for _, g := range groups {
+		if !seen[g.Name] {
+			seen[g.Name] = true
+			out = append(out, g.Name)
+		}
+	}
+	emergent := mergeGroupList(exs, muscles)
+	sort.Strings(emergent)
+	for _, name := range emergent {
+		if !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // selectMusclesSoft loads the muscle catalog, degrading to nil on error rather

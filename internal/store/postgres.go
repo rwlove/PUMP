@@ -532,6 +532,95 @@ func (s *PostgresStore) DeleteMuscle(ctx context.Context, id int) error {
 	return err
 }
 
+// ─── groups (managed training groups) ──────────────────────────────────────────
+
+// SelectGroups returns the managed groups ordered by sort_order then name.
+func (s *PostgresStore) SelectGroups(ctx context.Context) ([]models.Group, error) {
+	slog.Debug("db: SelectGroups")
+	rows, err := s.pool.Query(ctx,
+		`SELECT name, sort_order FROM groups ORDER BY sort_order ASC, name ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.Group
+	for rows.Next() {
+		var g models.Group
+		if err := rows.Scan(&g.Name, &g.Sort); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+// InsertGroup appends a group at the end of the order. Duplicate names are a
+// no-op via the primary key.
+func (s *PostgresStore) InsertGroup(ctx context.Context, name string) error {
+	slog.Debug("db: InsertGroup", slog.String("name", name))
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO groups (name, sort_order)
+		 VALUES ($1, COALESCE((SELECT max(sort_order) + 1 FROM groups), 0))
+		 ON CONFLICT (name) DO NOTHING`, name)
+	return err
+}
+
+// RenameGroup renames a group and cascades the new name onto every exercise and
+// catalog muscle that referenced it, atomically. Renaming onto an existing
+// group name is rejected by the primary key (merge is not supported).
+func (s *PostgresStore) RenameGroup(ctx context.Context, oldName, newName string) error {
+	slog.Debug("db: RenameGroup", slog.String("old", oldName), slog.String("new", newName))
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once Commit succeeds
+	if _, err := tx.Exec(ctx, `UPDATE groups SET name = $1 WHERE name = $2`, newName, oldName); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE exercises SET gr = $1 WHERE gr = $2`, newName, oldName); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE muscles SET gr = $1 WHERE gr = $2`, newName, oldName); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// DeleteGroup removes a group, refusing (returning inUse > 0, no delete) when any
+// exercise or catalog muscle still references it.
+func (s *PostgresStore) DeleteGroup(ctx context.Context, name string) (int, error) {
+	slog.Debug("db: DeleteGroup", slog.String("name", name))
+	var inUse int
+	if err := s.pool.QueryRow(ctx,
+		`SELECT (SELECT count(*) FROM exercises WHERE gr = $1)
+		      + (SELECT count(*) FROM muscles   WHERE gr = $1)`, name).Scan(&inUse); err != nil {
+		return 0, err
+	}
+	if inUse > 0 {
+		return inUse, nil
+	}
+	_, err := s.pool.Exec(ctx, `DELETE FROM groups WHERE name = $1`, name)
+	return 0, err
+}
+
+// ReorderGroups sets sort_order to match the given name order (index 0 first).
+func (s *PostgresStore) ReorderGroups(ctx context.Context, names []string) error {
+	slog.Debug("db: ReorderGroups", slog.Int("count", len(names)))
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once Commit succeeds
+	for i, name := range names {
+		if _, err := tx.Exec(ctx, `UPDATE groups SET sort_order = $1 WHERE name = $2`, i, name); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
 // ─── weight ───────────────────────────────────────────────────────────────────
 
 // SelectW returns one BodyWeight per distinct date — the latest by

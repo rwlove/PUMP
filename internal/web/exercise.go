@@ -41,7 +41,7 @@ func exerciseHandler(c *gin.Context) {
 	var guiData models.GuiData
 	guiData.Config = cfg
 	guiData.ExData.Exs = exs
-	guiData.GroupMap = mergeGroupList(exs, muscles)
+	guiData.GroupMap = orderedGroups(selectGroupsSoft(c, "exerciseHandler"), exs, muscles)
 	guiData.Muscles = muscles
 
 	idStr, ok := c.GetQuery("id")

@@ -57,6 +57,11 @@ func (f *fakeStore) LastPerformed(context.Context) (map[string]models.ExerciseRe
 func (f *fakeStore) SelectMuscles(context.Context) ([]models.Muscle, error) { return nil, nil }
 func (f *fakeStore) InsertMuscle(context.Context, models.Muscle) error      { return nil }
 func (f *fakeStore) DeleteMuscle(context.Context, int) error                { return nil }
+func (f *fakeStore) SelectGroups(context.Context) ([]models.Group, error)   { return nil, nil }
+func (f *fakeStore) InsertGroup(context.Context, string) error              { return nil }
+func (f *fakeStore) RenameGroup(context.Context, string, string) error      { return nil }
+func (f *fakeStore) DeleteGroup(context.Context, string) (int, error)       { return 0, nil }
+func (f *fakeStore) ReorderGroups(context.Context, []string) error          { return nil }
 func (f *fakeStore) GetSet(context.Context, int) (models.Set, error)        { return models.Set{}, nil }
 func (f *fakeStore) InsertSet(context.Context, models.Set) (models.Set, error) {
 	return models.Set{}, nil
