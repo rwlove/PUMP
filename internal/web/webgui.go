@@ -31,6 +31,11 @@ func RegisterRoutes(r *gin.Engine, s *store.PostgresStore) {
 	r.SetHTMLTemplate(templ)
 	r.StaticFS("/fs/", http.FS(pubFS))
 
+	// Serve the app service worker from the root so its default scope is "/".
+	// A worker under /fs/ could only control /fs/, so it must live at the root
+	// to make PUMP installable as a PWA over the whole app.
+	r.GET("/sw.js", serviceWorkerHandler)
+
 	r.GET("/", indexHandler)
 	r.GET("/admin/", adminHandler)
 	r.GET("/config/", configHandler)
@@ -50,4 +55,16 @@ func RegisterRoutes(r *gin.Engine, s *store.PostgresStore) {
 	r.POST("/set/", setHandler)
 	r.POST("/weight/", addWeightHandler)
 	r.POST("/wdel/", deleteWeightHandler)
+}
+
+// serviceWorkerHandler serves the app service worker at the root path so its
+// default scope is "/". no-cache lets worker updates propagate promptly.
+func serviceWorkerHandler(c *gin.Context) {
+	data, err := pubFS.ReadFile("public/sw.js")
+	if err != nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	c.Header("Cache-Control", "no-cache")
+	c.Data(http.StatusOK, "application/javascript; charset=utf-8", data)
 }

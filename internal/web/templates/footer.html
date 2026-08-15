@@ -1,4 +1,16 @@
 {{ define "footer.html"}}
+<script>
+  // Register the app service worker so PUMP is installable as a PWA
+  // (Brave/Chrome "Install app" → standalone window + the real logo, rather
+  // than a monogram home-screen bookmark). Served from /sw.js so it controls
+  // the whole app; the kiosk (/wall/) is skipped by the worker itself.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js')
+        .catch(function (err) { console.warn('PUMP: SW registration failed', err); });
+    });
+  }
+</script>
 </body>
 </html>
 {{ end }}
