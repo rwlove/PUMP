@@ -283,7 +283,10 @@ type GuiData struct {
 	PrimaryIDs   map[int]bool
 	SecondaryIDs map[int]bool
 	Routines     []Routine // workout templates (Library management + workout-page scaffolding)
-	Version      string
-	ServerDate   string      // today's date in server timezone (YYYY-MM-DD)
-	Health       HealthStats // wearable aggregates (Health page + Stats tabs)
+	// ExerciseMuscles maps exercise id → its focus muscles, for the
+	// muscle-level Muscle Balance view. JSON-encoded to the stats page.
+	ExerciseMuscles map[int][]FocusMuscle
+	Version         string
+	ServerDate      string      // today's date in server timezone (YYYY-MM-DD)
+	Health          HealthStats // wearable aggregates (Health page + Stats tabs)
 }

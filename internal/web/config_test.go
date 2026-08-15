@@ -68,6 +68,9 @@ func (f *fakeStore) SelectExerciseMuscles(context.Context, int) ([]models.FocusM
 func (f *fakeStore) ReplaceExerciseMuscles(context.Context, int, []models.FocusMuscle) error {
 	return nil
 }
+func (f *fakeStore) SelectAllExerciseMuscles(context.Context) (map[int][]models.FocusMuscle, error) {
+	return nil, nil
+}
 func (f *fakeStore) SelectRoutines(context.Context) ([]models.Routine, error)   { return nil, nil }
 func (f *fakeStore) InsertRoutine(context.Context, string, string) (int, error) { return 0, nil }
 func (f *fakeStore) UpdateRoutine(context.Context, int, string, string) error   { return nil }

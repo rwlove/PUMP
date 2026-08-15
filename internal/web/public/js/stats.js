@@ -639,10 +639,22 @@ var _balanceChart = null;
 // 'volume' (weight × reps). Toggled by the Sets/Volume buttons on the tab.
 var balanceMetric = 'sets';
 
+// Balance dimension: 'group' (by training group) or 'muscle' (per focus muscle,
+// crediting each set to its exercise's muscles — primary ×1.0, secondary ×0.5).
+var balanceDim = 'group';
+
 function setBalanceMetric(metric) {
     balanceMetric = (metric === 'volume') ? 'volume' : 'sets';
     document.querySelectorAll('#tab-balance [data-metric]').forEach(b => {
         b.classList.toggle('active', b.dataset.metric === balanceMetric);
+    });
+    updateBalanceTab(window.currentSets, window.exercises, currentPeriod);
+}
+
+function setBalanceDim(dim) {
+    balanceDim = (dim === 'muscle') ? 'muscle' : 'group';
+    document.querySelectorAll('#tab-balance [data-dim]').forEach(b => {
+        b.classList.toggle('active', b.dataset.dim === balanceDim);
     });
     updateBalanceTab(window.currentSets, window.exercises, currentPeriod);
 }
@@ -654,16 +666,27 @@ function updateBalanceTab(allSets, exercises, period) {
 
     const groupVolume = {};
     const groupSets = {};
+    // Muscle dimension credits each set to its exercise's focus muscles (primary
+    // ×1.0, secondary ×0.5); group dimension counts whole sets per training group.
+    const byMuscle = balanceDim === 'muscle' && window._exerciseMuscles;
     filtered.forEach(s => {
         const ex = exMap[s.Name];
         if (!ex) return;
-        const group = ex.Group || 'Other';
-        if (group.toLowerCase() === 'cardio') return;
         const w = parseFloat(s.Weight);
         const r = parseInt(s.Reps, 10);
-        groupSets[group] = (groupSets[group] || 0) + 1;
-        if (!isNaN(w) && w > 0 && !isNaN(r) && r > 0) {
-            groupVolume[group] = (groupVolume[group] || 0) + w * r;
+        const vol = (!isNaN(w) && w > 0 && !isNaN(r) && r > 0) ? w * r : 0;
+        if (byMuscle) {
+            const muscles = window._exerciseMuscles[String(ex.ID)] || [];
+            muscles.forEach(m => {
+                const f = m.Primary ? 1.0 : 0.5;
+                groupSets[m.Name] = (groupSets[m.Name] || 0) + f;
+                if (vol > 0) groupVolume[m.Name] = (groupVolume[m.Name] || 0) + vol * f;
+            });
+        } else {
+            const group = ex.Group || 'Other';
+            if (group.toLowerCase() === 'cardio') return;
+            groupSets[group] = (groupSets[group] || 0) + 1;
+            if (vol > 0) groupVolume[group] = (groupVolume[group] || 0) + vol;
         }
     });
 
@@ -687,11 +710,11 @@ function updateBalanceTab(allSets, exercises, period) {
     const bySets = balanceMetric === 'sets';
     const noun = bySets ? 'Sets' : 'Volume';
     const metricVal = g => bySets ? (groupSets[g] || 0) : Math.round(groupVolume[g] || 0);
-    const fmtSets = g => `${groupSets[g] || 0} set${(groupSets[g] || 0) === 1 ? '' : 's'}`;
+    const fmtSets = g => { const n = Math.round((groupSets[g] || 0) * 10) / 10; return `${n} set${n === 1 ? '' : 's'}`; };
     const fmtVol = g => groupVolume[g] ? `${Math.round(groupVolume[g]).toLocaleString()} lbs` : '— lbs';
 
     const titleEl = document.getElementById('balance-title');
-    if (titleEl) titleEl.textContent = `${noun} by Muscle Group`;
+    if (titleEl) titleEl.textContent = `${noun} by ${byMuscle ? 'Muscle' : 'Muscle Group'}`;
     const breakdownEl = document.getElementById('balance-breakdown-title');
     if (breakdownEl) breakdownEl.textContent = `${noun} Breakdown`;
 

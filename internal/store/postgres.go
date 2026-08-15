@@ -109,6 +109,32 @@ func (s *PostgresStore) SelectExerciseMuscles(ctx context.Context, exerciseID in
 	return out, rows.Err()
 }
 
+// SelectAllExerciseMuscles returns every exercise's focus muscles keyed by
+// exercise id, primary first — the whole junction for the muscle-level Balance.
+func (s *PostgresStore) SelectAllExerciseMuscles(ctx context.Context) (map[int][]models.FocusMuscle, error) {
+	slog.Debug("db: SelectAllExerciseMuscles")
+	rows, err := s.pool.Query(ctx,
+		`SELECT em.exercise_id, em.muscle_id, m.gr, m.name, em.is_primary
+		 FROM exercise_muscles em
+		 JOIN muscles m ON m.id = em.muscle_id
+		 ORDER BY em.exercise_id, em.is_primary DESC, m.gr ASC, m.name ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := map[int][]models.FocusMuscle{}
+	for rows.Next() {
+		var exID int
+		var fm models.FocusMuscle
+		if err := rows.Scan(&exID, &fm.MuscleID, &fm.Group, &fm.Name, &fm.Primary); err != nil {
+			return nil, err
+		}
+		out[exID] = append(out[exID], fm)
+	}
+	return out, rows.Err()
+}
+
 // ReplaceExerciseMuscles atomically swaps an exercise's focus muscles for the
 // given set (delete-then-insert in one transaction).
 func (s *PostgresStore) ReplaceExerciseMuscles(ctx context.Context, exerciseID int, fms []models.FocusMuscle) error {
