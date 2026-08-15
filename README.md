@@ -5,7 +5,11 @@
 
 <p align="center"><img src="assets/logo.svg" alt="PUMP" width="320"></p>
 
-**Please Use More Protein** — workout diary with daily set logging, body weight tracking, training stats, and a whole-body **Health** dashboard fed by your fitness tracker via Android Health Connect.
+**Please Use More Protein** — workout diary with daily set logging, body weight tracking, an exercise **Library** (managed groups, reusable routines/templates, and per-exercise primary/secondary focus muscles), training stats, and a whole-body **Health** dashboard fed by your fitness tracker via Android Health Connect.
+
+| Exercise Library — groups, routines & exercise management |
+|---|
+| ![Exercise Library](assets/screenshot-library.png) |
 
 | Overall Health | Workout | Stats: Exercise Distribution |
 |---|---|---|
