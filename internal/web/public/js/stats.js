@@ -639,10 +639,22 @@ var _balanceChart = null;
 // 'volume' (weight × reps). Toggled by the Sets/Volume buttons on the tab.
 var balanceMetric = 'sets';
 
+// Balance dimension: 'group' (by training group) or 'muscle' (per focus muscle,
+// crediting each set to its exercise's muscles — primary ×1.0, secondary ×0.5).
+var balanceDim = 'group';
+
 function setBalanceMetric(metric) {
     balanceMetric = (metric === 'volume') ? 'volume' : 'sets';
     document.querySelectorAll('#tab-balance [data-metric]').forEach(b => {
         b.classList.toggle('active', b.dataset.metric === balanceMetric);
+    });
+    updateBalanceTab(window.currentSets, window.exercises, currentPeriod);
+}
+
+function setBalanceDim(dim) {
+    balanceDim = (dim === 'muscle') ? 'muscle' : 'group';
+    document.querySelectorAll('#tab-balance [data-dim]').forEach(b => {
+        b.classList.toggle('active', b.dataset.dim === balanceDim);
     });
     updateBalanceTab(window.currentSets, window.exercises, currentPeriod);
 }
@@ -654,16 +666,27 @@ function updateBalanceTab(allSets, exercises, period) {
 
     const groupVolume = {};
     const groupSets = {};
+    // Muscle dimension credits each set to its exercise's focus muscles (primary
+    // ×1.0, secondary ×0.5); group dimension counts whole sets per training group.
+    const byMuscle = balanceDim === 'muscle' && window._exerciseMuscles;
     filtered.forEach(s => {
         const ex = exMap[s.Name];
         if (!ex) return;
-        const group = ex.Group || 'Other';
-        if (group.toLowerCase() === 'cardio') return;
         const w = parseFloat(s.Weight);
         const r = parseInt(s.Reps, 10);
-        groupSets[group] = (groupSets[group] || 0) + 1;
-        if (!isNaN(w) && w > 0 && !isNaN(r) && r > 0) {
-            groupVolume[group] = (groupVolume[group] || 0) + w * r;
+        const vol = (!isNaN(w) && w > 0 && !isNaN(r) && r > 0) ? w * r : 0;
+        if (byMuscle) {
+            const muscles = window._exerciseMuscles[String(ex.ID)] || [];
+            muscles.forEach(m => {
+                const f = m.Primary ? 1.0 : 0.5;
+                groupSets[m.Name] = (groupSets[m.Name] || 0) + f;
+                if (vol > 0) groupVolume[m.Name] = (groupVolume[m.Name] || 0) + vol * f;
+            });
+        } else {
+            const group = ex.Group || 'Other';
+            if (group.toLowerCase() === 'cardio') return;
+            groupSets[group] = (groupSets[group] || 0) + 1;
+            if (vol > 0) groupVolume[group] = (groupVolume[group] || 0) + vol;
         }
     });
 
@@ -687,11 +710,11 @@ function updateBalanceTab(allSets, exercises, period) {
     const bySets = balanceMetric === 'sets';
     const noun = bySets ? 'Sets' : 'Volume';
     const metricVal = g => bySets ? (groupSets[g] || 0) : Math.round(groupVolume[g] || 0);
-    const fmtSets = g => `${groupSets[g] || 0} set${(groupSets[g] || 0) === 1 ? '' : 's'}`;
+    const fmtSets = g => { const n = Math.round((groupSets[g] || 0) * 10) / 10; return `${n} set${n === 1 ? '' : 's'}`; };
     const fmtVol = g => groupVolume[g] ? `${Math.round(groupVolume[g]).toLocaleString()} lbs` : '— lbs';
 
     const titleEl = document.getElementById('balance-title');
-    if (titleEl) titleEl.textContent = `${noun} by Muscle Group`;
+    if (titleEl) titleEl.textContent = `${noun} by ${byMuscle ? 'Muscle' : 'Muscle Group'}`;
     const breakdownEl = document.getElementById('balance-breakdown-title');
     if (breakdownEl) breakdownEl.textContent = `${noun} Breakdown`;
 
@@ -1047,3 +1070,90 @@ document.addEventListener('shown.bs.tab', function(ev) {
         ev.target.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
     }
 });
+
+// ─── Grip & Hang ──────────────────────────────────────────────────────────────
+
+var _gripChart = null, _hangChart = null;
+
+function gripSet(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
+
+function updateGripTab(measurements) {
+    measurements = measurements || window._measurements || [];
+    var grip = measurements.filter(function(m) { return m.Metric === 'grip'; });
+    var hang = measurements.filter(function(m) { return m.Metric === 'dead_hang'; });
+
+    var left  = grip.filter(function(m) { return m.Hand === 'left'; });
+    var right = grip.filter(function(m) { return m.Hand === 'right'; });
+    var gripDates = Array.from(new Set(grip.map(function(m) { return m.Date; }))).sort();
+    function series(rows) {
+        var map = {};
+        rows.forEach(function(m) { map[m.Date] = parseFloat(m.Value); });
+        return gripDates.map(function(d) { return (d in map) ? map[d] : null; });
+    }
+
+    if (_gripChart) { _gripChart.destroy(); _gripChart = null; }
+    var gripNo = document.getElementById('grip-no-data');
+    if (grip.length === 0) {
+        if (gripNo) gripNo.style.display = '';
+        gripSet('grip-left', '–'); gripSet('grip-right', '–');
+    } else {
+        if (gripNo) gripNo.style.display = 'none';
+        var lastL = left.length ? parseFloat(left[left.length - 1].Value) : null;
+        var lastR = right.length ? parseFloat(right[right.length - 1].Value) : null;
+        gripSet('grip-left',  lastL != null ? lastL + ' lb' : '–');
+        gripSet('grip-right', lastR != null ? lastR + ' lb' : '–');
+        _gripChart = new Chart(document.getElementById('grip-chart'), {
+            type: 'line',
+            data: { labels: gripDates, datasets: [
+                { label: 'Left',  data: series(left),  borderColor: '#2780e3', backgroundColor: '#2780e333', spanGaps: true, tension: 0.2 },
+                { label: 'Right', data: series(right), borderColor: '#e37b27', backgroundColor: '#e37b2733', spanGaps: true, tension: 0.2 },
+            ] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true } }, scales: { y: { beginAtZero: false } } }
+        });
+    }
+
+    if (_hangChart) { _hangChart.destroy(); _hangChart = null; }
+    var hangNo = document.getElementById('hang-no-data');
+    if (hang.length === 0) {
+        if (hangNo) hangNo.style.display = '';
+        gripSet('hang-latest', '–'); gripSet('hang-best', '–');
+    } else {
+        if (hangNo) hangNo.style.display = 'none';
+        var hvals = hang.map(function(m) { return parseFloat(m.Value); });
+        gripSet('hang-latest', hvals[hvals.length - 1] + 's');
+        gripSet('hang-best', Math.max.apply(null, hvals) + 's');
+        _hangChart = new Chart(document.getElementById('hang-chart'), {
+            type: 'line',
+            data: { labels: hang.map(function(m) { return m.Date; }), datasets: [
+                { label: 'Dead hang (s)', data: hvals, borderColor: '#27b36b', backgroundColor: '#27b36b33', tension: 0.2 },
+            ] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+        });
+    }
+}
+
+function saveMeasurement() {
+    var status = document.getElementById('m-status');
+    var date = document.getElementById('m-date').value;
+    if (!date) { status.textContent = 'date is required'; return; }
+    var body = {
+        Date: date,
+        GripLeft:  document.getElementById('m-grip-left').value  || null,
+        GripRight: document.getElementById('m-grip-right').value || null,
+        DeadHang:  document.getElementById('m-hang').value       || null,
+    };
+    if (!body.GripLeft && !body.GripRight && !body.DeadHang) { status.textContent = 'enter at least one value'; return; }
+    fetch('/api/measurements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function(r) {
+            if (!r.ok) { return r.json().then(function(j) { status.textContent = (j && j.error) || ('HTTP ' + r.status); }); }
+            var modalEl = document.getElementById('logMeasurementModal');
+            var inst = bootstrap.Modal.getInstance(modalEl);
+            if (inst) inst.hide();
+            ['m-grip-left', 'm-grip-right', 'm-hang'].forEach(function(id) { document.getElementById(id).value = ''; });
+            return fetch('/api/measurements').then(function(rr) { return rr.json(); }).then(function(ms) {
+                window._measurements = ms || [];
+                updateGripTab(window._measurements);
+            });
+        })
+        .catch(function(e) { status.textContent = e.message || 'request failed'; });
+}

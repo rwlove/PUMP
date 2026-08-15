@@ -288,6 +288,21 @@ CREATE TABLE IF NOT EXISTS routine_items (
 CREATE INDEX IF NOT EXISTS routine_items_routine_idx ON routine_items (routine_id, position);
 `,
 	},
+	{
+		Version:     18,
+		Description: "create measurements table (occasional standalone metrics: grip, dead hang)",
+		SQL: `
+CREATE TABLE IF NOT EXISTS measurements (
+    id          SERIAL        PRIMARY KEY,
+    date        DATE          NOT NULL,
+    recorded_at TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    metric      TEXT          NOT NULL,             -- 'grip' | 'dead_hang'
+    hand        TEXT          NOT NULL DEFAULT '',  -- 'left' | 'right' | '' (n/a)
+    value       NUMERIC(10,2) NOT NULL DEFAULT 0    -- lb for grip, seconds for dead_hang
+);
+CREATE INDEX IF NOT EXISTS measurements_metric_date_idx ON measurements (metric, date);
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any

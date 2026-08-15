@@ -91,6 +91,17 @@ type Store interface {
 	// ReplaceExerciseMuscles atomically replaces an exercise's focus muscles
 	// with the given set.
 	ReplaceExerciseMuscles(ctx context.Context, exerciseID int, fms []models.FocusMuscle) error
+	// SelectAllExerciseMuscles returns every exercise's focus muscles keyed by
+	// exercise id, for the muscle-level Muscle Balance view.
+	SelectAllExerciseMuscles(ctx context.Context) (map[int][]models.FocusMuscle, error)
+
+	// SelectMeasurements returns all standalone metric readings (grip, dead
+	// hang), oldest-first.
+	SelectMeasurements(ctx context.Context) ([]models.Measurement, error)
+	// InsertMeasurement appends one metric reading.
+	InsertMeasurement(ctx context.Context, m models.Measurement) error
+	// DeleteMeasurement removes a reading by id.
+	DeleteMeasurement(ctx context.Context, id int) error
 
 	// SelectRoutines returns all workout templates with items resolved to
 	// exercise name/color, ordered for display.

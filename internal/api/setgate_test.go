@@ -69,10 +69,18 @@ func (g *gateStore) SelectExerciseMuscles(context.Context, int) ([]models.FocusM
 func (g *gateStore) ReplaceExerciseMuscles(context.Context, int, []models.FocusMuscle) error {
 	return nil
 }
-func (g *gateStore) SelectRoutines(context.Context) ([]models.Routine, error)   { return nil, nil }
-func (g *gateStore) InsertRoutine(context.Context, string, string) (int, error) { return 0, nil }
-func (g *gateStore) UpdateRoutine(context.Context, int, string, string) error   { return nil }
-func (g *gateStore) DeleteRoutine(context.Context, int) error                   { return nil }
+func (g *gateStore) SelectAllExerciseMuscles(context.Context) (map[int][]models.FocusMuscle, error) {
+	return nil, nil
+}
+func (g *gateStore) SelectMeasurements(context.Context) ([]models.Measurement, error) {
+	return nil, nil
+}
+func (g *gateStore) InsertMeasurement(context.Context, models.Measurement) error { return nil }
+func (g *gateStore) DeleteMeasurement(context.Context, int) error                { return nil }
+func (g *gateStore) SelectRoutines(context.Context) ([]models.Routine, error)    { return nil, nil }
+func (g *gateStore) InsertRoutine(context.Context, string, string) (int, error)  { return 0, nil }
+func (g *gateStore) UpdateRoutine(context.Context, int, string, string) error    { return nil }
+func (g *gateStore) DeleteRoutine(context.Context, int) error                    { return nil }
 func (g *gateStore) ReplaceRoutineItems(context.Context, int, []models.RoutineItem) error {
 	return nil
 }

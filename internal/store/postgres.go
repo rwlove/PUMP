@@ -109,6 +109,32 @@ func (s *PostgresStore) SelectExerciseMuscles(ctx context.Context, exerciseID in
 	return out, rows.Err()
 }
 
+// SelectAllExerciseMuscles returns every exercise's focus muscles keyed by
+// exercise id, primary first — the whole junction for the muscle-level Balance.
+func (s *PostgresStore) SelectAllExerciseMuscles(ctx context.Context) (map[int][]models.FocusMuscle, error) {
+	slog.Debug("db: SelectAllExerciseMuscles")
+	rows, err := s.pool.Query(ctx,
+		`SELECT em.exercise_id, em.muscle_id, m.gr, m.name, em.is_primary
+		 FROM exercise_muscles em
+		 JOIN muscles m ON m.id = em.muscle_id
+		 ORDER BY em.exercise_id, em.is_primary DESC, m.gr ASC, m.name ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := map[int][]models.FocusMuscle{}
+	for rows.Next() {
+		var exID int
+		var fm models.FocusMuscle
+		if err := rows.Scan(&exID, &fm.MuscleID, &fm.Group, &fm.Name, &fm.Primary); err != nil {
+			return nil, err
+		}
+		out[exID] = append(out[exID], fm)
+	}
+	return out, rows.Err()
+}
+
 // ReplaceExerciseMuscles atomically swaps an exercise's focus muscles for the
 // given set (delete-then-insert in one transaction).
 func (s *PostgresStore) ReplaceExerciseMuscles(ctx context.Context, exerciseID int, fms []models.FocusMuscle) error {
@@ -770,6 +796,48 @@ func (s *PostgresStore) ReplaceRoutineItems(ctx context.Context, routineID int, 
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+// ─── measurements (grip, dead hang) ────────────────────────────────────────────
+
+// SelectMeasurements returns all standalone metric readings, oldest-first.
+func (s *PostgresStore) SelectMeasurements(ctx context.Context) ([]models.Measurement, error) {
+	slog.Debug("db: SelectMeasurements")
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, date::text, recorded_at::text, metric, hand, value::text
+		 FROM measurements ORDER BY date ASC, recorded_at ASC, id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.Measurement
+	for rows.Next() {
+		var m models.Measurement
+		var val string
+		if err := rows.Scan(&m.ID, &m.Date, &m.RecordedAt, &m.Metric, &m.Hand, &val); err != nil {
+			return nil, err
+		}
+		m.Value, _ = decimal.NewFromString(val)
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// InsertMeasurement appends one metric reading.
+func (s *PostgresStore) InsertMeasurement(ctx context.Context, m models.Measurement) error {
+	slog.Debug("db: InsertMeasurement", slog.String("metric", m.Metric), slog.String("hand", m.Hand))
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO measurements (date, metric, hand, value) VALUES ($1::date, $2, $3, $4)`,
+		m.Date, m.Metric, m.Hand, m.Value.String())
+	return err
+}
+
+// DeleteMeasurement removes a reading by id.
+func (s *PostgresStore) DeleteMeasurement(ctx context.Context, id int) error {
+	slog.Debug("db: DeleteMeasurement", slog.Int("id", id))
+	_, err := s.pool.Exec(ctx, `DELETE FROM measurements WHERE id = $1`, id)
+	return err
 }
 
 // ─── weight ───────────────────────────────────────────────────────────────────
