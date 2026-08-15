@@ -98,6 +98,6 @@ cv/
   tests/
   configs/
     default.yaml
-  Dockerfile
+  Containerfile
   pyproject.toml
 ```

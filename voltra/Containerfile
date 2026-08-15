@@ -1,0 +1,31 @@
+# Single stage: unlike pump-cv there is no GPU stack here, so the whole image
+# is small enough that the split base/runtime build buys nothing.
+FROM python:3.14-slim
+
+WORKDIR /app
+
+COPY pyproject.toml ./
+COPY pump_voltra ./pump_voltra
+COPY configs ./configs
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir .
+
+ENV PUMP_VOLTRA_CONFIG=/app/configs/default.yaml
+
+# The trainer accepts a single BLE central, so this must run one replica with
+# a Recreate strategy — two would fight over the connection.
+EXPOSE 8080
+
+ARG VERSION=dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.title="pump-voltra" \
+      org.opencontainers.image.description="PUMP Voltra trainer sidecar (BLE telemetry → PUMP sets, motor control)" \
+      org.opencontainers.image.source="https://github.com/rwlove/PUMP" \
+      org.opencontainers.image.url="https://github.com/rwlove/PUMP" \
+      org.opencontainers.image.documentation="https://github.com/rwlove/PUMP/blob/main/voltra/README.md" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}"
+
+ENTRYPOINT ["python", "-m", "pump_voltra.main"]

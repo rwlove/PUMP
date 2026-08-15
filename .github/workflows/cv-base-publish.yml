@@ -1,12 +1,12 @@
 name: Publish pump-cv-base Container Image
 
 # Builds the heavy-deps base image used by `pump-cv`. The runtime image
-# (cv/Dockerfile) is FROM this base; splitting them lets code-only tag
+# (cv/Containerfile) is FROM this base; splitting them lets code-only tag
 # bumps ship in <1 min instead of ~8 min.
 #
 # Triggers:
-#   - main branch pushes that touch cv/Dockerfile.base, cv/pyproject.toml,
-#     or this workflow file (covers both dep changes and Dockerfile tweaks)
+#   - main branch pushes that touch cv/Containerfile.base, cv/pyproject.toml,
+#     or this workflow file (covers both dep changes and Containerfile tweaks)
 #   - manual workflow_dispatch (rebuild on demand without pushing a commit)
 #
 # Tag scheme:
@@ -21,7 +21,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'cv/Dockerfile.base'
+      - 'cv/Containerfile.base'
       - 'cv/pyproject.toml'
       - '.github/workflows/cv-base-publish.yml'
   workflow_dispatch:
@@ -87,11 +87,12 @@ jobs:
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: ./cv
-          file: ./cv/Dockerfile.base
+          file: ./cv/Containerfile.base
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           # Registry cache co-located with the image: faster pull/push
           # than GHA storage for a ~4 GB image, and no 10 GB GHA cap.
           cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache

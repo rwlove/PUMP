@@ -164,8 +164,8 @@ Lives in the PUMP monorepo under `cv/`. Considered a standalone repo
 (different language, different image, different secrets) but for a
 single-developer project the monorepo wins on atomic cross-component
 changes (an API field plus its CV consumer in one commit) and one place
-to find anything. Two Dockerfiles in the same repo: `Dockerfile.pump`
-for the Go service, `cv/Dockerfile` for the Python sidecar; CI scopes
+to find anything. Two Containerfiles in the same repo: `Containerfile`
+for the Go service, `cv/Containerfile` for the Python sidecar; CI scopes
 each build to its respective path. Tags continue on the same `v0.0.N`
 sequence regardless of which side changed.
 
@@ -191,7 +191,7 @@ PUMP/
     calibration/      # checkerboard data, computed intrinsics/extrinsics
     configs/          # yaml configs
     tests/
-    Dockerfile
+    Containerfile
     README.md
     pyproject.toml
 ```
@@ -269,7 +269,7 @@ producer. Manual UX unchanged when toggle is off.
 
 Deliverables:
 
-- `pump-cv` repo bootstrapped (Dockerfile, asyncio main loop)
+- `pump-cv` repo bootstrapped (Containerfile, asyncio main loop)
 - RTSP capture with NVDEC decode for both cameras
 - YOLOv8-Pose inference per camera
 - Athlete picker (single user)
