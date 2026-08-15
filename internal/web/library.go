@@ -21,6 +21,18 @@ func libraryHandler(c *gin.Context) {
 	if !ok {
 		return
 	}
+
+	// Assign a color to any exercise still missing one, same as the workout
+	// page — otherwise a colorless exercise shows a black dot in the Library's
+	// per-group list (the page renders color dots but, unlike the picker, used
+	// to skip the lazy backfill).
+	if needsColorBackfill(exs) {
+		backfillColors(c.Request.Context(), exs)
+		if refreshed, err := dataStore.SelectEx(c.Request.Context()); err == nil {
+			exs = refreshed
+		}
+	}
+
 	muscles := selectMusclesSoft(c, "libraryHandler")
 
 	// Stable management order: within a group, by Place then Name. The template

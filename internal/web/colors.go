@@ -148,9 +148,18 @@ func hslToHex(h, s, l float64) string {
 	return fmt.Sprintf("#%02x%02x%02x", r, g, b)
 }
 
-// backfillColors assigns colors to any exercise that has an empty Color field,
-// persisting the change to the store. Called lazily on the first page load that
-// finds exercises without colors.
+// colorUnset reports whether an exercise color needs (re)assignment. Empty is
+// the obvious case; pure black (#000000) is treated the same because the palette
+// never produces black — a shade is HSL with lightness 34–78 — so a stored
+// #000000 is legacy/broken data, not a real assigned color, and should be
+// backfilled rather than rendered as a black dot.
+func colorUnset(c string) bool {
+	return c == "" || strings.EqualFold(c, "#000000") || strings.EqualFold(c, "#000")
+}
+
+// backfillColors assigns colors to any exercise that has no real color yet
+// (empty or a broken black), persisting the change to the store. Called lazily
+// on the first page load that finds such exercises.
 func backfillColors(ctx context.Context, exs []models.Exercise) {
 	// Work against a local copy so each assignment is visible to the next one:
 	// two uncolored exercises in the same group must not both be handed the
@@ -159,9 +168,12 @@ func backfillColors(ctx context.Context, exs []models.Exercise) {
 	copy(assigned, exs)
 
 	for i, ex := range assigned {
-		if ex.Color != "" {
+		if !colorUnset(ex.Color) {
 			continue
 		}
+		// Clear the local color first so a broken #000000 doesn't count itself
+		// as "taken" when picking the lowest-free slot.
+		assigned[i].Color = ""
 		color := nextExerciseColor(ex.Group, exercisesInGroup(assigned, ex.Group))
 		assigned[i].Color = color
 		if err := dataStore.UpdateExColor(ctx, ex.ID, color); err != nil {
@@ -170,10 +182,11 @@ func backfillColors(ctx context.Context, exs []models.Exercise) {
 	}
 }
 
-// needsColorBackfill returns true if any exercise has an empty Color.
+// needsColorBackfill returns true if any exercise lacks a real color (empty or
+// a broken black).
 func needsColorBackfill(exs []models.Exercise) bool {
 	for _, ex := range exs {
-		if ex.Color == "" {
+		if colorUnset(ex.Color) {
 			return true
 		}
 	}
