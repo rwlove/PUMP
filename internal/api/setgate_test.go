@@ -58,6 +58,11 @@ func (g *gateStore) LastPerformed(context.Context) (map[string]models.ExerciseRe
 func (g *gateStore) SelectMuscles(context.Context) ([]models.Muscle, error) { return nil, nil }
 func (g *gateStore) InsertMuscle(context.Context, models.Muscle) error      { return nil }
 func (g *gateStore) DeleteMuscle(context.Context, int) error                { return nil }
+func (g *gateStore) SelectGroups(context.Context) ([]models.Group, error)   { return nil, nil }
+func (g *gateStore) InsertGroup(context.Context, string) error              { return nil }
+func (g *gateStore) RenameGroup(context.Context, string, string) error      { return nil }
+func (g *gateStore) DeleteGroup(context.Context, string) (int, error)       { return 0, nil }
+func (g *gateStore) ReorderGroups(context.Context, []string) error          { return nil }
 
 var _ store.Store = (*gateStore)(nil)
 

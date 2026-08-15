@@ -221,6 +221,28 @@ INSERT INTO muscles (gr, name, sort_order) VALUES
 ON CONFLICT ON CONSTRAINT muscles_group_name_uniq DO NOTHING;
 `,
 	},
+	{
+		Version:     15,
+		Description: "create groups table and backfill from existing exercise/muscle groups",
+		SQL: `
+CREATE TABLE IF NOT EXISTS groups (
+    name       TEXT    PRIMARY KEY,
+    sort_order INTEGER NOT NULL DEFAULT 0
+);
+-- Promote every group name already in use (exercises + muscle catalog) into the
+-- managed table, ordered alphabetically for a stable initial sequence. Groups
+-- stay string-identified on exercises.gr / muscles.gr; this table adds order and
+-- a home for group management. Idempotent: existing rows keep their order.
+INSERT INTO groups (name, sort_order)
+SELECT g.name, (row_number() OVER (ORDER BY g.name) - 1) AS sort_order
+FROM (
+    SELECT DISTINCT gr AS name FROM exercises WHERE gr <> ''
+    UNION
+    SELECT DISTINCT gr AS name FROM muscles WHERE gr <> ''
+) g
+ON CONFLICT (name) DO NOTHING;
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any

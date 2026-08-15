@@ -81,6 +81,16 @@ type ExerciseRecency struct {
 	Pos      int    // its position (order performed) in that session
 }
 
+// Group is one training group (Chest, Legs, …). Groups were historically an
+// emergent string on exercises/muscles; this promotes them to a managed entity
+// so they can be created, renamed, reordered, and deleted from the Library.
+// Name is the identity (exercises.gr / muscles.gr still store it by value);
+// Sort drives display order across the picker, Library, and Muscle Balance.
+type Group struct {
+	Name string `db:"NAME" json:"Name"`
+	Sort int    `db:"SORT_ORDER" json:"Sort"`
+}
+
 // Muscle is one entry in the DB-editable muscle catalog. Muscles are keyed
 // by group name (matching Exercise.Group), so a group's focus options are all
 // muscles sharing its Group. The group list the UI offers is the union of
@@ -228,6 +238,7 @@ type GuiData struct {
 	GroupMap   []string // unique exercise groups, in display order
 	OneEx      Exercise
 	Muscles    []Muscle // DB-editable muscle catalog (focus options per group)
+	Groups     []Group  // managed training groups (Library group management)
 	Version    string
 	ServerDate string      // today's date in server timezone (YYYY-MM-DD)
 	Health     HealthStats // wearable aggregates (Health page + Stats tabs)

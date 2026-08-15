@@ -199,3 +199,117 @@ func TestMuscles_CRUD(t *testing.T) {
 		}
 	}
 }
+
+// Managed groups insert/dedupe, rename cascades to exercises and muscles, delete
+// is refused while in use, and reorder sets sort_order.
+func TestGroups_CRUD(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	clean := func() {
+		_, _ = s.Pool().Exec(ctx, "DELETE FROM groups WHERE name IN ('GrpA','GrpB','GrpC','GrpD')")
+		_, _ = s.Pool().Exec(ctx, "DELETE FROM exercises WHERE gr IN ('GrpA','GrpB')")
+		_, _ = s.Pool().Exec(ctx, "DELETE FROM muscles WHERE gr IN ('GrpA','GrpB')")
+	}
+	clean()
+	t.Cleanup(clean)
+
+	countGroup := func(name string) int {
+		gs, _ := s.SelectGroups(ctx)
+		n := 0
+		for _, g := range gs {
+			if g.Name == name {
+				n++
+			}
+		}
+		return n
+	}
+	rowCount := func(q string) int {
+		var n int
+		if err := s.Pool().QueryRow(ctx, q).Scan(&n); err != nil {
+			t.Fatalf("count query: %v", err)
+		}
+		return n
+	}
+
+	// Insert + dedupe (name is the primary key).
+	if err := s.InsertGroup(ctx, "GrpA"); err != nil {
+		t.Fatalf("InsertGroup: %v", err)
+	}
+	if err := s.InsertGroup(ctx, "GrpA"); err != nil {
+		t.Fatalf("InsertGroup dup: %v", err)
+	}
+	if n := countGroup("GrpA"); n != 1 {
+		t.Fatalf("GrpA count = %d, want 1", n)
+	}
+
+	// A member exercise + muscle, so rename cascade and delete-guard are real.
+	if _, err := s.Pool().Exec(ctx, "INSERT INTO exercises (gr, name) VALUES ('GrpA','GrpTestEx')"); err != nil {
+		t.Fatalf("seed exercise: %v", err)
+	}
+	if err := s.InsertMuscle(ctx, models.Muscle{Group: "GrpA", Name: "GrpTestM"}); err != nil {
+		t.Fatalf("seed muscle: %v", err)
+	}
+
+	// Rename cascades onto exercises.gr and muscles.gr atomically.
+	if err := s.RenameGroup(ctx, "GrpA", "GrpB"); err != nil {
+		t.Fatalf("RenameGroup: %v", err)
+	}
+	if countGroup("GrpA") != 0 || countGroup("GrpB") != 1 {
+		t.Fatal("group row not renamed")
+	}
+	if c := rowCount("SELECT count(*) FROM exercises WHERE gr='GrpB'"); c != 1 {
+		t.Fatalf("exercise not cascaded: %d", c)
+	}
+	if c := rowCount("SELECT count(*) FROM muscles WHERE gr='GrpB'"); c != 1 {
+		t.Fatalf("muscle not cascaded: %d", c)
+	}
+
+	// Delete is refused while members remain.
+	inUse, err := s.DeleteGroup(ctx, "GrpB")
+	if err != nil {
+		t.Fatalf("DeleteGroup(in use): %v", err)
+	}
+	if inUse == 0 {
+		t.Fatal("expected DeleteGroup to refuse an in-use group")
+	}
+	if countGroup("GrpB") != 1 {
+		t.Fatal("in-use group was deleted anyway")
+	}
+
+	// Clear members, then delete succeeds.
+	_, _ = s.Pool().Exec(ctx, "DELETE FROM exercises WHERE gr='GrpB'")
+	_, _ = s.Pool().Exec(ctx, "DELETE FROM muscles WHERE gr='GrpB'")
+	if inUse, err = s.DeleteGroup(ctx, "GrpB"); err != nil || inUse != 0 {
+		t.Fatalf("DeleteGroup: inUse=%d err=%v", inUse, err)
+	}
+	if countGroup("GrpB") != 0 {
+		t.Fatal("empty group not deleted")
+	}
+
+	// Reorder sets sort_order to match the given order.
+	if err := s.InsertGroup(ctx, "GrpC"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InsertGroup(ctx, "GrpD"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReorderGroups(ctx, []string{"GrpD", "GrpC"}); err != nil {
+		t.Fatalf("ReorderGroups: %v", err)
+	}
+	posC, posD := -1, -1
+	gs, err := s.SelectGroups(ctx)
+	if err != nil {
+		t.Fatalf("SelectGroups: %v", err)
+	}
+	for _, g := range gs {
+		switch g.Name {
+		case "GrpC":
+			posC = g.Sort
+		case "GrpD":
+			posD = g.Sort
+		}
+	}
+	if posD < 0 || posC < 0 || posD >= posC {
+		t.Fatalf("reorder wrong: GrpD sort=%d, GrpC sort=%d", posD, posC)
+	}
+}

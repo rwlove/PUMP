@@ -65,6 +65,23 @@ type Store interface {
 	InsertMuscle(ctx context.Context, m models.Muscle) error
 	// DeleteMuscle removes a catalog muscle by id.
 	DeleteMuscle(ctx context.Context, id int) error
+
+	// SelectGroups returns the managed groups ordered by sort_order then name.
+	SelectGroups(ctx context.Context) ([]models.Group, error)
+	// InsertGroup adds a group at the end of the order (duplicate name is a
+	// no-op).
+	InsertGroup(ctx context.Context, name string) error
+	// RenameGroup renames a group and cascades the new name onto every
+	// exercise and catalog muscle that referenced it, atomically. Renaming
+	// onto an existing group name is rejected (merge is not supported).
+	RenameGroup(ctx context.Context, oldName, newName string) error
+	// DeleteGroup removes a group. It refuses (returning inUse > 0) when any
+	// exercise or catalog muscle still references it, so a group is never
+	// deleted out from under its members.
+	DeleteGroup(ctx context.Context, name string) (inUse int, err error)
+	// ReorderGroups sets sort_order to match the given name order (index 0
+	// first). Names not present are ignored.
+	ReorderGroups(ctx context.Context, names []string) error
 }
 
 // HealthStore persists wearable health records ingested from Android Health

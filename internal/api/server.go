@@ -93,6 +93,13 @@ func registerRoutes(r *gin.Engine) {
 	r.POST("/api/muscles", postMuscle)
 	r.DELETE("/api/muscles/:id", deleteMuscle)
 
+	// Managed training groups (Library group management)
+	r.GET("/api/groups", getGroups)
+	r.POST("/api/groups", postGroup)
+	r.PUT("/api/groups", putGroup)
+	r.DELETE("/api/groups", deleteGroup)
+	r.POST("/api/groups/reorder", postGroupsReorder)
+
 	// Sets
 	r.GET("/api/sets", getSets)
 	r.GET("/api/sets/stream", getSetsStream)

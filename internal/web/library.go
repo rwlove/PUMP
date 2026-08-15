@@ -32,13 +32,17 @@ func libraryHandler(c *gin.Context) {
 		return exs[i].Name < exs[j].Name
 	})
 
+	groups := selectGroupsSoft(c, "libraryHandler")
+
 	var guiData models.GuiData
 	guiData.Config = cfg
 	guiData.ExData.Exs = exs
-	// mergeGroupList (not buildGroupList) so a group defined only in the muscle
-	// catalog — no exercises yet — still shows, with its own "New" button.
-	guiData.GroupMap = mergeGroupList(exs, muscles)
+	// orderedGroups so a group defined only in the muscle catalog — no exercises
+	// yet — still shows with its own "New" button, and managed groups appear in
+	// their configured order.
+	guiData.GroupMap = orderedGroups(groups, exs, muscles)
 	guiData.Muscles = muscles
+	guiData.Groups = groups
 	guiData.Version = Version
 
 	c.HTML(http.StatusOK, "library.html", guiData)
