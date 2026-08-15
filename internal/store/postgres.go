@@ -671,6 +671,107 @@ func (s *PostgresStore) ReorderGroups(ctx context.Context, names []string) error
 	return tx.Commit(ctx)
 }
 
+// ─── routines (workout templates) ──────────────────────────────────────────────
+
+// SelectRoutines returns all routines with their items resolved to exercise
+// name/color, ordered by sort_order then id, items by position.
+func (s *PostgresStore) SelectRoutines(ctx context.Context) ([]models.Routine, error) {
+	slog.Debug("db: SelectRoutines")
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, name, notes, sort_order FROM routines ORDER BY sort_order ASC, id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var routines []models.Routine
+	idx := map[int]int{} // routine id → index in the slice
+	for rows.Next() {
+		var r models.Routine
+		if err := rows.Scan(&r.ID, &r.Name, &r.Notes, &r.Sort); err != nil {
+			return nil, err
+		}
+		idx[r.ID] = len(routines)
+		routines = append(routines, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	irows, err := s.pool.Query(ctx,
+		`SELECT ri.id, ri.routine_id, ri.exercise_id, ri.position,
+		        ri.target_sets, ri.target_reps, ri.target_weight::text,
+		        e.name, e.color
+		 FROM routine_items ri
+		 JOIN exercises e ON e.id = ri.exercise_id
+		 ORDER BY ri.routine_id, ri.position, ri.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer irows.Close()
+	for irows.Next() {
+		var it models.RoutineItem
+		var tw string
+		if err := irows.Scan(&it.ID, &it.RoutineID, &it.ExerciseID, &it.Position,
+			&it.TargetSets, &it.TargetReps, &tw, &it.ExerciseName, &it.Color); err != nil {
+			return nil, err
+		}
+		it.TargetWeight, _ = decimal.NewFromString(tw)
+		if i, ok := idx[it.RoutineID]; ok {
+			routines[i].Items = append(routines[i].Items, it)
+		}
+	}
+	return routines, irows.Err()
+}
+
+// InsertRoutine creates a routine at the end of the order and returns its id.
+func (s *PostgresStore) InsertRoutine(ctx context.Context, name, notes string) (int, error) {
+	slog.Debug("db: InsertRoutine", slog.String("name", name))
+	var id int
+	err := s.pool.QueryRow(ctx,
+		`INSERT INTO routines (name, notes, sort_order)
+		 VALUES ($1, $2, COALESCE((SELECT max(sort_order)+1 FROM routines), 0))
+		 RETURNING id`, name, notes).Scan(&id)
+	return id, err
+}
+
+// UpdateRoutine updates a routine's name and notes.
+func (s *PostgresStore) UpdateRoutine(ctx context.Context, id int, name, notes string) error {
+	slog.Debug("db: UpdateRoutine", slog.Int("id", id))
+	_, err := s.pool.Exec(ctx, `UPDATE routines SET name = $1, notes = $2 WHERE id = $3`, name, notes, id)
+	return err
+}
+
+// DeleteRoutine removes a routine; its items cascade.
+func (s *PostgresStore) DeleteRoutine(ctx context.Context, id int) error {
+	slog.Debug("db: DeleteRoutine", slog.Int("id", id))
+	_, err := s.pool.Exec(ctx, `DELETE FROM routines WHERE id = $1`, id)
+	return err
+}
+
+// ReplaceRoutineItems atomically replaces a routine's items, assigning position
+// from slice order.
+func (s *PostgresStore) ReplaceRoutineItems(ctx context.Context, routineID int, items []models.RoutineItem) error {
+	slog.Debug("db: ReplaceRoutineItems", slog.Int("routine_id", routineID), slog.Int("count", len(items)))
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once Commit succeeds
+	if _, err := tx.Exec(ctx, `DELETE FROM routine_items WHERE routine_id = $1`, routineID); err != nil {
+		return err
+	}
+	for i, it := range items {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO routine_items (routine_id, exercise_id, position, target_sets, target_reps, target_weight)
+			 VALUES ($1, $2, $3, $4, $5, $6)`,
+			routineID, it.ExerciseID, i, it.TargetSets, it.TargetReps, it.TargetWeight.String()); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
 // ─── weight ───────────────────────────────────────────────────────────────────
 
 // SelectW returns one BodyWeight per distinct date — the latest by

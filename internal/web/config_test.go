@@ -68,6 +68,13 @@ func (f *fakeStore) SelectExerciseMuscles(context.Context, int) ([]models.FocusM
 func (f *fakeStore) ReplaceExerciseMuscles(context.Context, int, []models.FocusMuscle) error {
 	return nil
 }
+func (f *fakeStore) SelectRoutines(context.Context) ([]models.Routine, error)   { return nil, nil }
+func (f *fakeStore) InsertRoutine(context.Context, string, string) (int, error) { return 0, nil }
+func (f *fakeStore) UpdateRoutine(context.Context, int, string, string) error   { return nil }
+func (f *fakeStore) DeleteRoutine(context.Context, int) error                   { return nil }
+func (f *fakeStore) ReplaceRoutineItems(context.Context, int, []models.RoutineItem) error {
+	return nil
+}
 func (f *fakeStore) GetSet(context.Context, int) (models.Set, error) { return models.Set{}, nil }
 func (f *fakeStore) InsertSet(context.Context, models.Set) (models.Set, error) {
 	return models.Set{}, nil

@@ -43,6 +43,7 @@ func libraryHandler(c *gin.Context) {
 	guiData.GroupMap = orderedGroups(groups, exs, muscles)
 	guiData.Muscles = muscles
 	guiData.Groups = groups
+	guiData.Routines = selectRoutinesSoft(c, "libraryHandler")
 	guiData.Version = Version
 
 	c.HTML(http.StatusOK, "library.html", guiData)

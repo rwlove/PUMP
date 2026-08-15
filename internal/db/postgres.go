@@ -266,6 +266,28 @@ WHERE e.focus <> ''
 ON CONFLICT DO NOTHING;
 `,
 	},
+	{
+		Version:     17,
+		Description: "create routines and routine_items tables (workout templates)",
+		SQL: `
+CREATE TABLE IF NOT EXISTS routines (
+    id         SERIAL  PRIMARY KEY,
+    name       TEXT    NOT NULL DEFAULT '',
+    notes      TEXT    NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS routine_items (
+    id            SERIAL        PRIMARY KEY,
+    routine_id    INTEGER       NOT NULL REFERENCES routines(id)  ON DELETE CASCADE,
+    exercise_id   INTEGER       NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+    position      INTEGER       NOT NULL DEFAULT 0,
+    target_sets   INTEGER       NOT NULL DEFAULT 0,
+    target_reps   INTEGER       NOT NULL DEFAULT 0,
+    target_weight NUMERIC(10,2) NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS routine_items_routine_idx ON routine_items (routine_id, position);
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any
