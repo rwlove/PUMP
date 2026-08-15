@@ -56,7 +56,7 @@ jobs:
           for TAG in $(git tag --sort=-version:refname | grep '^pump-v[0-9]' | grep -v "^${CURRENT_TAG}$"); do
 
             CHANGED=$(git diff --name-only "${TAG}..${CURRENT_TAG}" -- \
-              cmd/ internal/ go.mod go.sum Dockerfile.pump 2>/dev/null)
+              cmd/ internal/ go.mod go.sum Containerfile 2>/dev/null)
 
             if [ -n "$CHANGED" ]; then
               echo "${TAG}: source differs — stopping search, rebuild required."
@@ -108,7 +108,7 @@ jobs:
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
-          file: Dockerfile.pump
+          file: Containerfile
           # Single arch — actual deployment is all x86 (K8s nodes, GPU
           # node, kiosk mini-PC). Multi-arch was costing 10-15 min/build
           # for unused arm64/v7 binaries. Build locally with
@@ -117,6 +117,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           build-args: |
             VERSION=${{ github.ref_name }}
           # Registry cache co-located with the image is faster than GHA

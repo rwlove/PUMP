@@ -11,7 +11,7 @@
 #   - :latest (mutable, points at HEAD's most recent build)
 #
 # Triggered by `.github/workflows/cv-base-publish.yml`, which re-runs
-# whenever cv/Dockerfile.base or cv/pyproject.toml's dependency list
+# whenever cv/Containerfile.base or cv/pyproject.toml's dependency list
 # changes. Manual rebuilds are available via that workflow's
 # workflow_dispatch trigger.
 #
@@ -48,7 +48,7 @@ WORKDIR /app
 COPY pyproject.toml ./
 
 # Install everything pump-cv depends on, but not pump-cv itself
-# (the source is layered in by the runtime Dockerfile).
+# (the source is layered in by the runtime Containerfile).
 #
 # The nvcr.io base ships torch + torchvision pre-built for both arches
 # already; ultralytics and the other deps declare torch>=X and pip's
@@ -84,3 +84,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # through sm_120 (Volta through Blackwell). Pascal (sm_61) is not
 # expected — see the Trade-off note in the base image comments above.
 RUN python3 -c "import torch; print('torch:', torch.__version__, 'archs:', torch.cuda.get_arch_list())"
+
+ARG REVISION=unknown
+LABEL org.opencontainers.image.title="pump-cv-base" \
+      org.opencontainers.image.description="PUMP camera CV sidecar base image (CUDA + PyTorch + OpenCV heavy deps)" \
+      org.opencontainers.image.source="https://github.com/rwlove/PUMP" \
+      org.opencontainers.image.url="https://github.com/rwlove/PUMP" \
+      org.opencontainers.image.documentation="https://github.com/rwlove/PUMP/blob/main/cv/README.md" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.revision="${REVISION}"
