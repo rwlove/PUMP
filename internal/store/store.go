@@ -91,6 +91,19 @@ type Store interface {
 	// ReplaceExerciseMuscles atomically replaces an exercise's focus muscles
 	// with the given set.
 	ReplaceExerciseMuscles(ctx context.Context, exerciseID int, fms []models.FocusMuscle) error
+
+	// SelectRoutines returns all workout templates with items resolved to
+	// exercise name/color, ordered for display.
+	SelectRoutines(ctx context.Context) ([]models.Routine, error)
+	// InsertRoutine creates a routine and returns its id.
+	InsertRoutine(ctx context.Context, name, notes string) (int, error)
+	// UpdateRoutine updates a routine's name and notes.
+	UpdateRoutine(ctx context.Context, id int, name, notes string) error
+	// DeleteRoutine removes a routine and its items (cascade).
+	DeleteRoutine(ctx context.Context, id int) error
+	// ReplaceRoutineItems atomically replaces a routine's items; positions are
+	// assigned from slice order.
+	ReplaceRoutineItems(ctx context.Context, routineID int, items []models.RoutineItem) error
 }
 
 // HealthStore persists wearable health records ingested from Android Health

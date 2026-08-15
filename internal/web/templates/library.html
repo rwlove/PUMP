@@ -41,6 +41,73 @@
     </div>
   </div>
 
+  <!-- ── Routines (workout templates) ─────────────────────────────────────── -->
+  <div class="card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <span class="fw-semibold"><i class="bi bi-list-check me-2"></i>Routines</span>
+    </div>
+    <div class="card-body">
+      <p class="small text-body-secondary">
+        A routine is a reusable template — an ordered list of exercises with target
+        sets and reps. Start one from the workout page to pre-fill the day.
+      </p>
+      <ul class="list-group mb-3" id="routineList">
+        {{ range .Routines }}
+        <li class="list-group-item d-flex align-items-center gap-2" data-id="{{ .ID }}">
+          <span class="flex-grow-1 text-truncate">
+            <span class="fw-semibold">{{ .Name }}</span>
+            <span class="small text-body-tertiary">· {{ len .Items }} exercise(s)</span>
+          </span>
+          <button type="button" class="btn btn-sm btn-outline-secondary" title="Edit" onclick="routineEdit({{ .ID }})"><i class="bi bi-pencil"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-danger" title="Delete" onclick="routineDelete({{ .ID }})"><i class="bi bi-trash"></i></button>
+        </li>
+        {{ else }}
+        <li class="list-group-item small text-body-tertiary">No routines yet.</li>
+        {{ end }}
+      </ul>
+      <div class="input-group input-group-sm" style="max-width:360px;">
+        <input type="text" id="newRoutineName" class="form-control" placeholder="New routine name" autocomplete="off"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();routineAdd();}">
+        <button type="button" class="btn btn-primary" onclick="routineAdd()"><i class="bi bi-plus me-1"></i>Add routine</button>
+      </div>
+      <div id="routineStatus" class="small mt-2"></div>
+    </div>
+  </div>
+
+  <!-- Routine editor modal -->
+  <div class="modal fade" id="routineModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h6 class="modal-title" id="routineModalTitle">Edit routine</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="routineEditId">
+          <div class="mb-2">
+            <label class="form-label small mb-1">Name</label>
+            <input type="text" id="routineEditName" class="form-control form-control-sm">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small mb-1">Notes</label>
+            <input type="text" id="routineEditNotes" class="form-control form-control-sm">
+          </div>
+          <label class="form-label small mb-1">Exercises (order = order performed)</label>
+          <div id="routineItems" class="mb-2"></div>
+          <div class="input-group input-group-sm">
+            <select id="routineAddExercise" class="form-select"></select>
+            <button type="button" class="btn btn-outline-primary" onclick="routineItemAdd()"><i class="bi bi-plus"></i> Add exercise</button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <span id="routineModalStatus" class="small text-danger me-auto"></span>
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary btn-sm" onclick="routineSave()">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   {{ range .GroupMap }}
   {{ $grp := . }}
   <div class="card mb-3 library-group" data-group="{{ $grp }}">
@@ -76,6 +143,98 @@
 </div>
 
 <script>
+// ── Routines ─────────────────────────────────────────────────────────────────
+window._routines = {{ .Routines }};
+window._exercises = {{ .ExData.Exs }};
+var _rmodal = null;
+
+function escapeHtml(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
+function exerciseOptionsHTML(selectedId) {
+  return (window._exercises || []).map(function(e) {
+    return '<option value="' + e.ID + '"' + (e.ID === selectedId ? ' selected' : '') + '>' + escapeHtml(e.Name) + '</option>';
+  }).join('');
+}
+function routineStatus(msg, isErr) {
+  var el = document.getElementById('routineStatus');
+  if (el) { el.textContent = msg; el.className = 'small mt-2 ' + (isErr ? 'text-danger' : 'text-success'); }
+}
+function routineApi(method, url, body) {
+  return fetch(url, {method: method, headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
+}
+function routineFind(id) { return (window._routines || []).find(function(r) { return r.ID === id; }); }
+function routineAdd() {
+  var name = document.getElementById('newRoutineName').value.trim();
+  if (!name) return;
+  routineApi('POST', '/api/routines', {Name: name})
+    .then(function(r) { if (r.ok) { location.reload(); } else { routineStatus('could not add routine', true); } })
+    .catch(function(e) { routineStatus(e.message || 'request failed', true); });
+}
+function routineDelete(id) {
+  if (!confirm('Delete this routine?')) return;
+  routineApi('DELETE', '/api/routines/' + id, null)
+    .then(function(r) { if (r.ok) { location.reload(); } else { routineStatus('could not delete', true); } });
+}
+function routineItemRow(item) {
+  var div = document.createElement('div');
+  div.className = 'input-group input-group-sm mb-1 routine-item-row';
+  div.innerHTML =
+    '<select class="form-select ri-ex">' + exerciseOptionsHTML(item ? item.ExerciseID : 0) + '</select>' +
+    '<span class="input-group-text">sets</span>' +
+    '<input type="number" min="0" class="form-control ri-sets" style="max-width:64px" value="' + (item ? item.TargetSets : 3) + '">' +
+    '<span class="input-group-text">reps</span>' +
+    '<input type="number" min="0" class="form-control ri-reps" style="max-width:64px" value="' + (item ? item.TargetReps : 10) + '">' +
+    '<button type="button" class="btn btn-outline-secondary" title="Up" onclick="routineItemMove(this,-1)"><i class="bi bi-arrow-up"></i></button>' +
+    '<button type="button" class="btn btn-outline-secondary" title="Down" onclick="routineItemMove(this,1)"><i class="bi bi-arrow-down"></i></button>' +
+    '<button type="button" class="btn btn-outline-danger" title="Remove" onclick="this.closest(\'.routine-item-row\').remove()"><i class="bi bi-x-lg"></i></button>';
+  return div;
+}
+function routineItemMove(btn, dir) {
+  var row = btn.closest('.routine-item-row'), list = document.getElementById('routineItems');
+  if (dir < 0) { if (row.previousElementSibling) list.insertBefore(row, row.previousElementSibling); }
+  else { if (row.nextElementSibling) list.insertBefore(row.nextElementSibling, row); }
+}
+function routineItemAdd() {
+  var exId = parseInt(document.getElementById('routineAddExercise').value, 10);
+  if (!exId) return;
+  document.getElementById('routineItems').appendChild(routineItemRow({ExerciseID: exId, TargetSets: 3, TargetReps: 10}));
+}
+function routineEdit(id) {
+  var r = routineFind(id);
+  if (!r) return;
+  document.getElementById('routineEditId').value = r.ID;
+  document.getElementById('routineEditName').value = r.Name || '';
+  document.getElementById('routineEditNotes').value = r.Notes || '';
+  document.getElementById('routineModalTitle').textContent = 'Edit ' + (r.Name || 'routine');
+  document.getElementById('routineModalStatus').textContent = '';
+  document.getElementById('routineAddExercise').innerHTML = exerciseOptionsHTML(0);
+  var items = document.getElementById('routineItems');
+  items.innerHTML = '';
+  (r.Items || []).forEach(function(it) { items.appendChild(routineItemRow(it)); });
+  if (!_rmodal) _rmodal = new bootstrap.Modal(document.getElementById('routineModal'));
+  _rmodal.show();
+}
+function routineSave() {
+  var id = parseInt(document.getElementById('routineEditId').value, 10);
+  var name = document.getElementById('routineEditName').value.trim();
+  var notes = document.getElementById('routineEditNotes').value.trim();
+  var status = document.getElementById('routineModalStatus');
+  if (!name) { status.textContent = 'name is required'; return; }
+  var items = Array.prototype.map.call(document.querySelectorAll('#routineItems .routine-item-row'), function(row) {
+    return {
+      ExerciseID: parseInt(row.querySelector('.ri-ex').value, 10),
+      TargetSets: parseInt(row.querySelector('.ri-sets').value, 10) || 0,
+      TargetReps: parseInt(row.querySelector('.ri-reps').value, 10) || 0
+    };
+  }).filter(function(it) { return it.ExerciseID; });
+  routineApi('PUT', '/api/routines/' + id, {Name: name, Notes: notes}).then(function(r) {
+    if (!r.ok) throw new Error('could not save name');
+    return routineApi('PUT', '/api/routines/' + id + '/items', {Items: items});
+  }).then(function(r) {
+    if (!r.ok) throw new Error('could not save exercises');
+    location.reload();
+  }).catch(function(e) { status.textContent = e.message; });
+}
+
 // ── Group management ─────────────────────────────────────────────────────────
 function groupStatus(msg, isErr) {
   var el = document.getElementById('groupStatus');

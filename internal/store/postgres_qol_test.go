@@ -380,3 +380,82 @@ func TestExerciseMuscles_CRUD(t *testing.T) {
 		t.Fatalf("junction not cascaded on exercise delete: %d rows", len(fms))
 	}
 }
+
+// Routines create/update/delete; items replace as a set, resolve to the
+// exercise name in position order, and cascade when an exercise is deleted.
+func TestRoutines_CRUD(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	exA := mustInsertEx(t, s, "RoutEx A", "RGrp", "#111111")
+	exB := mustInsertEx(t, s, "RoutEx B", "RGrp", "#222222")
+
+	rid, err := s.InsertRoutine(ctx, "Push Day", "notes here")
+	if err != nil || rid == 0 {
+		t.Fatalf("InsertRoutine id=%d err=%v", rid, err)
+	}
+	t.Cleanup(func() { _ = s.DeleteRoutine(ctx, rid) })
+
+	// exB first, exA second — position order must be preserved on read.
+	if err := s.ReplaceRoutineItems(ctx, rid, []models.RoutineItem{
+		{ExerciseID: exB, TargetSets: 3, TargetReps: 8},
+		{ExerciseID: exA, TargetSets: 4, TargetReps: 10},
+	}); err != nil {
+		t.Fatalf("ReplaceRoutineItems: %v", err)
+	}
+
+	find := func() *models.Routine {
+		rs, err := s.SelectRoutines(ctx)
+		if err != nil {
+			t.Fatalf("SelectRoutines: %v", err)
+		}
+		for i := range rs {
+			if rs[i].ID == rid {
+				return &rs[i]
+			}
+		}
+		return nil
+	}
+
+	r := find()
+	if r == nil || r.Name != "Push Day" || r.Notes != "notes here" {
+		t.Fatalf("routine fields wrong: %+v", r)
+	}
+	if len(r.Items) != 2 || r.Items[0].ExerciseID != exB || r.Items[0].ExerciseName != "RoutEx B" {
+		t.Fatalf("items wrong (order/resolve): %+v", r.Items)
+	}
+	if r.Items[0].TargetSets != 3 || r.Items[0].TargetReps != 8 {
+		t.Errorf("item targets wrong: %+v", r.Items[0])
+	}
+
+	// Replace is a full swap.
+	if err := s.ReplaceRoutineItems(ctx, rid, []models.RoutineItem{
+		{ExerciseID: exA, TargetSets: 5, TargetReps: 5},
+	}); err != nil {
+		t.Fatalf("Replace 2: %v", err)
+	}
+	if r = find(); len(r.Items) != 1 || r.Items[0].ExerciseID != exA {
+		t.Fatalf("replace didn't swap: %+v", r.Items)
+	}
+
+	// Deleting a referenced exercise cascades its item away.
+	if err := s.DeleteEx(ctx, exA); err != nil {
+		t.Fatalf("DeleteEx: %v", err)
+	}
+	if r = find(); len(r.Items) != 0 {
+		t.Fatalf("item not cascaded on exercise delete: %+v", r.Items)
+	}
+
+	// Update, then delete.
+	if err := s.UpdateRoutine(ctx, rid, "Pull Day", ""); err != nil {
+		t.Fatalf("UpdateRoutine: %v", err)
+	}
+	if r = find(); r == nil || r.Name != "Pull Day" {
+		t.Fatalf("update didn't apply: %+v", r)
+	}
+	if err := s.DeleteRoutine(ctx, rid); err != nil {
+		t.Fatalf("DeleteRoutine: %v", err)
+	}
+	if r = find(); r != nil {
+		t.Fatal("routine not deleted")
+	}
+}

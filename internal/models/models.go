@@ -103,6 +103,32 @@ type FocusMuscle struct {
 	Primary  bool   `db:"IS_PRIMARY" json:"Primary"`
 }
 
+// Routine is a reusable workout template: an ordered list of exercises with
+// per-exercise targets. Selecting one on the workout page scaffolds the day's
+// rows; it stores intent, not logged sets.
+type Routine struct {
+	ID    int           `json:"ID"`
+	Name  string        `json:"Name"`
+	Notes string        `json:"Notes"`
+	Sort  int           `json:"Sort"`
+	Items []RoutineItem `json:"Items"`
+}
+
+// RoutineItem is one planned exercise within a routine. ExerciseName and Color
+// are resolved from the exercise catalog for display and scaffolding; a zero
+// TargetWeight/TargetReps means "fall back to the exercise's own default".
+type RoutineItem struct {
+	ID           int             `json:"ID"`
+	RoutineID    int             `json:"RoutineID"`
+	ExerciseID   int             `json:"ExerciseID"`
+	Position     int             `json:"Position"`
+	TargetSets   int             `json:"TargetSets"`
+	TargetReps   int             `json:"TargetReps"`
+	TargetWeight decimal.Decimal `json:"TargetWeight"`
+	ExerciseName string          `json:"ExerciseName"`
+	Color        string          `json:"Color"`
+}
+
 // Muscle is one entry in the DB-editable muscle catalog. Muscles are keyed
 // by group name (matching Exercise.Group), so a group's focus options are all
 // muscles sharing its Group. The group list the UI offers is the union of
@@ -256,6 +282,7 @@ type GuiData struct {
 	// Keyed by muscle id so the edit form can render the multi-select state.
 	PrimaryIDs   map[int]bool
 	SecondaryIDs map[int]bool
+	Routines     []Routine // workout templates (Library management + workout-page scaffolding)
 	Version      string
 	ServerDate   string      // today's date in server timezone (YYYY-MM-DD)
 	Health       HealthStats // wearable aggregates (Health page + Stats tabs)

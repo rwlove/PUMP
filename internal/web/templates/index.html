@@ -92,12 +92,21 @@
         </button>
         <button class="today-chip" onclick="goToToday()">Today</button>
       </div>
-      <!-- Log weight button -->
-      <button class="btn btn-sm btn-outline-secondary rounded-pill px-3"
-        data-bs-toggle="modal" data-bs-target="#logWeightModal"
-        onclick="document.getElementById('logWeightDate').value=document.getElementById('realDate').value">
-        <i class="bi bi-speedometer2 me-1"></i>Log Weight
-      </button>
+      <!-- Right-side actions -->
+      <div class="d-flex align-items-center gap-2">
+        <div class="dropdown">
+          <button class="btn btn-sm btn-outline-primary rounded-pill px-3 dropdown-toggle" type="button"
+            data-bs-toggle="dropdown" aria-expanded="false" title="Pre-fill today from a routine">
+            <i class="bi bi-list-check me-1"></i>Start routine
+          </button>
+          <ul class="dropdown-menu" id="routineMenu"></ul>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary rounded-pill px-3"
+          data-bs-toggle="modal" data-bs-target="#logWeightModal"
+          onclick="document.getElementById('logWeightDate').value=document.getElementById('realDate').value">
+          <i class="bi bi-speedometer2 me-1"></i>Log Weight
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -202,6 +211,7 @@
 <script>
   window._allSets    = {{ .ExData.Sets }};
   window._allExs     = {{ .ExData.Exs }};
+  window._routines   = {{ .Routines }};
   // Body-weight history (oldest-first), used to pre-fill bodyweight exercises
   // with the most recent reading on or before the viewed day (Feature 6).
   window._allWeight  = {{ .ExData.Weight }};
@@ -218,6 +228,44 @@
   }
   // Voltra per-set load controls. Inert unless an exercise carries the Voltra
   // flag, so this costs nothing on a barbell day.
+  // Routines: populate the "Start routine" menu and scaffold the day on pick.
+  // Scaffolding is just repeated addExercise() calls, so it composes with both
+  // the bulk and per-set save paths exactly like manual picks do.
+  function startRoutine(id) {
+    var r = (window._routines || []).find(function(x) { return x.ID === id; });
+    if (!r) return;
+    (r.Items || []).forEach(function(it) {
+      var ex = (window._allExs || []).find(function(e) { return e.ID === it.ExerciseID; });
+      var weight = (it.TargetWeight && Number(it.TargetWeight) > 0) ? it.TargetWeight : (ex ? ex.Weight : 0);
+      var reps = it.TargetReps > 0 ? it.TargetReps : (ex ? ex.Reps : 0);
+      var color = it.Color || (ex ? ex.Color : '#2780e3');
+      var sets = it.TargetSets > 0 ? it.TargetSets : 1;
+      for (var i = 0; i < sets; i++) { addExercise(it.ExerciseName, weight, reps, color, true); }
+    });
+  }
+  function renderRoutineMenu() {
+    var menu = document.getElementById('routineMenu');
+    if (!menu) return;
+    menu.innerHTML = '';
+    var rs = window._routines || [];
+    if (!rs.length) {
+      var li = document.createElement('li');
+      li.innerHTML = '<span class="dropdown-item-text small text-body-tertiary">No routines yet — create one in the Library.</span>';
+      menu.appendChild(li);
+      return;
+    }
+    rs.forEach(function(r) {
+      var li = document.createElement('li'), b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'dropdown-item';
+      b.textContent = r.Name + ' · ' + (r.Items ? r.Items.length : 0);
+      b.addEventListener('click', function() { startRoutine(r.ID); });
+      li.appendChild(b);
+      menu.appendChild(li);
+    });
+  }
+  renderRoutineMenu();
+
   voltraInit();
 </script>
 {{ template "footer.html" }}

@@ -69,6 +69,7 @@ func indexHandler(c *gin.Context) {
 	guiData.ExData.Sets = displaySets
 	guiData.ExData.Weight = weights
 	guiData.GroupMap = orderedGroups(selectGroupsSoft(c, "indexHandler"), exs, muscles)
+	guiData.Routines = selectRoutinesSoft(c, "indexHandler")
 	guiData.Muscles = muscles
 	guiData.ServerDate = time.Now().Format("2006-01-02")
 
@@ -120,6 +121,17 @@ func selectGroupsSoft(c *gin.Context, who string) []models.Group {
 		return nil
 	}
 	return groups
+}
+
+// selectRoutinesSoft loads workout templates, degrading to nil on error rather
+// than failing the page — routines only enrich the picker and Library.
+func selectRoutinesSoft(c *gin.Context, who string) []models.Routine {
+	routines, err := dataStore.SelectRoutines(c.Request.Context())
+	if err != nil {
+		slog.Warn(who+": SelectRoutines failed", slog.Any("error", err))
+		return nil
+	}
+	return routines
 }
 
 // orderedGroups returns group names in display order: the managed groups first

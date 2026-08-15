@@ -100,6 +100,13 @@ func registerRoutes(r *gin.Engine) {
 	r.DELETE("/api/groups", deleteGroup)
 	r.POST("/api/groups/reorder", postGroupsReorder)
 
+	// Workout templates (routines)
+	r.GET("/api/routines", getRoutines)
+	r.POST("/api/routines", postRoutine)
+	r.PUT("/api/routines/:id", putRoutine)
+	r.DELETE("/api/routines/:id", deleteRoutine)
+	r.PUT("/api/routines/:id/items", putRoutineItems)
+
 	// Sets
 	r.GET("/api/sets", getSets)
 	r.GET("/api/sets/stream", getSetsStream)
