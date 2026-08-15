@@ -239,8 +239,7 @@
       var weight = (it.TargetWeight && Number(it.TargetWeight) > 0) ? it.TargetWeight : (ex ? ex.Weight : 0);
       var reps = it.TargetReps > 0 ? it.TargetReps : (ex ? ex.Reps : 0);
       var color = it.Color || (ex ? ex.Color : '#2780e3');
-      var sets = it.TargetSets > 0 ? it.TargetSets : 1;
-      for (var i = 0; i < sets; i++) { addExercise(it.ExerciseName, weight, reps, color, true); }
+      addExercise(it.ExerciseName, weight, reps, color, true); // one set per routine item
     });
   }
   function renderRoutineMenu() {

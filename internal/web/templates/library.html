@@ -56,7 +56,7 @@
         <li class="list-group-item d-flex align-items-center gap-2" data-id="{{ .ID }}">
           <span class="flex-grow-1 text-truncate">
             <span class="fw-semibold">{{ .Name }}</span>
-            <span class="small text-body-tertiary">· {{ len .Items }} exercise(s)</span>
+            <span class="small text-body-tertiary">· {{ len .Items }} sets</span>
           </span>
           <button type="button" class="btn btn-sm btn-outline-secondary" title="Edit" onclick="routineEdit({{ .ID }})"><i class="bi bi-pencil"></i></button>
           <button type="button" class="btn btn-sm btn-outline-danger" title="Delete" onclick="routineDelete({{ .ID }})"><i class="bi bi-trash"></i></button>
@@ -92,7 +92,7 @@
             <label class="form-label small mb-1">Notes</label>
             <input type="text" id="routineEditNotes" class="form-control form-control-sm">
           </div>
-          <label class="form-label small mb-1">Exercises (order = order performed)</label>
+          <label class="form-label small mb-1">Sets — one row per set (add an exercise once for each set you want); order = order performed</label>
           <div id="routineItems" class="mb-2"></div>
           <div class="input-group input-group-sm">
             <select id="routineAddExercise" class="form-select"></select>
@@ -179,8 +179,6 @@ function routineItemRow(item) {
   div.className = 'input-group input-group-sm mb-1 routine-item-row';
   div.innerHTML =
     '<select class="form-select ri-ex">' + exerciseOptionsHTML(item ? item.ExerciseID : 0) + '</select>' +
-    '<span class="input-group-text">sets</span>' +
-    '<input type="number" min="0" class="form-control ri-sets" style="max-width:64px" value="' + (item ? item.TargetSets : 3) + '">' +
     '<span class="input-group-text">reps</span>' +
     '<input type="number" min="0" class="form-control ri-reps" style="max-width:64px" value="' + (item ? item.TargetReps : 10) + '">' +
     '<button type="button" class="btn btn-outline-secondary" title="Up" onclick="routineItemMove(this,-1)"><i class="bi bi-arrow-up"></i></button>' +
@@ -196,7 +194,7 @@ function routineItemMove(btn, dir) {
 function routineItemAdd() {
   var exId = parseInt(document.getElementById('routineAddExercise').value, 10);
   if (!exId) return;
-  document.getElementById('routineItems').appendChild(routineItemRow({ExerciseID: exId, TargetSets: 3, TargetReps: 10}));
+  document.getElementById('routineItems').appendChild(routineItemRow({ExerciseID: exId, TargetReps: 10}));
 }
 function routineEdit(id) {
   var r = routineFind(id);
@@ -222,7 +220,6 @@ function routineSave() {
   var items = Array.prototype.map.call(document.querySelectorAll('#routineItems .routine-item-row'), function(row) {
     return {
       ExerciseID: parseInt(row.querySelector('.ri-ex').value, 10),
-      TargetSets: parseInt(row.querySelector('.ri-sets').value, 10) || 0,
       TargetReps: parseInt(row.querySelector('.ri-reps').value, 10) || 0
     };
   }).filter(function(it) { return it.ExerciseID; });
