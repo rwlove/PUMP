@@ -73,6 +73,11 @@
               <i class="bi bi-bicycle me-2"></i>Cardio
             </button>
           </li>
+          <li class="nav-item" role="presentation">
+            <button class="page-tab-btn" id="tab-grip-btn" data-bs-toggle="tab" data-bs-target="#tab-grip" type="button" role="tab">
+              <i class="bi bi-hand-index-thumb me-2"></i>Grip &amp; Hang
+            </button>
+          </li>
         </ul>
         <div class="btn-group btn-group-sm py-1 pe-1" id="global-period-btns" role="group" aria-label="Time period">
           <button type="button" class="btn btn-sm btn-outline-secondary active"
@@ -503,10 +508,69 @@
         </div>
       </div>
 
+      <div class="tab-pane fade" id="tab-grip" role="tabpanel">
+        <div class="container-xl py-4">
+          <div class="d-flex justify-content-end mb-3">
+            <button type="button" class="btn btn-sm btn-primary rounded-pill px-3" data-bs-toggle="modal" data-bs-target="#logMeasurementModal">
+              <i class="bi bi-plus me-1"></i>Log grip / hang
+            </button>
+          </div>
+          <div class="row g-4">
+            <div class="col-12 col-lg-6">
+              <div class="panel">
+                <div class="panel-header"><span class="panel-title">Grip Strength (lb)</span></div>
+                <div class="panel-body">
+                  <div class="row g-2 mb-3">
+                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Latest left</div><div id="grip-left" class="fw-bold fs-4">–</div></div></div>
+                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Latest right</div><div id="grip-right" class="fw-bold fs-4">–</div></div></div>
+                  </div>
+                  <canvas id="grip-chart" style="max-height:280px;"></canvas>
+                  <p class="text-center text-body-secondary mt-3 mb-0" id="grip-no-data" style="display:none;">No grip readings yet — tap “Log grip / hang”.</p>
+                </div>
+              </div>
+            </div>
+            <div class="col-12 col-lg-6">
+              <div class="panel">
+                <div class="panel-header"><span class="panel-title">Dead Hang (seconds)</span></div>
+                <div class="panel-body">
+                  <div class="row g-2 mb-3">
+                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Latest</div><div id="hang-latest" class="fw-bold fs-4">–</div></div></div>
+                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Best</div><div id="hang-best" class="fw-bold fs-4">–</div></div></div>
+                  </div>
+                  <canvas id="hang-chart" style="max-height:280px;"></canvas>
+                  <p class="text-center text-body-secondary mt-3 mb-0" id="hang-no-data" style="display:none;">No dead-hang readings yet — tap “Log grip / hang”.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Log grip / dead-hang modal -->
+      <div class="modal fade" id="logMeasurementModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+          <div class="modal-content">
+            <div class="modal-header"><h6 class="modal-title">Log grip / dead hang</h6><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+            <div class="modal-body">
+              <p class="small text-body-secondary">Fill in whatever you measured — blanks are skipped.</p>
+              <div class="mb-2"><label class="form-label small mb-1">Date</label><input type="date" id="m-date" class="form-control form-control-sm"></div>
+              <div class="row g-2 mb-2">
+                <div class="col-6"><label class="form-label small mb-1">Grip left (lb)</label><input type="number" step="0.1" min="0" id="m-grip-left" class="form-control form-control-sm"></div>
+                <div class="col-6"><label class="form-label small mb-1">Grip right (lb)</label><input type="number" step="0.1" min="0" id="m-grip-right" class="form-control form-control-sm"></div>
+              </div>
+              <div class="mb-1"><label class="form-label small mb-1">Dead hang (seconds)</label><input type="number" step="0.1" min="0" id="m-hang" class="form-control form-control-sm"></div>
+              <div id="m-status" class="small text-danger mt-2"></div>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary btn-sm" onclick="saveMeasurement()">Save</button></div>
+          </div>
+        </div>
+      </div>
+
     </div>
 
 <script>
     window.currentSets  = {{ .ExData.Sets }};
+    window._measurements = {{ .Measurements | json | safeJS }};
     window._exerciseMuscles = {{ .ExerciseMuscles | json | safeJS }};
     window._allWeight   = {{ .ExData.Weight }};
     window._chartColor  = getComputedStyle(document.documentElement).getPropertyValue('--bs-primary').trim() || '#2780e3';
@@ -552,6 +616,16 @@
     document.getElementById('tab-hr-btn').addEventListener('shown.bs.tab', function() { renderHRTab(currentPeriod); });
     document.getElementById('tab-sleep-btn').addEventListener('shown.bs.tab', function() { renderSleepTab(currentPeriod); });
     document.getElementById('tab-cardio-btn').addEventListener('shown.bs.tab', function() { renderCardioTab(currentPeriod); });
+    document.getElementById('tab-grip-btn').addEventListener('shown.bs.tab', function() { updateGripTab(window._measurements); });
+    (function() {
+        var m = document.getElementById('logMeasurementModal');
+        if (!m) return;
+        m.addEventListener('show.bs.modal', function() {
+            var d = document.getElementById('m-date');
+            if (d && !d.value) d.value = (window._serverDate || todayStr());
+            document.getElementById('m-status').textContent = '';
+        });
+    })();
 
     // Deep-link from the Health dashboard: /stats/#tab-steps opens that tab.
     (function() {

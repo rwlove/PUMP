@@ -1070,3 +1070,90 @@ document.addEventListener('shown.bs.tab', function(ev) {
         ev.target.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
     }
 });
+
+// ─── Grip & Hang ──────────────────────────────────────────────────────────────
+
+var _gripChart = null, _hangChart = null;
+
+function gripSet(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
+
+function updateGripTab(measurements) {
+    measurements = measurements || window._measurements || [];
+    var grip = measurements.filter(function(m) { return m.Metric === 'grip'; });
+    var hang = measurements.filter(function(m) { return m.Metric === 'dead_hang'; });
+
+    var left  = grip.filter(function(m) { return m.Hand === 'left'; });
+    var right = grip.filter(function(m) { return m.Hand === 'right'; });
+    var gripDates = Array.from(new Set(grip.map(function(m) { return m.Date; }))).sort();
+    function series(rows) {
+        var map = {};
+        rows.forEach(function(m) { map[m.Date] = parseFloat(m.Value); });
+        return gripDates.map(function(d) { return (d in map) ? map[d] : null; });
+    }
+
+    if (_gripChart) { _gripChart.destroy(); _gripChart = null; }
+    var gripNo = document.getElementById('grip-no-data');
+    if (grip.length === 0) {
+        if (gripNo) gripNo.style.display = '';
+        gripSet('grip-left', '–'); gripSet('grip-right', '–');
+    } else {
+        if (gripNo) gripNo.style.display = 'none';
+        var lastL = left.length ? parseFloat(left[left.length - 1].Value) : null;
+        var lastR = right.length ? parseFloat(right[right.length - 1].Value) : null;
+        gripSet('grip-left',  lastL != null ? lastL + ' lb' : '–');
+        gripSet('grip-right', lastR != null ? lastR + ' lb' : '–');
+        _gripChart = new Chart(document.getElementById('grip-chart'), {
+            type: 'line',
+            data: { labels: gripDates, datasets: [
+                { label: 'Left',  data: series(left),  borderColor: '#2780e3', backgroundColor: '#2780e333', spanGaps: true, tension: 0.2 },
+                { label: 'Right', data: series(right), borderColor: '#e37b27', backgroundColor: '#e37b2733', spanGaps: true, tension: 0.2 },
+            ] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true } }, scales: { y: { beginAtZero: false } } }
+        });
+    }
+
+    if (_hangChart) { _hangChart.destroy(); _hangChart = null; }
+    var hangNo = document.getElementById('hang-no-data');
+    if (hang.length === 0) {
+        if (hangNo) hangNo.style.display = '';
+        gripSet('hang-latest', '–'); gripSet('hang-best', '–');
+    } else {
+        if (hangNo) hangNo.style.display = 'none';
+        var hvals = hang.map(function(m) { return parseFloat(m.Value); });
+        gripSet('hang-latest', hvals[hvals.length - 1] + 's');
+        gripSet('hang-best', Math.max.apply(null, hvals) + 's');
+        _hangChart = new Chart(document.getElementById('hang-chart'), {
+            type: 'line',
+            data: { labels: hang.map(function(m) { return m.Date; }), datasets: [
+                { label: 'Dead hang (s)', data: hvals, borderColor: '#27b36b', backgroundColor: '#27b36b33', tension: 0.2 },
+            ] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+        });
+    }
+}
+
+function saveMeasurement() {
+    var status = document.getElementById('m-status');
+    var date = document.getElementById('m-date').value;
+    if (!date) { status.textContent = 'date is required'; return; }
+    var body = {
+        Date: date,
+        GripLeft:  document.getElementById('m-grip-left').value  || null,
+        GripRight: document.getElementById('m-grip-right').value || null,
+        DeadHang:  document.getElementById('m-hang').value       || null,
+    };
+    if (!body.GripLeft && !body.GripRight && !body.DeadHang) { status.textContent = 'enter at least one value'; return; }
+    fetch('/api/measurements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function(r) {
+            if (!r.ok) { return r.json().then(function(j) { status.textContent = (j && j.error) || ('HTTP ' + r.status); }); }
+            var modalEl = document.getElementById('logMeasurementModal');
+            var inst = bootstrap.Modal.getInstance(modalEl);
+            if (inst) inst.hide();
+            ['m-grip-left', 'm-grip-right', 'm-hang'].forEach(function(id) { document.getElementById(id).value = ''; });
+            return fetch('/api/measurements').then(function(rr) { return rr.json(); }).then(function(ms) {
+                window._measurements = ms || [];
+                updateGripTab(window._measurements);
+            });
+        })
+        .catch(function(e) { status.textContent = e.message || 'request failed'; });
+}

@@ -39,6 +39,8 @@ func statsHandler(c *gin.Context) {
 	// Focus muscles per exercise, for the muscle-level Muscle Balance view. Soft
 	// failure (nil map) — the tab falls back to the by-group breakdown.
 	guiData.ExerciseMuscles, _ = dataStore.SelectAllExerciseMuscles(c.Request.Context())
+	// Grip / dead-hang readings for the Grip & Hang tab (soft failure → nil).
+	guiData.Measurements, _ = dataStore.SelectMeasurements(c.Request.Context())
 
 	c.HTML(http.StatusOK, "stats.html", guiData)
 }

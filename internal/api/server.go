@@ -107,6 +107,11 @@ func registerRoutes(r *gin.Engine) {
 	r.DELETE("/api/routines/:id", deleteRoutine)
 	r.PUT("/api/routines/:id/items", putRoutineItems)
 
+	// Standalone metrics (grip strength, dead hang)
+	r.GET("/api/measurements", getMeasurements)
+	r.POST("/api/measurements", postMeasurement)
+	r.DELETE("/api/measurements/:id", deleteMeasurement)
+
 	// Sets
 	r.GET("/api/sets", getSets)
 	r.GET("/api/sets/stream", getSetsStream)

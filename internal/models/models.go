@@ -197,6 +197,18 @@ type BodyWeight struct {
 	Weight     decimal.Decimal `db:"WEIGHT"`
 }
 
+// Measurement is one occasional standalone metric reading — grip strength (per
+// hand, in lb) or a dead hang (a time in seconds). Not tied to a workout or a
+// muscle group; charted over time on the Stats "Grip & Hang" tab.
+type Measurement struct {
+	ID         int             `json:"ID"`
+	Date       string          `json:"Date"`
+	RecordedAt string          `json:"RecordedAt"`
+	Metric     string          `json:"Metric"` // "grip" | "dead_hang"
+	Hand       string          `json:"Hand"`   // "left" | "right" | ""
+	Value      decimal.Decimal `json:"Value"`  // lb for grip, seconds for dead_hang
+}
+
 // HealthRecord is one wearable health datum ingested from Android Health
 // Connect via the HC Webhook bridge. It is deliberately generic so new
 // Health Connect types ingest without a schema change: scalar readings land
@@ -286,6 +298,7 @@ type GuiData struct {
 	// ExerciseMuscles maps exercise id → its focus muscles, for the
 	// muscle-level Muscle Balance view. JSON-encoded to the stats page.
 	ExerciseMuscles map[int][]FocusMuscle
+	Measurements    []Measurement // grip / dead-hang readings for the Grip & Hang tab
 	Version         string
 	ServerDate      string      // today's date in server timezone (YYYY-MM-DD)
 	Health          HealthStats // wearable aggregates (Health page + Stats tabs)
