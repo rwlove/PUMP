@@ -33,21 +33,28 @@
                     <td><input name="name" type="text" class="form-control" value="{{ .OneEx.Name }}"></td>
                 </tr>
                 <tr>
-                    <td>Focus muscle</td>
+                    <td>Focus muscles</td>
                     <td>
-                        {{/* Options come from this group's muscle catalog
-                             (Settings › Muscles). Feature 4. */}}
-                        <select name="focus" class="form-select">
-                            <option value="">— none —</option>
-                            {{ $focus := .OneEx.Focus }}
-                            {{ $grp := .OneEx.Group }}
-                            {{ range .Muscles }}
-                            {{ if eq .Group $grp }}
-                            <option value="{{ .Name }}"{{ if eq .Name $focus }} selected{{ end }}>{{ .Name }}</option>
-                            {{ end }}
-                            {{ end }}
-                        </select>
-                        <div class="form-text">Manage muscles per group in Settings.</div>
+                        {{ $grp := .OneEx.Group }}
+                        <div class="mb-2">
+                          <div class="form-label small text-body-secondary mb-1">Primary <span class="text-body-tertiary">— this group, full credit</span></div>
+                          {{ range .Muscles }}{{ if eq .Group $grp }}
+                          <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" name="primary" value="{{ .ID }}" id="pri-{{ .ID }}"{{ if index $.PrimaryIDs .ID }} checked{{ end }}>
+                            <label class="form-check-label small" for="pri-{{ .ID }}">{{ .Name }}</label>
+                          </div>
+                          {{ end }}{{ end }}
+                        </div>
+                        <div>
+                          <div class="form-label small text-body-secondary mb-1">Secondary <span class="text-body-tertiary">— any group, partial credit</span></div>
+                          {{ range .Muscles }}
+                          <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" name="secondary" value="{{ .ID }}" id="sec-{{ .ID }}"{{ if index $.SecondaryIDs .ID }} checked{{ end }}>
+                            <label class="form-check-label small" for="sec-{{ .ID }}">{{ .Name }} <span class="text-body-tertiary">· {{ .Group }}</span></label>
+                          </div>
+                          {{ end }}
+                        </div>
+                        <div class="form-text">A muscle checked primary wins if also checked secondary. Manage the muscle catalog in the Library.</div>
                     </td>
                 </tr>
                 <tr>

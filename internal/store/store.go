@@ -10,7 +10,9 @@ import (
 // Store abstracts data access for handlers and tests.
 type Store interface {
 	SelectEx(ctx context.Context) ([]models.Exercise, error)
-	InsertEx(ctx context.Context, ex models.Exercise) error
+	// InsertEx appends an exercise and returns its new id (needed to write
+	// the exercise_muscles junction for a freshly created exercise).
+	InsertEx(ctx context.Context, ex models.Exercise) (int, error)
 	// UpdateEx rewrites an existing exercise in place (id preserved);
 	// false means no row had that id.
 	UpdateEx(ctx context.Context, ex models.Exercise) (bool, error)
@@ -82,6 +84,13 @@ type Store interface {
 	// ReorderGroups sets sort_order to match the given name order (index 0
 	// first). Names not present are ignored.
 	ReorderGroups(ctx context.Context, names []string) error
+
+	// SelectExerciseMuscles returns the focus muscles for one exercise
+	// (primary first), resolved from the exercise_muscles junction.
+	SelectExerciseMuscles(ctx context.Context, exerciseID int) ([]models.FocusMuscle, error)
+	// ReplaceExerciseMuscles atomically replaces an exercise's focus muscles
+	// with the given set.
+	ReplaceExerciseMuscles(ctx context.Context, exerciseID int, fms []models.FocusMuscle) error
 }
 
 // HealthStore persists wearable health records ingested from Android Health

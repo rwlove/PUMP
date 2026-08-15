@@ -91,6 +91,18 @@ type Group struct {
 	Sort int    `db:"SORT_ORDER" json:"Sort"`
 }
 
+// FocusMuscle is one muscle an exercise targets, resolved from the
+// exercise_muscles junction joined to the muscle catalog. Primary muscles are
+// constrained to the exercise's own group and get full credit; secondary
+// muscles may come from any group (a compound lift's accessory involvement) and
+// get partial credit in Muscle Balance.
+type FocusMuscle struct {
+	MuscleID int    `db:"MUSCLE_ID" json:"MuscleID"`
+	Group    string `db:"GR" json:"Group"`
+	Name     string `db:"NAME" json:"Name"`
+	Primary  bool   `db:"IS_PRIMARY" json:"Primary"`
+}
+
 // Muscle is one entry in the DB-editable muscle catalog. Muscles are keyed
 // by group name (matching Exercise.Group), so a group's focus options are all
 // muscles sharing its Group. The group list the UI offers is the union of
@@ -233,13 +245,18 @@ type HealthStats struct {
 
 // GuiData - web gui data
 type GuiData struct {
-	Config     Conf
-	ExData     AllExData
-	GroupMap   []string // unique exercise groups, in display order
-	OneEx      Exercise
-	Muscles    []Muscle // DB-editable muscle catalog (focus options per group)
-	Groups     []Group  // managed training groups (Library group management)
-	Version    string
-	ServerDate string      // today's date in server timezone (YYYY-MM-DD)
-	Health     HealthStats // wearable aggregates (Health page + Stats tabs)
+	Config   Conf
+	ExData   AllExData
+	GroupMap []string // unique exercise groups, in display order
+	OneEx    Exercise
+	Muscles  []Muscle // DB-editable muscle catalog (focus options per group)
+	Groups   []Group  // managed training groups (Library group management)
+	// PrimaryIDs / SecondaryIDs mark, for the exercise being edited, which
+	// catalog muscle ids are currently checked as primary vs secondary focus.
+	// Keyed by muscle id so the edit form can render the multi-select state.
+	PrimaryIDs   map[int]bool
+	SecondaryIDs map[int]bool
+	Version      string
+	ServerDate   string      // today's date in server timezone (YYYY-MM-DD)
+	Health       HealthStats // wearable aggregates (Health page + Stats tabs)
 }

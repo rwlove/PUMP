@@ -70,17 +70,67 @@ func (s *PostgresStore) SelectEx(ctx context.Context) ([]models.Exercise, error)
 	return exes, rows.Err()
 }
 
-func (s *PostgresStore) InsertEx(ctx context.Context, ex models.Exercise) error {
+func (s *PostgresStore) InsertEx(ctx context.Context, ex models.Exercise) (int, error) {
 	slog.Debug("db: InsertEx", slog.String("name", ex.Name), slog.String("group", ex.Group))
-	_, err := s.pool.Exec(ctx,
+	var id int
+	err := s.pool.QueryRow(ctx,
 		`INSERT INTO exercises (gr, place, name, descr, image, color, weight, reps, voltra, focus, bodyweight)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
 		ex.Group, ex.Place, ex.Name, ex.Descr, ex.Image, ex.Color,
-		ex.Weight.String(), ex.Reps, ex.Voltra, ex.Focus, ex.Bodyweight)
+		ex.Weight.String(), ex.Reps, ex.Voltra, ex.Focus, ex.Bodyweight).Scan(&id)
 	if err != nil {
 		slog.Debug("db: InsertEx failed", slog.Any("error", err))
 	}
-	return err
+	return id, err
+}
+
+// SelectExerciseMuscles returns one exercise's focus muscles, primary first.
+func (s *PostgresStore) SelectExerciseMuscles(ctx context.Context, exerciseID int) ([]models.FocusMuscle, error) {
+	slog.Debug("db: SelectExerciseMuscles", slog.Int("exercise_id", exerciseID))
+	rows, err := s.pool.Query(ctx,
+		`SELECT em.muscle_id, m.gr, m.name, em.is_primary
+		 FROM exercise_muscles em
+		 JOIN muscles m ON m.id = em.muscle_id
+		 WHERE em.exercise_id = $1
+		 ORDER BY em.is_primary DESC, m.gr ASC, m.name ASC`, exerciseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.FocusMuscle
+	for rows.Next() {
+		var fm models.FocusMuscle
+		if err := rows.Scan(&fm.MuscleID, &fm.Group, &fm.Name, &fm.Primary); err != nil {
+			return nil, err
+		}
+		out = append(out, fm)
+	}
+	return out, rows.Err()
+}
+
+// ReplaceExerciseMuscles atomically swaps an exercise's focus muscles for the
+// given set (delete-then-insert in one transaction).
+func (s *PostgresStore) ReplaceExerciseMuscles(ctx context.Context, exerciseID int, fms []models.FocusMuscle) error {
+	slog.Debug("db: ReplaceExerciseMuscles", slog.Int("exercise_id", exerciseID), slog.Int("count", len(fms)))
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once Commit succeeds
+	if _, err := tx.Exec(ctx, `DELETE FROM exercise_muscles WHERE exercise_id = $1`, exerciseID); err != nil {
+		return err
+	}
+	for _, fm := range fms {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO exercise_muscles (exercise_id, muscle_id, is_primary)
+			 VALUES ($1, $2, $3)
+			 ON CONFLICT (exercise_id, muscle_id) DO UPDATE SET is_primary = EXCLUDED.is_primary`,
+			exerciseID, fm.MuscleID, fm.Primary); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 // UpdateEx rewrites an existing exercise in place, preserving its id.

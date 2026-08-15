@@ -68,6 +68,24 @@ func exerciseHandler(c *gin.Context) {
 		}
 	}
 
+	// Which catalog muscles are currently primary vs secondary for this
+	// exercise, so the multi-select renders in the right state.
+	guiData.PrimaryIDs = map[int]bool{}
+	guiData.SecondaryIDs = map[int]bool{}
+	if guiData.OneEx.ID != 0 {
+		fms, err := dataStore.SelectExerciseMuscles(c.Request.Context(), guiData.OneEx.ID)
+		if err != nil {
+			slog.Warn("exerciseHandler: SelectExerciseMuscles failed", slog.Any("error", err))
+		}
+		for _, fm := range fms {
+			if fm.Primary {
+				guiData.PrimaryIDs[fm.MuscleID] = true
+			} else {
+				guiData.SecondaryIDs[fm.MuscleID] = true
+			}
+		}
+	}
+
 	c.HTML(http.StatusOK, "exercise.html", guiData)
 }
 
@@ -81,7 +99,6 @@ func saveExerciseHandler(c *gin.Context) {
 	oneEx.Image = c.PostForm("image")
 	oneEx.Color = c.PostForm("color")
 	oneEx.Voltra = c.PostForm("voltra") == "on"
-	oneEx.Focus = c.PostForm("focus")
 	oneEx.Bodyweight = c.PostForm("bodyweight") == "on"
 
 	var ok bool
@@ -108,8 +125,50 @@ func saveExerciseHandler(c *gin.Context) {
 
 	slog.Debug("saveExerciseHandler", slog.String("name", oneEx.Name), slog.Int("id", oneEx.ID))
 
-	// Upsert: update in place when the exercise exists (id preserved, so
-	// nothing referencing it churns); insert when new or the id is unknown.
+	// Focus muscles: primary ids (constrained to this exercise's own group) and
+	// secondary ids (any group — a compound's accessory involvement). Resolve
+	// against the catalog so primaries can be validated and exercises.focus can
+	// be dual-written with the first primary's name for anything still reading
+	// the legacy single-focus column.
+	muscleByID := map[int]models.Muscle{}
+	if ms, err := dataStore.SelectMuscles(c.Request.Context()); err == nil {
+		for _, m := range ms {
+			muscleByID[m.ID] = m
+		}
+	}
+	seen := map[int]bool{}
+	var fms []models.FocusMuscle
+	oneEx.Focus = ""
+	for _, idStr := range c.PostFormArray("primary") {
+		id, valid := formInt(idStr)
+		if !valid || seen[id] {
+			continue
+		}
+		m, known := muscleByID[id]
+		if !known || m.Group != oneEx.Group {
+			continue // a primary must belong to the exercise's own group
+		}
+		seen[id] = true
+		fms = append(fms, models.FocusMuscle{MuscleID: id, Primary: true})
+		if oneEx.Focus == "" {
+			oneEx.Focus = m.Name
+		}
+	}
+	for _, idStr := range c.PostFormArray("secondary") {
+		id, valid := formInt(idStr)
+		if !valid || seen[id] {
+			continue // skip unknown, or an id already taken as primary
+		}
+		if _, known := muscleByID[id]; !known {
+			continue
+		}
+		seen[id] = true
+		fms = append(fms, models.FocusMuscle{MuscleID: id, Primary: false})
+	}
+
+	// Upsert the exercise, then replace its focus-muscle set. The junction needs
+	// the row's id, which for a new exercise only exists after the insert.
+	var exID int
 	if oneEx.ID != 0 {
 		found, err := dataStore.UpdateEx(c.Request.Context(), oneEx)
 		if err != nil {
@@ -118,18 +177,27 @@ func saveExerciseHandler(c *gin.Context) {
 			return
 		}
 		if found {
-			c.Redirect(http.StatusFound, "/")
-			return
+			exID = oneEx.ID
 		}
 	}
+	if exID == 0 {
+		newID, err := dataStore.InsertEx(c.Request.Context(), oneEx)
+		if err != nil {
+			slog.Error("saveExerciseHandler: InsertEx failed", slog.Any("error", err))
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		exID = newID
+	}
 
-	if err := dataStore.InsertEx(c.Request.Context(), oneEx); err != nil {
-		slog.Error("saveExerciseHandler: InsertEx failed", slog.Any("error", err))
+	if err := dataStore.ReplaceExerciseMuscles(c.Request.Context(), exID, fms); err != nil {
+		slog.Error("saveExerciseHandler: ReplaceExerciseMuscles failed",
+			slog.Int("id", exID), slog.Any("error", err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 
-	c.Redirect(http.StatusFound, "/")
+	c.Redirect(http.StatusFound, "/library/")
 }
 
 // pumpCVProxyHandler forwards any /api/cv/* request to pump-cv. The
