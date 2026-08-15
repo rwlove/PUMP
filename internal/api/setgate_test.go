@@ -29,8 +29,8 @@ func (g *gateStore) InsertSet(_ context.Context, set models.Set) (models.Set, er
 }
 
 // Remaining Store methods are unused here; zero values satisfy the interface.
-func (g *gateStore) SelectEx(context.Context) ([]models.Exercise, error) { return nil, nil }
-func (g *gateStore) InsertEx(context.Context, models.Exercise) error     { return nil }
+func (g *gateStore) SelectEx(context.Context) ([]models.Exercise, error)    { return nil, nil }
+func (g *gateStore) InsertEx(context.Context, models.Exercise) (int, error) { return 0, nil }
 func (g *gateStore) UpdateEx(context.Context, models.Exercise) (bool, error) {
 	return false, nil
 }
@@ -63,6 +63,12 @@ func (g *gateStore) InsertGroup(context.Context, string) error              { re
 func (g *gateStore) RenameGroup(context.Context, string, string) error      { return nil }
 func (g *gateStore) DeleteGroup(context.Context, string) (int, error)       { return 0, nil }
 func (g *gateStore) ReorderGroups(context.Context, []string) error          { return nil }
+func (g *gateStore) SelectExerciseMuscles(context.Context, int) ([]models.FocusMuscle, error) {
+	return nil, nil
+}
+func (g *gateStore) ReplaceExerciseMuscles(context.Context, int, []models.FocusMuscle) error {
+	return nil
+}
 
 var _ store.Store = (*gateStore)(nil)
 

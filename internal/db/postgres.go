@@ -243,6 +243,29 @@ FROM (
 ON CONFLICT (name) DO NOTHING;
 `,
 	},
+	{
+		Version:     16,
+		Description: "create exercise_muscles junction (multi focus, primary/secondary) and backfill from exercises.focus",
+		SQL: `
+CREATE TABLE IF NOT EXISTS exercise_muscles (
+    exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+    muscle_id   INTEGER NOT NULL REFERENCES muscles(id)   ON DELETE CASCADE,
+    is_primary  BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (exercise_id, muscle_id)
+);
+CREATE INDEX IF NOT EXISTS exercise_muscles_ex_idx ON exercise_muscles (exercise_id);
+-- Backfill: today's single focus becomes one primary row, matched within the
+-- exercise's group. exercises.focus is kept (dual-written on save) so anything
+-- still reading it keeps working; the junction is the source of truth going
+-- forward. Idempotent.
+INSERT INTO exercise_muscles (exercise_id, muscle_id, is_primary)
+SELECT e.id, m.id, TRUE
+FROM exercises e
+JOIN muscles m ON m.gr = e.gr AND m.name = e.focus
+WHERE e.focus <> ''
+ON CONFLICT DO NOTHING;
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any

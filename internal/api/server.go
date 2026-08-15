@@ -181,7 +181,7 @@ func postExercise(c *gin.Context) {
 		return
 	}
 	slog.Debug("postExercise", slog.String("name", ex.Name), slog.String("group", ex.Group))
-	if err := dataStore.InsertEx(c.Request.Context(), ex); err != nil {
+	if _, err := dataStore.InsertEx(c.Request.Context(), ex); err != nil {
 		slog.Error("postExercise: InsertEx failed", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -211,7 +211,7 @@ func putExercise(c *gin.Context) {
 	if !found {
 		// Unknown id: create the exercise, preserving the old
 		// delete+insert upsert behavior (the row gets a fresh id).
-		if err := dataStore.InsertEx(c.Request.Context(), ex); err != nil {
+		if _, err := dataStore.InsertEx(c.Request.Context(), ex); err != nil {
 			slog.Error("putExercise: InsertEx failed", slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

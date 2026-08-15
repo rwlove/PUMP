@@ -40,8 +40,8 @@ func (f *fakeStore) GetAppConfig(ctx context.Context) (models.Conf, bool, error)
 
 // Unused-by-this-test Store methods — return zero values so the interface
 // is satisfied without pulling in a real DB.
-func (f *fakeStore) SelectEx(context.Context) ([]models.Exercise, error) { return nil, nil }
-func (f *fakeStore) InsertEx(context.Context, models.Exercise) error     { return nil }
+func (f *fakeStore) SelectEx(context.Context) ([]models.Exercise, error)    { return nil, nil }
+func (f *fakeStore) InsertEx(context.Context, models.Exercise) (int, error) { return 0, nil }
 func (f *fakeStore) UpdateEx(context.Context, models.Exercise) (bool, error) {
 	return false, nil
 }
@@ -62,7 +62,13 @@ func (f *fakeStore) InsertGroup(context.Context, string) error              { re
 func (f *fakeStore) RenameGroup(context.Context, string, string) error      { return nil }
 func (f *fakeStore) DeleteGroup(context.Context, string) (int, error)       { return 0, nil }
 func (f *fakeStore) ReorderGroups(context.Context, []string) error          { return nil }
-func (f *fakeStore) GetSet(context.Context, int) (models.Set, error)        { return models.Set{}, nil }
+func (f *fakeStore) SelectExerciseMuscles(context.Context, int) ([]models.FocusMuscle, error) {
+	return nil, nil
+}
+func (f *fakeStore) ReplaceExerciseMuscles(context.Context, int, []models.FocusMuscle) error {
+	return nil
+}
+func (f *fakeStore) GetSet(context.Context, int) (models.Set, error) { return models.Set{}, nil }
 func (f *fakeStore) InsertSet(context.Context, models.Set) (models.Set, error) {
 	return models.Set{}, nil
 }

@@ -46,15 +46,11 @@ func testStore(t *testing.T) *PostgresStore {
 func mustInsertEx(t *testing.T, s *PostgresStore, name, group, color string) int {
 	t.Helper()
 	ctx := context.Background()
-	if err := s.InsertEx(ctx, models.Exercise{
+	id, err := s.InsertEx(ctx, models.Exercise{
 		Name: name, Group: group, Color: color, Weight: decimal.NewFromInt(0),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("InsertEx(%s): %v", name, err)
-	}
-	var id int
-	if err := s.Pool().QueryRow(ctx,
-		"SELECT id FROM exercises WHERE name = $1", name).Scan(&id); err != nil {
-		t.Fatalf("lookup %s: %v", name, err)
 	}
 	return id
 }

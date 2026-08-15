@@ -313,3 +313,70 @@ func TestGroups_CRUD(t *testing.T) {
 		t.Fatalf("reorder wrong: GrpD sort=%d, GrpC sort=%d", posD, posC)
 	}
 }
+
+// InsertEx returns a usable id; the exercise_muscles junction replaces as a set,
+// sorts primary first, and cascades when the exercise is deleted.
+func TestExerciseMuscles_CRUD(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	_, _ = s.Pool().Exec(ctx, "DELETE FROM muscles WHERE gr = 'EMGrp'")
+	t.Cleanup(func() { _, _ = s.Pool().Exec(ctx, "DELETE FROM muscles WHERE gr = 'EMGrp'") })
+
+	for _, n := range []string{"Prim", "Sec"} {
+		if err := s.InsertMuscle(ctx, models.Muscle{Group: "EMGrp", Name: n}); err != nil {
+			t.Fatalf("InsertMuscle %s: %v", n, err)
+		}
+	}
+	ms, _ := s.SelectMuscles(ctx)
+	var primID, secID int
+	for _, m := range ms {
+		if m.Group == "EMGrp" && m.Name == "Prim" {
+			primID = m.ID
+		}
+		if m.Group == "EMGrp" && m.Name == "Sec" {
+			secID = m.ID
+		}
+	}
+	if primID == 0 || secID == 0 {
+		t.Fatalf("seed muscles missing ids: prim=%d sec=%d", primID, secID)
+	}
+
+	exID, err := s.InsertEx(ctx, models.Exercise{Name: "EMEx", Group: "EMGrp", Weight: decimal.NewFromInt(0)})
+	if err != nil || exID == 0 {
+		t.Fatalf("InsertEx returned id=%d err=%v", exID, err)
+	}
+
+	// One primary + one secondary; primary sorts first.
+	if err := s.ReplaceExerciseMuscles(ctx, exID, []models.FocusMuscle{
+		{MuscleID: primID, Primary: true},
+		{MuscleID: secID, Primary: false},
+	}); err != nil {
+		t.Fatalf("ReplaceExerciseMuscles: %v", err)
+	}
+	fms, err := s.SelectExerciseMuscles(ctx, exID)
+	if err != nil {
+		t.Fatalf("SelectExerciseMuscles: %v", err)
+	}
+	if len(fms) != 2 || !fms[0].Primary || fms[0].MuscleID != primID {
+		t.Fatalf("focus muscles wrong: %+v", fms)
+	}
+
+	// Replace is a full swap — now just the (formerly secondary) muscle as primary.
+	if err := s.ReplaceExerciseMuscles(ctx, exID, []models.FocusMuscle{
+		{MuscleID: secID, Primary: true},
+	}); err != nil {
+		t.Fatalf("Replace 2: %v", err)
+	}
+	fms, _ = s.SelectExerciseMuscles(ctx, exID)
+	if len(fms) != 1 || fms[0].MuscleID != secID || !fms[0].Primary {
+		t.Fatalf("replace didn't swap the set: %+v", fms)
+	}
+
+	// Deleting the exercise cascades the junction rows.
+	if err := s.DeleteEx(ctx, exID); err != nil {
+		t.Fatalf("DeleteEx: %v", err)
+	}
+	if fms, _ = s.SelectExerciseMuscles(ctx, exID); len(fms) != 0 {
+		t.Fatalf("junction not cascaded on exercise delete: %d rows", len(fms))
+	}
+}
