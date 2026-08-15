@@ -233,3 +233,18 @@ func TestNeedsColorBackfill(t *testing.T) {
 		t.Fatal("empty slice should not trigger backfill")
 	}
 }
+
+// A missing color and a broken black both count as unset (needing backfill);
+// real palette shades do not. The palette never produces #000000.
+func TestColorUnset(t *testing.T) {
+	for _, c := range []string{"", "#000000", "#000", "#000000"} {
+		if !colorUnset(c) {
+			t.Errorf("colorUnset(%q) = false, want true", c)
+		}
+	}
+	for _, c := range []string{"#96db8a", "#14a30a", "#ffffff", "#2780e3"} {
+		if colorUnset(c) {
+			t.Errorf("colorUnset(%q) = true, want false", c)
+		}
+	}
+}
