@@ -79,9 +79,16 @@ func getHealth(c *gin.Context) {
 	metricType := c.Query("type")
 	since := time.Now().AddDate(0, 0, -30)
 	if s := c.Query("since"); s != "" {
-		if t, err := time.Parse(time.RFC3339, s); err == nil {
-			since = t
+		t, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			// Reject rather than silently fall back to the 30-day default: a
+			// caller asking for a wide window with a mistyped/date-only value
+			// would otherwise get a narrow one with no way to tell.
+			c.JSON(http.StatusBadRequest,
+				gin.H{"error": "since must be RFC3339 (e.g. 2026-01-01T00:00:00Z)"})
+			return
 		}
+		since = t
 	}
 	recs, err := healthStore.SelectHealthRecords(c.Request.Context(), metricType, since)
 	if err != nil {

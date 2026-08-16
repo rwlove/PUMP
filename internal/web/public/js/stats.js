@@ -22,7 +22,13 @@ function formatDate(date) {
 function filterByPeriod(sets, period) {
     if (period === 'alltime') return sets ? sets.slice() : [];
     const { start, end } = getPeriodDates(period);
-    return sets.filter(s => { const d = new Date(s.Date); return d >= start && d <= end; });
+    // Compare date strings, not Date objects. s.Date is "YYYY-MM-DD"; new
+    // Date(s.Date) parses it as UTC midnight, so in a western timezone the
+    // window's boundary day shifts to the previous local day and its sets
+    // silently drop out of every strength stat. localDateStr keeps both ends in
+    // local wall-clock — the same fix parseDateStr applies elsewhere.
+    const startStr = localDateStr(start), endStr = localDateStr(end);
+    return sets.filter(s => s.Date >= startStr && s.Date <= endStr);
 }
 
 // ─── Global period selector ───────────────────────────────────────────────────
@@ -111,7 +117,10 @@ function filterWeightByPeriod(weight, period) {
     if (!weight) return [];
     if (period === 'alltime') return weight.slice();
     const { start, end } = getPeriodDates(period);
-    return weight.filter(w => { const d = new Date(w.Date); return d >= start && d <= end; });
+    // Date-string compare, same reason as filterByPeriod: avoid the UTC-parse
+    // boundary shift on the "YYYY-MM-DD" w.Date.
+    const startStr = localDateStr(start), endStr = localDateStr(end);
+    return weight.filter(w => w.Date >= startStr && w.Date <= endStr);
 }
 
 // ─── Summary stats ────────────────────────────────────────────────────────────
@@ -158,7 +167,10 @@ function updateExerciseDistribution(sets, exercises) {
     if (distributionChart) distributionChart.destroy();
     distributionChart = new Chart(ctx, {
         type: 'pie',
-        data: { labels, datasets: [{ data, backgroundColor: colors }] },
+        // A mid-grey slice outline separates adjacent slices and, critically,
+        // keeps a dark/near-black exercise color visible against the dark
+        // theme background — without it such a slice reads as a hole in the pie.
+        data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: 'rgba(128,128,128,0.6)', borderWidth: 1.5 }] },
         options: {
             responsive: true,
             plugins: {
@@ -818,26 +830,35 @@ function updateConsistencyTab(allSets, period) {
         if (d >= periodStartStr && d <= todayYMD) workoutDates[d] = workoutDatesAll[d];
     });
 
-    // Current streak: consecutive days back from today, capped at the period window.
+    // Current and longest streak are intrinsic to the training history, not the
+    // display window: a 40-day streak is 40 days whether you're looking at the
+    // weekly or all-time view. They're computed from workoutDatesAll. Only the
+    // Total and Avg/week boxes (below) scope to the selected period — they carry
+    // a period label; the streak boxes don't.
+    const allSorted = Object.keys(workoutDatesAll).sort();
+    const earliest = allSorted.length ? parseDateStr(allSorted[0]) : today;
+    const maxLookback = Math.round((today - earliest) / 86400000) + 1;
+
+    // Current streak: consecutive days back from today. Today not yet logged
+    // doesn't break it (i > 0 guard) so a streak stands until a full rest day.
     let currentStreak = 0;
-    for (let i = 0; i < periodDays; i++) {
+    for (let i = 0; i <= maxLookback; i++) {
         const d = new Date(today);
         d.setDate(today.getDate() - i);
         const ds = localDateStr(d);
-        if (workoutDates[ds]) {
+        if (workoutDatesAll[ds]) {
             currentStreak++;
         } else if (i > 0) {
             break;
         }
     }
 
-    // Longest streak within the period.
-    const sortedDates = Object.keys(workoutDates).sort();
-    let longestStreak = sortedDates.length > 0 ? 1 : 0;
+    // Longest streak over all history.
+    let longestStreak = allSorted.length > 0 ? 1 : 0;
     let streak = longestStreak;
-    for (let i = 1; i < sortedDates.length; i++) {
+    for (let i = 1; i < allSorted.length; i++) {
         const diff = Math.round(
-            (parseDateStr(sortedDates[i]) - parseDateStr(sortedDates[i - 1])) / 86400000
+            (parseDateStr(allSorted[i]) - parseDateStr(allSorted[i - 1])) / 86400000
         );
         if (diff === 1) {
             streak++;
@@ -846,6 +867,9 @@ function updateConsistencyTab(allSets, period) {
             streak = 1;
         }
     }
+
+    // Period-scoped counts for the Total and Avg/week boxes.
+    const sortedDates = Object.keys(workoutDates).sort();
 
     // Avg per week over the period.
     const periodWeeks = Math.max(1, periodDays / 7);

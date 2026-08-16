@@ -37,6 +37,7 @@ func saveConfigHandler(c *gin.Context) {
 	cfg.DisplayDays, _ = strconv.Atoi(c.PostForm("displaydays"))
 	cfg.AutoFill = c.PostForm("autofill") == "on"
 	cfg.CVAutoLog = c.PostForm("cvautolog") == "on"
+	cfg = conf.Normalize(cfg)
 	conf.Set(cfg)
 
 	// Persist so the change survives a pod restart. Failure here is

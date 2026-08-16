@@ -27,14 +27,6 @@ var (
 	// no-inbound-auth posture for in-cluster callers and the manual
 	// web-form path (which goes through /wadd/, not /api/weight).
 	weightIngestKey string
-	// weightMinLbs/weightMaxLbs bound plausible body weights accepted by
-	// POST /api/weight. PUMP does not trust a single upstream — the BLE-scale
-	// firmware enforces a tight band, and this is the backstop that keeps a
-	// physically-impossible reading (from any source) out of the store.
-	// Overridable via WEIGHT_MIN_LBS / WEIGHT_MAX_LBS; defaults are a generous
-	// human range so normal weigh-ins never trip it.
-	weightMinLbs = decimal.NewFromInt(50)
-	weightMaxLbs = decimal.NewFromInt(500)
 )
 
 // RegisterRoutes mounts all API routes on r using the provided store.
@@ -51,29 +43,10 @@ func RegisterRoutes(r *gin.Engine, s *store.PostgresStore, p *notify.Pushover, p
 	publicURL = pubURL
 	weightIngestKey = os.Getenv("WEIGHT_INGEST_KEY")
 	healthIngestKey = os.Getenv("HEALTH_INGEST_KEY")
-	weightMinLbs = envDecimal("WEIGHT_MIN_LBS", weightMinLbs)
-	weightMaxLbs = envDecimal("WEIGHT_MAX_LBS", weightMaxLbs)
 	registerRoutes(r)
 	slog.Debug("api routes registered",
 		slog.Bool("weight_ingest_key_configured", weightIngestKey != ""),
 		slog.Bool("health_ingest_key_configured", healthIngestKey != ""))
-}
-
-// envDecimal reads a decimal from env var key, falling back to def when the
-// var is unset or unparseable.
-func envDecimal(key string, def decimal.Decimal) decimal.Decimal {
-	v := os.Getenv(key)
-	if v == "" {
-		return def
-	}
-	d, err := decimal.NewFromString(v)
-	if err != nil {
-		slog.Warn("invalid decimal env var; using default",
-			slog.String("key", key), slog.String("value", v),
-			slog.String("default", def.String()))
-		return def
-	}
-	return d
 }
 
 // registerRoutes mounts all API routes on r.
@@ -389,7 +362,15 @@ func postSet(c *gin.Context) {
 // buildPendingSetMessage formats a Pushover notification for a low-
 // confidence CV set that needs the athlete to confirm or correct.
 func buildPendingSetMessage(s models.Set) notify.Message {
-	conf := int(s.Confidence*100 + 0.5)
+	// Clamp before formatting: Confidence is an unvalidated field from the CV
+	// sidecar, and a stray value >1 would print as "150% confidence".
+	cv := s.Confidence
+	if cv < 0 {
+		cv = 0
+	} else if cv > 1 {
+		cv = 1
+	}
+	conf := int(cv*100 + 0.5)
 	body := fmt.Sprintf("%s · %s lb × %d (%d%% confidence)",
 		s.Name, s.Weight.String(), s.Reps, conf)
 	if s.Note != "" {
@@ -553,9 +534,10 @@ func getWeight(c *gin.Context) {
 }
 
 // weightOutOfRange reports whether w falls outside the accepted plausibility
-// band [weightMinLbs, weightMaxLbs] (inclusive).
+// band. The band is owned by the conf package so every ingest path — this
+// endpoint and the manual web form — enforces the same bounds.
 func weightOutOfRange(w decimal.Decimal) bool {
-	return w.LessThan(weightMinLbs) || w.GreaterThan(weightMaxLbs)
+	return conf.WeightOutOfRange(w)
 }
 
 func postWeight(c *gin.Context) {
@@ -570,14 +552,12 @@ func postWeight(c *gin.Context) {
 		slog.String("weight", w.Weight.String()))
 	// Plausibility guard: reject physically-impossible body weights before the
 	// store. The scale firmware enforces a tight band; this is the backstop
-	// against a bad reading from any source (see weightMinLbs/weightMaxLbs).
+	// against a bad reading from any source (see conf.WeightOutOfRange).
 	if weightOutOfRange(w.Weight) {
 		slog.Warn("postWeight: rejected out-of-range weight",
 			slog.String("date", w.Date),
 			slog.String("recorded_at", w.RecordedAt),
-			slog.String("weight", w.Weight.String()),
-			slog.String("min", weightMinLbs.String()),
-			slog.String("max", weightMaxLbs.String()))
+			slog.String("weight", w.Weight.String()))
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "weight out of plausible range"})
 		return
 	}
@@ -630,6 +610,7 @@ func putConfig(c *gin.Context) {
 	cur.AutoFill = cfg.AutoFill
 	cur.CVAutoLog = cfg.CVAutoLog
 	// Pushover creds are env-only — never accepted from the API body.
+	cur = conf.Normalize(cur)
 	conf.Set(cur)
 	// Persist for restart survival. Same soft-fail semantics as the web
 	// save handler: log and keep the in-memory update.
