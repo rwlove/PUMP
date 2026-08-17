@@ -1,4 +1,4 @@
-package api
+package conf
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 )
 
 func TestWeightOutOfRange(t *testing.T) {
-	// Exercise against the default band (50–500 lb) set at package init.
+	// Exercise against the default band (50–500 lb) read at package init.
 	cases := []struct {
 		name string
 		lbs  string
@@ -20,7 +20,7 @@ func TestWeightOutOfRange(t *testing.T) {
 		{"at max boundary", "500", false},
 		{"just above max", "500.1", true},
 		{"absurd garbage", "9999", true},
-		{"zero", "0", true},
+		{"zero (blank manual entry)", "0", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -28,8 +28,8 @@ func TestWeightOutOfRange(t *testing.T) {
 			if err != nil {
 				t.Fatalf("bad test input %q: %v", c.lbs, err)
 			}
-			if got := weightOutOfRange(w); got != c.want {
-				t.Fatalf("weightOutOfRange(%s) = %v, want %v", c.lbs, got, c.want)
+			if got := WeightOutOfRange(w); got != c.want {
+				t.Fatalf("WeightOutOfRange(%s) = %v, want %v", c.lbs, got, c.want)
 			}
 		})
 	}

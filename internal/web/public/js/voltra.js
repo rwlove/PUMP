@@ -115,12 +115,16 @@ function voltraToggleLoad(entry) {
     var wantLoad = !(_voltraState.ArmedSetID === sid && _voltraState.Loaded);
 
     // Loading a set that isn't current arms it first — pressing LOAD is a
-    // clear statement of which set you are about to do.
+    // clear statement of which set you are about to do. The arm must succeed
+    // before we load: a failed arm that still proceeded would tell the motor
+    // to engage at a weight PUMP never attributed to a set.
     var pre = (_voltraState.ArmedSetID === sid)
         ? Promise.resolve()
         : fetch('/api/voltra/arm', {
               method: 'POST', headers: writeHeaders(),
               body: JSON.stringify({SetID: sid, WeightLb: voltraWeight(entry)}),
+          }).then(function(r) {
+              if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || 'could not arm'); });
           });
 
     pre.then(function() {

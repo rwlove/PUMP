@@ -498,6 +498,16 @@
     calib.prevTimer = null;
   }
 
+  // calibMinCaptures is the fewest captures any camera has, treating "no
+  // cameras / no captures yet" as 0. Math.min(...[]) is Infinity, and the
+  // {0:0} fallback only guards a null captures object — not an empty {} — so
+  // an empty object would otherwise report Infinity and enable Compute with
+  // zero pairs.
+  function calibMinCaptures(s) {
+    const vals = Object.values((s && s.captures) || {});
+    return vals.length ? Math.min(...vals) : 0;
+  }
+
   function calibUpdateStatus(s) {
     if (!s) {
       calib.status.textContent = 'Waiting for pump-cv…';
@@ -506,7 +516,7 @@
     const counts = Object.entries(s.captures || {})
       .map(([k, v]) => `${k}: ${v}`)
       .join('  •  ') || '0 captures';
-    const need = Math.max(0, CALIB_NEEDED - Math.min(...Object.values(s.captures || {0:0})));
+    const need = Math.max(0, CALIB_NEEDED - calibMinCaptures(s));
     const phaseLabel = ({
       needs_calibration: 'Awaiting first capture',
       calibrating: need > 0 ? `${need} more pair(s) needed` : 'Ready to compute',
@@ -520,7 +530,7 @@
     } else {
       calib.error.hidden = true;
     }
-    const minCount = Math.min(...Object.values(s.captures || {0:0}));
+    const minCount = calibMinCaptures(s);
     calib.btnCompute.disabled = (minCount < CALIB_NEEDED);
   }
 
@@ -552,7 +562,7 @@
   async function calibUndo() {
     const s = await calibFetchState();
     if (!s) return;
-    const idx = Math.min(...Object.values(s.captures || {0:0})) - 1;
+    const idx = calibMinCaptures(s) - 1;
     if (idx < 0) return;
     await fetch(`/api/cv/api/v1/calibration/capture/${idx}`, { method: 'DELETE' });
   }

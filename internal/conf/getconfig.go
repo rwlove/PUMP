@@ -3,9 +3,12 @@
 package conf
 
 import (
+	"log/slog"
 	"os"
 	"strconv"
 	"sync/atomic"
+
+	"github.com/shopspring/decimal"
 
 	"github.com/rwlove/PUMP/internal/models"
 )
@@ -26,6 +29,21 @@ func Get() models.Conf {
 		return *c
 	}
 	return models.Conf{}
+}
+
+// Normalize clamps the user-editable numeric settings to safe floors. Both
+// config write paths (the JSON API and the web form) discard strconv errors,
+// so a blank or negative field arrives as zero; without this a PageStep of 0
+// would be persisted and shipped back to the client as the page size. Floors
+// match the env defaults in GetFromEnv.
+func Normalize(c models.Conf) models.Conf {
+	if c.PageStep < 1 {
+		c.PageStep = 10
+	}
+	if c.DisplayDays < 1 {
+		c.DisplayDays = 30
+	}
+	return c
 }
 
 // EnvOr returns the value of environment variable key, or def when unset.
@@ -57,6 +75,42 @@ func envBool(key string, def bool) bool {
 		}
 	}
 	return def
+}
+
+// envDecimal returns the decimal value of environment variable key, or def
+// when unset or unparsable.
+func envDecimal(key string, def decimal.Decimal) decimal.Decimal {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	d, err := decimal.NewFromString(v)
+	if err != nil {
+		slog.Warn("invalid decimal env var; using default",
+			slog.String("key", key), slog.String("value", v),
+			slog.String("default", def.String()))
+		return def
+	}
+	return d
+}
+
+// weightMinLbs/weightMaxLbs bound plausible body weights accepted by any
+// ingest path (the API scale endpoint and the manual web form both defer to
+// WeightOutOfRange). PUMP does not trust a single upstream: the BLE-scale
+// firmware enforces a tight band, and this is the backstop that keeps a
+// physically-impossible reading — from any source, including a mistyped or
+// blank manual entry — out of the store. Env-overridable; defaults are a
+// generous human range so normal weigh-ins never trip it. Read once at import.
+var (
+	weightMinLbs = envDecimal("WEIGHT_MIN_LBS", decimal.NewFromInt(50))
+	weightMaxLbs = envDecimal("WEIGHT_MAX_LBS", decimal.NewFromInt(500))
+)
+
+// WeightOutOfRange reports whether w falls outside the accepted plausibility
+// band [weightMinLbs, weightMaxLbs] (inclusive). A blank manual entry parses to
+// zero, which is below the default floor, so this also rejects empty weigh-ins.
+func WeightOutOfRange(w decimal.Decimal) bool {
+	return w.LessThan(weightMinLbs) || w.GreaterThan(weightMaxLbs)
 }
 
 // GetFromEnv reads all configuration from environment variables only.

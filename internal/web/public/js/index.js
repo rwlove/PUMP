@@ -404,6 +404,16 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
     var delBtn = entry.querySelector('.entry-del-btn');
     if (delBtn) {
         delBtn.addEventListener('click', function() {
+            // Autolog mode deletes immediately and irreversibly via the API, so
+            // guard it: a mis-tap on the small × on a sweaty phone would
+            // otherwise drop a logged set with no undo. This matches the
+            // confirm() already on every other destructive action (routines,
+            // groups, prototypes). Bulk mode only pulls the DOM row — the next
+            // save rewrites the day — so it stays friction-free and unconfirmed.
+            if (window._autoLog && entry.dataset.setId &&
+                !window.confirm('Delete this set?')) {
+                return;
+            }
             removeEntry(entry, /*viaApi*/ window._autoLog);
         });
     }
