@@ -112,7 +112,12 @@ function voltraToggleLoad(entry) {
     var sid = voltraSetId(entry);
     if (!sid) { voltraFlash(entry, 'saving…'); return; }
 
-    var wantLoad = !(_voltraState.ArmedSetID === sid && _voltraState.Loaded);
+    // Toggle on the *request*, not on confirmed engagement. A load that keeps
+    // failing never sets Loaded, so keying off Loaded left the button stuck on
+    // "LOAD" with every press re-sending the same failing request and no way
+    // to call it off. Pressing a set that already has a load requested — armed
+    // and WantLoad — cancels it, whether or not the motor ever confirmed.
+    var wantLoad = !(_voltraState.ArmedSetID === sid && _voltraState.WantLoad);
 
     // Loading a set that isn't current arms it first — pressing LOAD is a
     // clear statement of which set you are about to do. The arm must succeed
@@ -154,6 +159,8 @@ function voltraPaint(entry) {
     var sid = voltraSetId(entry);
     var armed = sid !== 0 && _voltraState.ArmedSetID === sid;
     var loaded = armed && !!_voltraState.Loaded;
+    // Requested but not (yet) confirmed — the mid-flight and the failing cases.
+    var pending = armed && !loaded && !!_voltraState.WantLoad;
 
     entry.classList.toggle('voltra-armed', armed && !loaded);
     entry.classList.toggle('voltra-loaded', loaded);
@@ -162,18 +169,23 @@ function voltraPaint(entry) {
     var status = entry.querySelector('.voltra-status');
     if (!btn || !status) return;
 
-    btn.textContent = loaded ? 'UNLOAD' : 'LOAD';
-    btn.classList.toggle('is-loaded', loaded);
+    // Whenever a load is requested the button cancels it — labelled UNLOAD once
+    // the motor confirms, CANCEL while it is still pending or failing. Only
+    // with no request outstanding does it read LOAD.
+    btn.textContent = loaded ? 'UNLOAD' : (pending ? 'CANCEL' : 'LOAD');
+    btn.classList.toggle('is-loaded', loaded || pending);
 
     if (status.classList.contains('voltra-status-warn')) return;
     status.title = '';
     if (loaded) {
         status.textContent = 'loaded — recording';
-    } else if (armed && _voltraState.Error) {
+    } else if (pending && _voltraState.Error) {
         // The raw error is a BLE/GATT string that overflows the row and reads
         // as noise. Show a short label and keep the full text on hover.
-        status.textContent = 'trainer error';
+        status.textContent = 'trainer error — CANCEL to stop';
         status.title = _voltraState.Error;
+    } else if (pending) {
+        status.textContent = 'loading…';
     } else if (armed) {
         status.textContent = 'not loaded — press LOAD';
     } else {

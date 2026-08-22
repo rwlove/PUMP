@@ -7,7 +7,7 @@ import contextlib
 
 import pytest
 
-from pump_voltra import registry
+from pump_voltra import control, registry
 from pump_voltra.control import Controller, _parse_weight
 from pump_voltra.motor import MotorController
 from tests.conftest import FakeClient
@@ -182,3 +182,69 @@ async def test_clean_stream_end_still_unloads() -> None:
     with contextlib.suppress(asyncio.CancelledError):
         await watcher
     assert not motor.loaded, "a cleanly-ended stream left the cable live"
+
+
+def _fake_clock():
+    """A clock the test drives by hand, so cooldowns don't depend on wall time."""
+    box = {"now": 0.0}
+    return box, (lambda: box["now"])
+
+
+async def _connected_with_clock(**kw):
+    box, clock = _fake_clock()
+    ble, motor, pump, ctl = build(**kw)
+    ctl._clock = clock
+    # Consume the ignored first-post-connect frame.
+    await ctl.apply({"ArmedSetID": 0, "WantLoad": False, "WeightLb": ""})
+    ble.writes.clear()
+    pump.reports.clear()
+    return box, ble, motor, pump, ctl
+
+
+# A load whose control characteristic has vanished fails every time. PUMP echoes
+# our own failure report back as desired state, which re-drives apply(); without
+# a backoff that becomes a tight retry storm (~30 attempts in 100 ms observed).
+async def test_repeated_failure_backs_off_instead_of_hammering() -> None:
+    box, ble, motor, pump, ctl = await _connected_with_clock(workout=False)
+    desired = {"ArmedSetID": 3, "WantLoad": True, "WeightLb": "50"}
+
+    await ctl.apply(desired)  # first real attempt: fails, reports once
+    assert not motor.loaded
+    assert "workout" in pump.reports[-1][1].lower()
+    assert len(pump.reports) == 1
+
+    for _ in range(20):  # the echo storm, all within the cooldown
+        await ctl.apply(desired)
+    assert len(pump.reports) == 1, "hammered a failing load instead of backing off"
+
+    box["now"] += control.LOAD_RETRY_COOLDOWN_S + 0.1  # cooldown elapses
+    await ctl.apply(desired)  # a genuine retry is allowed again
+    assert len(pump.reports) == 2
+
+
+# Cancelling (WantLoad=False) must drop the backoff so a fresh press engages at
+# once — the athlete has fixed the trainer and should not wait out a cooldown.
+async def test_cancel_clears_the_backoff() -> None:
+    box, ble, motor, pump, ctl = await _connected_with_clock(workout=False)
+    desired = {"ArmedSetID": 3, "WantLoad": True, "WeightLb": "50"}
+
+    await ctl.apply(desired)  # fails, backoff armed
+    await ctl.apply({"ArmedSetID": 3, "WantLoad": False, "WeightLb": "50"})  # cancel
+
+    ble._workout = True  # trainer now usable
+    await ctl.apply(desired)  # same target, still inside the cooldown window
+    assert motor.loaded, "cancel did not clear the backoff; a fixed load was held off"
+    await motor.unload()
+
+
+# A different weight is a different target and must never be held back by a
+# backoff armed against the previous one.
+async def test_backoff_does_not_block_a_different_weight() -> None:
+    box, ble, motor, pump, ctl = await _connected_with_clock(workout=False)
+    await ctl.apply({"ArmedSetID": 3, "WantLoad": True, "WeightLb": "50"})  # fails
+
+    ble._workout = True
+    await ctl.apply({"ArmedSetID": 3, "WantLoad": True, "WeightLb": "60"})  # new target
+    assert motor.loaded
+    assert motor.weight_lb == 60
+    await motor.unload()

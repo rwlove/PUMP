@@ -15,6 +15,7 @@ we missed while disconnected is simply irrelevant by the time we reconnect.
 from __future__ import annotations
 
 import asyncio
+import time
 
 from .client import WorkoutInactive
 from .log import get
@@ -22,16 +23,47 @@ from .motor import LoadRefused, MotorController
 
 logger = get(__name__)
 
+# Minimum gap between attempts at an identical (set, weight) that just failed.
+# PUMP echoes our own failure report back as desired state, which re-drives
+# apply(); without this the loop would retry at network speed. The observed
+# storm was ~30 attempts in 100 ms. A few seconds is short enough that a
+# genuine re-press — or a trainer that has since recovered — still engages
+# promptly, and cancelling (WantLoad=False) clears the backoff at once.
+LOAD_RETRY_COOLDOWN_S = 3.0
+
 
 class Controller:
-    def __init__(self, pump, motor: MotorController, max_load_lb: int):
+    def __init__(
+        self,
+        pump,
+        motor: MotorController,
+        max_load_lb: int,
+        clock=time.monotonic,
+    ):
         self._pump = pump
         self._motor = motor
         self._max = max_load_lb
+        self._clock = clock
         self._armed_set_id = 0
         # Startup counts as a reconnect: the first desired state we see was not
         # necessarily produced by a human touching anything just now.
         self._reconnected = True
+        # The (set, weight) target we last failed to load, and when. Guards the
+        # retry storm described on LOAD_RETRY_COOLDOWN_S. Cleared on success and
+        # whenever intent drops, so a changed target is never held back.
+        self._failed_target: tuple[int, int | None] | None = None
+        self._failed_at = 0.0
+
+    def _cooling_down(self, target: tuple[int, int | None]) -> bool:
+        """True while an identical just-failed load must not be re-attempted."""
+        return (
+            target == self._failed_target
+            and self._clock() - self._failed_at < LOAD_RETRY_COOLDOWN_S
+        )
+
+    def _note_failure(self, target: tuple[int, int | None]) -> None:
+        self._failed_target = target
+        self._failed_at = self._clock()
 
     @property
     def armed_set_id(self) -> int:
@@ -55,6 +87,9 @@ class Controller:
         first_after_connect, self._reconnected = self._reconnected, False
 
         if not want_load or self._armed_set_id == 0:
+            # Intent dropped (including a cancel of a failing load): forget any
+            # backoff so the next genuine press is attempted immediately.
+            self._failed_target = None
             if self._motor.loaded:
                 await self._motor.unload()
                 await self._report()
@@ -81,23 +116,37 @@ class Controller:
             return
 
         if weight is None:
+            target = (self._armed_set_id, None)
+            if self._cooling_down(target):
+                return
+            self._note_failure(target)
             await self._report(error=f"unusable weight {state.get('WeightLb')!r}")
             return
 
         # Already holding exactly this — do nothing. Re-engaging would cycle
         # the motor under an athlete mid-set.
         if self._motor.loaded and self._motor.weight_lb == weight:
+            self._failed_target = None
+            return
+
+        target = (self._armed_set_id, weight)
+        if self._cooling_down(target):
+            # Same target we just failed to load. The error is already reported
+            # and visible; don't hammer it. See LOAD_RETRY_COOLDOWN_S.
             return
 
         try:
             await self._motor.load(weight)
+            self._failed_target = None
             await self._report()
         except (LoadRefused, WorkoutInactive) as e:
             # Expected refusals: report them so the UI shows why, and leave the
             # motor released.
+            self._note_failure(target)
             logger.info("load refused", reason=str(e), weight_lb=weight)
             await self._report(error=str(e))
         except Exception as e:
+            self._note_failure(target)
             logger.error("load failed", error=str(e), weight_lb=weight)
             await self._report(error=str(e))
 
