@@ -43,6 +43,7 @@ func RegisterRoutes(r *gin.Engine, s *store.PostgresStore, p *notify.Pushover, p
 	publicURL = pubURL
 	weightIngestKey = os.Getenv("WEIGHT_INGEST_KEY")
 	healthIngestKey = os.Getenv("HEALTH_INGEST_KEY")
+	whisperAddr = os.Getenv("WHISPER_WYOMING_ADDR")
 	registerRoutes(r)
 	slog.Debug("api routes registered",
 		slog.Bool("weight_ingest_key_configured", weightIngestKey != ""),
@@ -103,6 +104,11 @@ func registerRoutes(r *gin.Engine) {
 	r.POST("/api/voltra/disarm", postVoltraDisarm)
 	r.POST("/api/voltra/load", postVoltraLoad)
 	r.POST("/api/voltra/report", postVoltraReport)
+
+	// Speech-to-text for set-note dictation. Relays browser-captured PCM to
+	// the self-hosted Wyoming/whisper service; same-origin, no auth beyond
+	// the app's own gateway. Returns 503 when WHISPER_WYOMING_ADDR is unset.
+	r.POST("/api/stt", postSTT)
 
 	// Body weight, gated by WEIGHT_INGEST_KEY. Off-cluster callers (the
 	// BLE-scale ESPHome firmware) reach these via a path-scoped Route that
