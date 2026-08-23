@@ -5,6 +5,7 @@ Probes stay unauthenticated so the kubelet can reach them.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 
 
@@ -18,14 +19,43 @@ class State:
     sets_inferred: int = 0
     last_error: str = ""
     flagged_exercises: int = 0
+    # Unix time of the last work-loop progress tick. Initialised to now so the
+    # liveness gate has a full grace window at startup rather than tripping
+    # before the first tick. A frozen value is the signature of a wedged loop:
+    # the pod keeps serving probes while _run_live has stopped making progress.
+    heartbeat_ts: float = field(default_factory=time.time)
     extra: dict = field(default_factory=dict)
 
 
 _state = State()
 
+# How long the work loop may go without a progress tick before liveness fails
+# and the kubelet restarts the pod. Must exceed the longest legitimate gap
+# between ticks — the trainer-discovery wait — so an empty gym is never
+# mistaken for a wedge. Overridable from config.
+_heartbeat_stale_after = 600.0
+
 
 def state() -> State:
     return _state
+
+
+def set_heartbeat_stale_after(seconds: float) -> None:
+    global _heartbeat_stale_after
+    _heartbeat_stale_after = seconds
+
+
+def record_heartbeat() -> None:
+    """Mark the work loop as having made progress just now."""
+    _state.heartbeat_ts = time.time()
+
+
+def heartbeat_age() -> float:
+    return time.time() - _state.heartbeat_ts
+
+
+def heartbeat_stale() -> bool:
+    return heartbeat_age() > _heartbeat_stale_after
 
 
 def record_connected(ok: bool) -> None:
@@ -79,6 +109,12 @@ def render_metrics() -> str:
         "# HELP pump_voltra_sets_failed_total Sets that could not be written.",
         "# TYPE pump_voltra_sets_failed_total counter",
         f"pump_voltra_sets_failed_total {s.sets_failed}",
+        # Freshness of the work loop. `time() - this` in a Prometheus rule
+        # detects a wedged sidecar (probes still up, loop dead) that a plain
+        # scrape can't — the other metrics simply freeze at their last values.
+        "# HELP pump_voltra_heartbeat_timestamp_seconds Unix time of the last work-loop tick.",
+        "# TYPE pump_voltra_heartbeat_timestamp_seconds gauge",
+        f"pump_voltra_heartbeat_timestamp_seconds {s.heartbeat_ts}",
     ]
     return "\n".join(lines) + "\n"
 
@@ -90,7 +126,18 @@ def build_app():
     app = FastAPI(title="pump-voltra")
 
     @app.get("/healthz")
-    async def healthz() -> dict:
+    async def healthz(response: Response) -> dict:
+        # Liveness watchdog. The loop stamps a heartbeat each iteration; if it
+        # goes stale the loop has wedged (a hung BLE/proxy await, a dead work
+        # task) even though this server is still up. Failing here lets the
+        # kubelet restart the pod instead of leaving a zombie that reports
+        # healthy forever — the failure mode that silently killed a workout's
+        # auto-load. Empty-gym waiting ticks well inside the threshold, so this
+        # never fires on a merely-idle sidecar.
+        if heartbeat_stale():
+            response.status_code = 503
+            return {"ok": False, "reason": "work loop stalled",
+                    "heartbeat_age_s": round(heartbeat_age(), 1)}
         return {"ok": True}
 
     @app.get("/readyz")

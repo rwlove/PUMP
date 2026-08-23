@@ -86,6 +86,12 @@ async def _run_live(cfg, pump: PumpClient, namer: ExerciseNamer) -> None:
 
     try:
         while True:
+            # Progress tick for the liveness watchdog. Every path through this
+            # loop — connect, wait-for-trainer, back off, reconnect — passes
+            # here, so a frozen heartbeat means the loop itself has wedged
+            # (a hung await), which is the failure a plain scrape can't see.
+            healthd.record_heartbeat()
+
             # Proxy and trainer failures are handled separately on purpose. The
             # proxy session owns the ESP32's single advertisement subscription,
             # and surrendering it is what makes the trainer look permanently
@@ -192,8 +198,15 @@ async def _run_live(cfg, pump: PumpClient, namer: ExerciseNamer) -> None:
 
 
 async def _poll_load(client, tracker: SetTracker, interval_s: float) -> None:
-    """Keep the tracker's idea of the resistance current."""
+    """Keep the tracker's idea of the resistance current.
+
+    Doubles as the in-session heartbeat: it runs every interval_s for the life
+    of a connected session, including while the athlete rests between sets and
+    the telemetry queue is idle, so the liveness watchdog stays fresh without
+    mistaking a legitimate lull for a wedge.
+    """
     while True:
+        healthd.record_heartbeat()
         try:
             if (load := await client.target_load()) is not None:
                 tracker.note_weight(load)
@@ -207,6 +220,7 @@ async def _poll_load(client, tracker: SetTracker, interval_s: float) -> None:
 async def _amain(args: argparse.Namespace) -> int:
     cfg = config.load(args.config)
     log.configure()
+    healthd.set_heartbeat_stale_after(cfg.heartbeat_stale_seconds)
 
     if args.replay:
         async with PumpClient(
@@ -227,17 +241,37 @@ async def _amain(args: argparse.Namespace) -> int:
         with contextlib.suppress(NotImplementedError):
             loop.add_signal_handler(sig, stop.set)
 
+    rc = 0
     async with PumpClient(cfg.pump.base_url, cfg.pump.api_key, cfg.pump.request_timeout_s) as pump:
         namer = ExerciseNamer(cfg.default_exercise)
         work = asyncio.create_task(_run_live(cfg, pump, namer)) if cfg.enabled else None
-        await stop.wait()
+
+        if work is not None:
+            # Exit non-zero if the work loop dies on its own. _run_live is meant
+            # to run forever; if it returns or raises, the sidecar is a zombie
+            # serving probes with no BLE activity. Letting the process exit lets
+            # the kubelet restart it instead — the same recovery the liveness
+            # watchdog gives, for the case where the task dies outright rather
+            # than hanging.
+            done, _ = await asyncio.wait(
+                {work, asyncio.ensure_future(stop.wait())},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if work in done and not stop.is_set():
+                rc = 1
+                exc = work.exception()
+                logger.error("work loop exited; restarting process",
+                             error=str(exc) if exc else "returned")
+        else:
+            await stop.wait()
+
         logger.info("shutting down")
         for task in (work, probes):
             if task is not None:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await task
-    return 0
+    return rc
 
 
 def run() -> None:
