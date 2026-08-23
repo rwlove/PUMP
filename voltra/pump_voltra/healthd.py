@@ -122,11 +122,18 @@ def render_metrics() -> str:
 def build_app():
     """Build the FastAPI probe app. Imported lazily so tests need no fastapi."""
     from fastapi import FastAPI, Response
+    from fastapi.responses import JSONResponse
 
     app = FastAPI(title="pump-voltra")
 
+    # Status is set by returning a JSONResponse, not by injecting a `response:
+    # Response` parameter. `from __future__ import annotations` stringizes the
+    # annotation, and FastAPI then fails to recognise the Response injection —
+    # it treats `response` as a required query param and every probe 422s,
+    # which crash-loops the pod when this backs a liveness probe.
+
     @app.get("/healthz")
-    async def healthz(response: Response) -> dict:
+    async def healthz():
         # Liveness watchdog. The loop stamps a heartbeat each iteration; if it
         # goes stale the loop has wedged (a hung BLE/proxy await, a dead work
         # task) even though this server is still up. Failing here lets the
@@ -135,17 +142,22 @@ def build_app():
         # auto-load. Empty-gym waiting ticks well inside the threshold, so this
         # never fires on a merely-idle sidecar.
         if heartbeat_stale():
-            response.status_code = 503
-            return {"ok": False, "reason": "work loop stalled",
-                    "heartbeat_age_s": round(heartbeat_age(), 1)}
+            return JSONResponse(
+                status_code=503,
+                content={"ok": False, "reason": "work loop stalled",
+                         "heartbeat_age_s": round(heartbeat_age(), 1)},
+            )
         return {"ok": True}
 
     @app.get("/readyz")
-    async def readyz(response: Response) -> dict:
+    async def readyz():
         # Ready means "talking to the trainer". Not ready is normal when the
         # gym is empty, so this must not page anyone on its own.
         if not _state.connected:
-            response.status_code = 503
+            return JSONResponse(
+                status_code=503,
+                content={"connected": False, "workout_active": _state.workout_active},
+            )
         return {"connected": _state.connected, "workout_active": _state.workout_active}
 
     @app.get("/metrics")
