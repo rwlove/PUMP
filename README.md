@@ -121,6 +121,7 @@ All configuration is via environment variables. No config file is required.
 | `TREADMILL_OFF_DEBOUNCE_SECONDS` | Sustained sub-threshold time before a session closes (ignores brief dips) | `60` |
 | `TREADMILL_MIN_SESSION_SECONDS` | Sessions shorter than this are discarded | `120` |
 | `TREADMILL_SESSION_TYPE` | Cardio type label stored with each session | `Treadmill` |
+| `WHISPER_WYOMING_ADDR` | `host:port` of a self-hosted [Wyoming](https://github.com/rhasspy/wyoming) whisper (faster-whisper) service. When set, the per-set note mic dictates via `POST /api/stt` → this service (16 kHz mono PCM), so audio never leaves the network. Unset returns `503` and the mic surfaces "not configured". | `""` |
 | `TZ` | Timezone | `""` |
 
 `POSTGRES_DSN` must be set or the server will not start:

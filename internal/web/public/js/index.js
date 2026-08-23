@@ -264,11 +264,16 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
 
     var setBadge = '<span class="set-badge">Set ' + setNum + '</span>';
 
-    var speechSupported = ('webkitSpeechRecognition' in window) || ('SpeechRecognition' in window);
-    var micBtn = speechSupported
+    // Note dictation runs off the microphone through PUMP's own /api/stt →
+    // self-hosted whisper, not the browser's cloud speech API. Support is
+    // just mic capture + Web Audio, which every current browser has.
+    var micSupported = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia &&
+        (window.AudioContext || window.webkitAudioContext));
+    var micBtn = micSupported
         ? `<button type="button" class="entry-mic-btn" title="Dictate note" aria-label="Dictate note">
                <i class="bi bi-mic"></i>
-           </button>`
+           </button>
+           <span class="entry-mic-status" aria-live="polite"></span>`
         : '';
 
     var priorNoteIndicator = priorNote
@@ -330,13 +335,13 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
                     <div class="entry-field">
                         <span class="entry-label">${weightLabel}</span>
                         <input type="number" class="form-control entry-num" name="weight"
-                            value="${safeWeight}" min="0" step="any" placeholder="—">
+                            value="${safeWeight}" min="0" step="any" placeholder="${weightLabel}">
                     </div>
                     ${addedField}
                     <div class="entry-field">
                         <span class="entry-label">reps</span>
                         <input type="number" class="form-control entry-num" name="reps"
-                            value="${safeReps}" min="0" placeholder="—">
+                            value="${safeReps}" min="0" placeholder="reps">
                     </div>
                     <input type="hidden" name="workout_color" value="${safeColor}">
                     <input type="hidden" class="entry-note-input" name="note" value="">
@@ -383,10 +388,10 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
     if (dragBtn) dragBtn.addEventListener('pointerdown', onDragHandlePointerDown);
 
     // Mic dictation
-    if (speechSupported) {
+    if (micSupported) {
         var micButton = entry.querySelector('.entry-mic-btn');
         micButton.addEventListener('click', function() {
-            startDictation(entry, micButton);
+            toggleDictation(entry, micButton);
         });
     }
 
@@ -633,34 +638,150 @@ function renderNote(entry, text) {
     }
 }
 
-// startDictation runs the Web Speech API and writes the transcript into the note input.
+// Dictation captures microphone audio, downsamples it to the 16 kHz mono PCM
+// that whisper expects, and POSTs it to /api/stt — the transcript comes back
+// from PUMP's self-hosted whisper, never a cloud service. Tap to start, tap
+// again to stop and transcribe.
+//
+// Only one dictation runs at a time; _dictation holds the active session so a
+// second tap (on the same button) knows to stop it.
+var _dictation = null;
+var STT_RATE = 16000;
+
+function micStatus(entry, msg, isError) {
+    var el = entry.querySelector('.entry-mic-status');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.classList.toggle('is-error', !!isError);
+}
+
+function micStatusClearLater(entry, ms) {
+    setTimeout(function() { micStatus(entry, ''); }, ms || 3500);
+}
+
+function toggleDictation(entry, button) {
+    if (_dictation) {
+        // A session is live. A tap on its own button stops it; taps elsewhere
+        // are ignored rather than starting a competing capture.
+        if (_dictation.button === button) stopDictation();
+        return;
+    }
+    startDictation(entry, button);
+}
+
 function startDictation(entry, button) {
-    var Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!Recognition) return;
+    var AudioCtx = window.AudioContext || window.webkitAudioContext;
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+        var ctx = new AudioCtx();
+        var source = ctx.createMediaStreamSource(stream);
+        var processor = ctx.createScriptProcessor(4096, 1, 1);
+        // Route through a muted gain to destination: some browsers won't fire
+        // onaudioprocess unless the node is connected downstream, but sending
+        // the mic to the speakers would feed back. Zero gain keeps it silent.
+        var mute = ctx.createGain();
+        mute.gain.value = 0;
 
-    var rec = new Recognition();
-    rec.lang = 'en-US';
-    rec.interimResults = false;
-    rec.maxAlternatives = 1;
+        var chunks = [];
+        processor.onaudioprocess = function(ev) {
+            chunks.push(new Float32Array(ev.inputBuffer.getChannelData(0)));
+        };
+        source.connect(processor);
+        processor.connect(mute);
+        mute.connect(ctx.destination);
 
-    var noteInput = entry.querySelector('.entry-note-input');
+        button.classList.add('recording');
+        micStatus(entry, 'listening… tap to stop');
+        _dictation = { entry: entry, button: button, ctx: ctx, stream: stream,
+                       source: source, processor: processor, mute: mute,
+                       chunks: chunks, sampleRate: ctx.sampleRate };
+    }).catch(function() {
+        micStatus(entry, 'mic blocked — allow access', true);
+        micStatusClearLater(entry, 4000);
+    });
+}
 
-    button.classList.add('recording');
-    rec.onresult = function(ev) {
-        var transcript = '';
-        for (var i = 0; i < ev.results.length; i++) {
-            transcript += ev.results[i][0].transcript;
+function stopDictation() {
+    var d = _dictation;
+    _dictation = null;
+    if (!d) return;
+
+    d.button.classList.remove('recording');
+    try { d.processor.disconnect(); d.mute.disconnect(); d.source.disconnect(); } catch (_) {}
+    d.stream.getTracks().forEach(function(t) { t.stop(); });
+    if (d.ctx.state !== 'closed') { try { d.ctx.close(); } catch (_) {} }
+
+    var samples = mergeFloat32(d.chunks);
+    if (!samples.length) { micStatus(d.entry, ''); return; }
+    var pcm = floatToPCM16(downsampleTo(samples, d.sampleRate, STT_RATE));
+
+    d.button.classList.add('transcribing');
+    micStatus(d.entry, 'transcribing…');
+    fetch('/api/stt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: pcm,
+    }).then(function(r) {
+        if (!r.ok) {
+            return r.json().catch(function() { return {}; }).then(function(e) {
+                throw new Error(e.error || 'transcription failed');
+            });
         }
-        transcript = transcript.trim();
-        if (!transcript) return;
+        return r.json();
+    }).then(function(res) {
+        d.button.classList.remove('transcribing');
+        var text = (res.text || '').trim();
+        if (!text) { micStatus(d.entry, 'no speech detected', true); micStatusClearLater(d.entry); return; }
+        var noteInput = d.entry.querySelector('.entry-note-input');
         var existing = noteInput.value.trim();
-        noteInput.value = existing ? existing + ' ' + transcript : transcript;
-        renderNote(entry, noteInput.value);
+        noteInput.value = existing ? existing + ' ' + text : text;
+        renderNote(d.entry, noteInput.value);
+        markDirty(d.entry);
         scheduleAutosave();
-    };
-    rec.onerror = function() { button.classList.remove('recording'); };
-    rec.onend   = function() { button.classList.remove('recording'); };
-    try { rec.start(); } catch (_) { button.classList.remove('recording'); }
+        micStatus(d.entry, '');
+    }).catch(function(e) {
+        d.button.classList.remove('transcribing');
+        micStatus(d.entry, e.message || 'transcription failed', true);
+        micStatusClearLater(d.entry, 4000);
+    });
+}
+
+// mergeFloat32 flattens the captured per-callback buffers into one array.
+function mergeFloat32(chunks) {
+    var len = 0;
+    chunks.forEach(function(c) { len += c.length; });
+    var out = new Float32Array(len);
+    var off = 0;
+    chunks.forEach(function(c) { out.set(c, off); off += c.length; });
+    return out;
+}
+
+// downsampleTo resamples from the capture rate (typically 44.1/48 kHz) to the
+// target by averaging each source window — cheap, and adequate for speech.
+function downsampleTo(buf, from, to) {
+    if (to >= from) return buf;
+    var ratio = from / to;
+    var outLen = Math.round(buf.length / ratio);
+    var out = new Float32Array(outLen);
+    var pos = 0;
+    for (var i = 0; i < outLen; i++) {
+        var next = Math.round((i + 1) * ratio);
+        var sum = 0, n = 0;
+        for (var j = pos; j < next && j < buf.length; j++) { sum += buf[j]; n++; }
+        out[i] = n ? sum / n : 0;
+        pos = next;
+    }
+    return out;
+}
+
+// floatToPCM16 packs [-1,1] floats into little-endian signed 16-bit samples,
+// the format the /api/stt handler and whisper expect.
+function floatToPCM16(buf) {
+    var view = new DataView(new ArrayBuffer(buf.length * 2));
+    for (var i = 0; i < buf.length; i++) {
+        var s = Math.max(-1, Math.min(1, buf[i]));
+        view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    }
+    return view.buffer;
 }
 
 // Renumber set badges after any structural change (delete, load).

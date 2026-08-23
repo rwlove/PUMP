@@ -561,9 +561,33 @@
   animation: mic-pulse 1.2s ease-in-out infinite;
 }
 
+/* Waiting on whisper: dim + spin so a tap that's working doesn't read as a
+   dead button (the old failure mode this whole feature replaced). */
+.entry-mic-btn.transcribing {
+  color: var(--bs-primary);
+  opacity: 0.7;
+  animation: mic-spin 0.9s linear infinite;
+}
+
 @keyframes mic-pulse {
   0%, 100% { box-shadow: 0 0 0 0 var(--bs-danger-bg-subtle); }
   50%      { box-shadow: 0 0 0 6px var(--bs-danger-bg-subtle); }
+}
+
+@keyframes mic-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Dictation feedback — never silent: listening / transcribing / errors. */
+.entry-mic-status {
+  font-size: 0.72rem;
+  color: var(--bs-secondary-color);
+  white-space: nowrap;
+  align-self: center;
+}
+
+.entry-mic-status.is-error {
+  color: var(--bs-danger);
 }
 
 .entry-prior-note {
@@ -723,7 +747,10 @@
 /* ─── Responsive tweaks ──────────────────────────────────────────────────── */
 
 @media (max-width: 576px) {
-  .entry-label { display: none; }
+  /* Keep the unit labels — hiding them left two identical number boxes with
+     no way to tell weight from reps on a phone, which is where sets actually
+     get logged. Shrink instead of hide. */
+  .entry-label { font-size: 0.6rem; letter-spacing: 0.03em; }
 }
 
 /* ─── Page tabs: allow horizontal scroll when many tabs ─────────────────── */
