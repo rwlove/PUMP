@@ -59,6 +59,12 @@ class VoltraConfig(BaseModel):
     healthd_host: str = "0.0.0.0"
     healthd_port: int = 8080
 
+    # Liveness watchdog: max seconds the work loop may go without a progress
+    # tick before /healthz fails and the kubelet restarts the pod. Must exceed
+    # the trainer-discovery wait (discovery_timeout_seconds) so an empty gym is
+    # never mistaken for a wedge; default leaves a comfortable margin over 300.
+    heartbeat_stale_seconds: float = 600.0
+
 
 def _env_str(cfg: Any, attr: str, key: str) -> None:
     if v := os.getenv(key):
@@ -93,6 +99,7 @@ def load(path: str | Path | None = None) -> VoltraConfig:
     _env_float(cfg, "exercise_refresh_seconds", "VOLTRA_EXERCISE_REFRESH_SECONDS")
     _env_float(cfg, "set_idle_seconds", "VOLTRA_SET_IDLE_SECONDS")
     _env_float(cfg, "load_poll_seconds", "VOLTRA_LOAD_POLL_SECONDS")
+    _env_float(cfg, "heartbeat_stale_seconds", "VOLTRA_HEARTBEAT_STALE_SECONDS")
     if v := os.getenv("VOLTRA_MAX_LOAD_LB"):
         try:
             cfg.max_load_lb = int(float(v))
