@@ -121,12 +121,15 @@ body.admin {
   padding: 10px 20px;
   border: none;
   border-radius: 8px;
-  background: var(--wall-accent);
+  background: linear-gradient(150deg,
+    color-mix(in srgb, var(--wall-accent) 84%, #63c2ff), var(--wall-accent));
   color: white;
   font-size: 0.95rem;
   cursor: pointer;
 }
+.admin-save-btn:active { transform: translateY(1px); }
 .admin-save-btn:disabled { opacity: 0.5; cursor: default; }
+.admin-list-row button:active { transform: translateY(1px); }
 
 /* ─── Prototype list ─────────────────────────────────────────────────── */
 .admin-list {

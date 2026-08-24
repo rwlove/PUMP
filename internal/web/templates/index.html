@@ -265,6 +265,16 @@
   }
   renderRoutineMenu();
 
+  // Open the first exercise group on load so the picker shows exercises
+  // immediately instead of a large empty panel. Purely presentational —
+  // selectGroup() only toggles visibility, it does not touch any data.
+  (function () {
+    var first = document.querySelector('.group-chip');
+    if (first && !window._selectedGroup) {
+      selectGroup(first.getAttribute('data-group'));
+    }
+  })();
+
   voltraInit();
 </script>
 {{ template "footer.html" }}

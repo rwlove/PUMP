@@ -111,11 +111,14 @@ body.cursor-idle * {
 .wall-set-group {
   position: relative;
   margin-bottom: 12px;
-  background: #1c1d22;
+  /* Tint the card toward the exercise colour so each movement reads as its
+     own block from across the room — matches the workout page. Higher mix
+     than the app since the wall ground is near-black. */
+  background: color-mix(in srgb, var(--group-color, #6c757d) 14%, #1c1d22);
   border: 1px solid var(--wall-divider);
   border-radius: 14px;
   overflow: hidden; /* clip the stripe ::before to the rounded corners */
-  padding-left: 6px; /* reserve room for the stripe */
+  padding-left: 9px; /* reserve room for the stripe */
   transition: 0.15s ease;
 }
 .wall-set-group::before {
@@ -124,7 +127,7 @@ body.cursor-idle * {
   left: 0;
   top: 0;
   bottom: 0;
-  width: 6px;
+  width: 9px;
   background: var(--group-color, #6c757d);
 }
 /* If any row in the group is pending or currently active, the group

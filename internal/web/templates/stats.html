@@ -110,13 +110,13 @@
                     <div class="col-6">
                       <div class="p-3 rounded-3 bg-body-secondary text-center">
                         <div class="stat-label">Total Sets</div>
-                        <div id="total-sets" class="fw-bold fs-4">-</div>
+                        <div id="total-sets" class="fw-bold fs-4 stat-value">-</div>
                       </div>
                     </div>
                     <div class="col-6">
                       <div class="p-3 rounded-3 bg-body-secondary text-center">
                         <div class="stat-label">Active Days</div>
-                        <div id="active-days" class="fw-bold fs-4">-</div>
+                        <div id="active-days" class="fw-bold fs-4 stat-value">-</div>
                       </div>
                     </div>
                     <div class="col-6">
@@ -314,28 +314,28 @@
                     <div class="col-6 col-sm-3">
                       <div class="p-3 rounded-3 bg-body-secondary text-center">
                         <div class="stat-label">Current Streak</div>
-                        <div id="consistency-streak" class="fw-bold fs-4">-</div>
+                        <div id="consistency-streak" class="fw-bold fs-4 stat-value">-</div>
                         <div class="stat-label">days</div>
                       </div>
                     </div>
                     <div class="col-6 col-sm-3">
                       <div class="p-3 rounded-3 bg-body-secondary text-center">
                         <div class="stat-label">Longest Streak</div>
-                        <div id="consistency-longest" class="fw-bold fs-4">-</div>
+                        <div id="consistency-longest" class="fw-bold fs-4 stat-value">-</div>
                         <div class="stat-label">days</div>
                       </div>
                     </div>
                     <div class="col-6 col-sm-3">
                       <div class="p-3 rounded-3 bg-body-secondary text-center">
                         <div class="stat-label">Total Days</div>
-                        <div id="consistency-total" class="fw-bold fs-4">-</div>
+                        <div id="consistency-total" class="fw-bold fs-4 stat-value">-</div>
                         <div id="consistency-total-period" class="stat-label">all time</div>
                       </div>
                     </div>
                     <div class="col-6 col-sm-3">
                       <div class="p-3 rounded-3 bg-body-secondary text-center">
                         <div class="stat-label">Avg / Week</div>
-                        <div id="consistency-avg" class="fw-bold fs-4">-</div>
+                        <div id="consistency-avg" class="fw-bold fs-4 stat-value">-</div>
                         <div id="consistency-avg-period" class="stat-label">last year</div>
                       </div>
                     </div>
@@ -385,9 +385,9 @@
                 <div class="panel-header"><span class="panel-title">Daily Steps</span></div>
                 <div class="panel-body">
                   <div class="row g-2 mb-3">
-                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Today</div><div id="steps-today" class="fw-bold fs-4">–</div></div></div>
-                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Avg / day</div><div id="steps-avg" class="fw-bold fs-4">–</div></div></div>
-                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Best day</div><div id="steps-best" class="fw-bold fs-4">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Today</div><div id="steps-today" class="fw-bold fs-4 stat-value">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Avg / day</div><div id="steps-avg" class="fw-bold fs-4 stat-value">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Best day</div><div id="steps-best" class="fw-bold fs-4 stat-value">–</div></div></div>
                   </div>
                   <canvas id="steps-chart" style="max-height:320px;"></canvas>
                   <p class="text-center text-body-secondary mt-3 mb-0" id="steps-no-data" style="display:none;">No step data in this period yet.</p>
@@ -410,9 +410,9 @@
                 </div>
                 <div class="panel-body">
                   <div class="row g-2 mb-3">
-                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Resting (latest)</div><div id="hr-resting" class="fw-bold fs-4">–</div></div></div>
-                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Resting 7-day avg</div><div id="hr-resting-avg" class="fw-bold fs-4">–</div></div></div>
-                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Range today</div><div id="hr-range" class="fw-bold fs-4">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Resting (latest)</div><div id="hr-resting" class="fw-bold fs-4 stat-value">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Resting 7-day avg</div><div id="hr-resting-avg" class="fw-bold fs-4 stat-value">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Range today</div><div id="hr-range" class="fw-bold fs-4 stat-value">–</div></div></div>
                   </div>
                   <canvas id="hr-chart" style="max-height:320px;"></canvas>
                   <p class="text-center text-body-secondary mt-3 mb-0" id="hr-no-data" style="display:none;">No heart-rate data in this period yet.</p>
@@ -435,13 +435,13 @@
                 </div>
                 <div class="panel-body">
                   <div class="row g-2 mb-3">
-                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Last night</div><div id="sleep-last" class="fw-bold fs-4">–</div></div></div>
-                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Avg / night</div><div id="sleep-avg" class="fw-bold fs-4">–</div></div></div>
-                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Deep</div><div id="sleep-deep" class="fw-bold fs-4">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Last night</div><div id="sleep-last" class="fw-bold fs-4 stat-value">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Avg / night</div><div id="sleep-avg" class="fw-bold fs-4 stat-value">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Deep</div><div id="sleep-deep" class="fw-bold fs-4 stat-value">–</div></div></div>
                   </div>
                   <div class="row g-2 mb-3">
-                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Bedtime</div><div id="sleep-bedtime" class="fw-bold fs-4">–</div></div></div>
-                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Wake</div><div id="sleep-waketime" class="fw-bold fs-4">–</div></div></div>
+                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Bedtime</div><div id="sleep-bedtime" class="fw-bold fs-4 stat-value">–</div></div></div>
+                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Wake</div><div id="sleep-waketime" class="fw-bold fs-4 stat-value">–</div></div></div>
                   </div>
                   <canvas id="sleep-chart" style="max-height:320px;"></canvas>
                   <p class="text-center text-body-secondary mt-3 mb-0" id="sleep-no-data" style="display:none;">No sleep data in this period yet.</p>
@@ -464,8 +464,8 @@
                 </div>
                 <div class="panel-body">
                   <div class="row g-2 mb-3">
-                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Today</div><div id="cal-today" class="fw-bold fs-4">–</div></div></div>
-                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Daily avg</div><div id="cal-avg" class="fw-bold fs-4">–</div></div></div>
+                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Today</div><div id="cal-today" class="fw-bold fs-4 stat-value">–</div></div></div>
+                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Daily avg</div><div id="cal-avg" class="fw-bold fs-4 stat-value">–</div></div></div>
                   </div>
                   <canvas id="cal-chart" style="max-height:260px;"></canvas>
                   <p class="text-center text-body-secondary mt-3 mb-0" id="cal-no-data" style="display:none;">No active-calorie data in this period.</p>
@@ -477,9 +477,9 @@
                 <div class="panel-header"><span class="panel-title">Cardio Sessions</span></div>
                 <div class="panel-body">
                   <div class="row g-2 mb-3">
-                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Sessions</div><div id="cardio-count" class="fw-bold fs-4">–</div></div></div>
-                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Total minutes</div><div id="cardio-mins" class="fw-bold fs-4">–</div></div></div>
-                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Distance</div><div id="cardio-dist" class="fw-bold fs-4">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Sessions</div><div id="cardio-count" class="fw-bold fs-4 stat-value">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Total minutes</div><div id="cardio-mins" class="fw-bold fs-4 stat-value">–</div></div></div>
+                    <div class="col-4"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Distance</div><div id="cardio-dist" class="fw-bold fs-4 stat-value">–</div></div></div>
                   </div>
                   <canvas id="cardio-chart" style="max-height:300px;"></canvas>
                   <p class="text-center text-body-secondary mt-3 mb-0" id="cardio-no-data" style="display:none;">No cardio sessions in this period yet. Per-session cardio appears here once workout sessions are recorded in Health Connect.</p>
@@ -521,8 +521,8 @@
                 <div class="panel-header"><span class="panel-title">Grip Strength (lb)</span></div>
                 <div class="panel-body">
                   <div class="row g-2 mb-3">
-                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Latest left</div><div id="grip-left" class="fw-bold fs-4">–</div></div></div>
-                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Latest right</div><div id="grip-right" class="fw-bold fs-4">–</div></div></div>
+                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Latest left</div><div id="grip-left" class="fw-bold fs-4 stat-value">–</div></div></div>
+                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Latest right</div><div id="grip-right" class="fw-bold fs-4 stat-value">–</div></div></div>
                   </div>
                   <canvas id="grip-chart" style="max-height:280px;"></canvas>
                   <p class="text-center text-body-secondary mt-3 mb-0" id="grip-no-data" style="display:none;">No grip readings yet — tap “Log grip / hang”.</p>
@@ -534,8 +534,8 @@
                 <div class="panel-header"><span class="panel-title">Dead Hang (seconds)</span></div>
                 <div class="panel-body">
                   <div class="row g-2 mb-3">
-                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Latest</div><div id="hang-latest" class="fw-bold fs-4">–</div></div></div>
-                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Best</div><div id="hang-best" class="fw-bold fs-4">–</div></div></div>
+                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Latest</div><div id="hang-latest" class="fw-bold fs-4 stat-value">–</div></div></div>
+                    <div class="col-6"><div class="p-3 rounded-3 bg-body-secondary text-center"><div class="stat-label">Best</div><div id="hang-best" class="fw-bold fs-4 stat-value">–</div></div></div>
                   </div>
                   <canvas id="hang-chart" style="max-height:280px;"></canvas>
                   <p class="text-center text-body-secondary mt-3 mb-0" id="hang-no-data" style="display:none;">No dead-hang readings yet — tap “Log grip / hang”.</p>
