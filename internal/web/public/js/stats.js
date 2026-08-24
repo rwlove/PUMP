@@ -583,6 +583,27 @@ function renderOverloadChart(allSets, exercises, period, exerciseName) {
     }
     if (noDataEl) noDataEl.style.display = 'none';
 
+    // Headline trend is a trailing-window max of the daily best e1RM, not the
+    // raw per-day best. A single lighter / higher-rep day predicts a lower
+    // Epley e1RM even when true strength hasn't moved (the formula assumes every
+    // set is to failure), so plotting raw daily best made an easy day read as a
+    // regression. The rolling max holds the trend as long as a heavier day sits
+    // within the window; the raw daily best still shows as points underneath.
+    const ROLLING_MAX_DAYS = 28;
+    const dayMs = 86400000;
+    const toTime = d => new Date(d + 'T00:00:00').getTime();
+    const rollingMax = dates.map(d => {
+        const dt = toTime(d);
+        let m = 0;
+        dates.forEach(o => {
+            const ot = toTime(o);
+            if (ot <= dt && ot > dt - ROLLING_MAX_DAYS * dayMs && byDate[o].e1rm > m) {
+                m = byDate[o].e1rm;
+            }
+        });
+        return Math.round(m);
+    });
+
     const colorMap = {};
     (exercises || []).forEach(ex => { colorMap[ex.Name] = ex.Color; });
     const color = colorMap[exerciseName] || window._chartColor || '#2780e3';
@@ -594,15 +615,24 @@ function renderOverloadChart(allSets, exercises, period, exerciseName) {
             labels: dates,
             datasets: [
                 {
-                    label: 'Est. 1RM (Epley)',
-                    data: dates.map(d => Math.round(byDate[d].e1rm)),
+                    label: `Est. 1RM trend (best of ${ROLLING_MAX_DAYS}d)`,
+                    data: rollingMax,
                     borderColor: color,
                     backgroundColor: color + '22',
                     borderWidth: 2.5,
-                    pointRadius: 4,
-                    pointBackgroundColor: color,
+                    pointRadius: 0,
                     tension: 0.3,
                     fill: true,
+                    order: 2,
+                },
+                {
+                    label: 'Best e1RM / day',
+                    data: dates.map(d => Math.round(byDate[d].e1rm)),
+                    borderColor: 'transparent',
+                    showLine: false,
+                    pointRadius: 4,
+                    pointBackgroundColor: color,
+                    order: 1,
                 },
                 {
                     label: 'Top Set Weight',
@@ -614,6 +644,7 @@ function renderOverloadChart(allSets, exercises, period, exerciseName) {
                     pointBackgroundColor: fadedColor,
                     tension: 0.3,
                     fill: false,
+                    order: 3,
                 }
             ]
         },
@@ -632,9 +663,9 @@ function renderOverloadChart(allSets, exercises, period, exerciseName) {
                 tooltip: {
                     callbacks: {
                         label(ctx) {
-                            return ctx.datasetIndex === 0
-                                ? `Est. 1RM: ${ctx.raw} lbs`
-                                : `Top set: ${ctx.raw} lbs`;
+                            if (ctx.datasetIndex === 0) return `Trend: ${ctx.raw} lbs`;
+                            if (ctx.datasetIndex === 1) return `Est. 1RM: ${ctx.raw} lbs`;
+                            return `Top set: ${ctx.raw} lbs`;
                         }
                     }
                 }
