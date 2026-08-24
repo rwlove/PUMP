@@ -14,7 +14,7 @@
   color: var(--bs-secondary-color);
   cursor: pointer;
   padding: 4px 6px;
-  border-radius: 6px;
+  border-radius: var(--r-input);
   transition: 0.15s ease;
 }
 
@@ -34,7 +34,7 @@
 .nav-day-btn {
   background: none;
   border: 1px solid var(--bs-border-color);
-  border-radius: 9px;
+  border-radius: var(--r-control);
   width: 34px;
   height: 34px;
   display: flex;
@@ -52,15 +52,17 @@
   border-color: var(--bs-primary-border-subtle);
   color: var(--bs-primary);
 }
+.nav-day-btn:active { transform: translateY(1px); }
 
 .today-chip {
-  background: var(--bs-primary);
+  background: linear-gradient(150deg,
+    color-mix(in srgb, var(--bs-primary) 84%, #63c2ff), var(--bs-primary));
   color: #fff;
   border: none;
-  border-radius: 20px;
-  padding: 4px 14px;
+  border-radius: var(--r-pill);
+  padding: 5px 16px;
   font-size: 0.78rem;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   transition: 0.15s ease;
   white-space: nowrap;
@@ -69,6 +71,7 @@
 .today-chip:hover {
   opacity: 0.85;
 }
+.today-chip:active { transform: translateY(1px); }
 
 /* Date display button — shows friendly date, opens native date picker on click */
 .date-display-btn {
@@ -131,8 +134,8 @@
 }
 
 .week-dot {
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: var(--bs-secondary-bg);
   border: 2px solid var(--bs-border-color);
@@ -140,8 +143,11 @@
 }
 
 .week-dot.has-workout {
-  background: var(--bs-primary);
+  background: linear-gradient(158deg,
+    color-mix(in srgb, var(--bs-primary) 68%, #63c2ff),
+    var(--bs-primary));
   border-color: var(--bs-primary);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--bs-primary) 40%, transparent);
 }
 
 .week-dot.is-today {
@@ -176,8 +182,10 @@
 }
 
 .week-streak-count {
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-size: 1.9rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
   color: var(--bs-body-color);
   white-space: nowrap;
   line-height: 1;
@@ -208,7 +216,7 @@
 .group-chip {
   background: none;
   border: 1px solid var(--bs-border-color);
-  border-radius: 20px;
+  border-radius: var(--r-pill);
   padding: 5px 16px;
   font-size: 0.82rem;
   font-weight: 500;
@@ -224,11 +232,14 @@
   background: var(--bs-primary-bg-subtle);
   color: var(--bs-primary);
 }
+.group-chip:active { transform: translateY(1px); }
 
 .group-chip.active {
-  background: var(--bs-primary);
+  background: linear-gradient(150deg,
+    color-mix(in srgb, var(--bs-primary) 84%, #63c2ff), var(--bs-primary));
   border-color: var(--bs-primary);
   color: #fff;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--bs-primary) 35%, transparent);
 }
 
 /* ─── Exercise Picker: Group header & list ───────────────────────────────── */
@@ -253,7 +264,7 @@
 }
 
 .ex-search-inline {
-  border-radius: 16px !important;
+  border-radius: var(--r-pill) !important;
   font-size: 0.8rem;
   width: 110px;
   min-width: 80px;
@@ -327,6 +338,16 @@
   color: #fff !important;
 }
 
+/* Tactile press: quiet icon buttons dip 1px on pointer-down so a tap reads
+   as a physical push (skill §4.5). Suppressed under reduced-motion below. */
+.back-btn:active,
+.ex-icon-btn:active,
+.entry-del-btn:active,
+.entry-confirm-btn:active,
+.entry-reject-btn:active,
+.entry-prior-note-btn:active,
+.entry-note-clear:active { transform: translateY(1px); }
+
 /* ─── Today's Workout Log ────────────────────────────────────────────────── */
 
 .workout-log-body {
@@ -361,11 +382,14 @@
 .workout-entry-group {
   position: relative;
   border: 1px solid var(--bs-border-color);
-  border-radius: 10px;
-  margin-bottom: 8px;
-  background: var(--bs-body-bg);
+  border-radius: var(--r-control);
+  margin-bottom: 10px;
+  /* Tint the whole card toward the exercise's colour so each movement reads as
+     its own coloured block at a glance — the page's strongest identity cue. */
+  background: color-mix(in srgb, var(--exercise-color, #6c757d) 6%, var(--bs-body-bg));
   overflow: hidden; /* clip the stripe ::before to the rounded corners */
-  padding-left: 6px; /* reserve room for the stripe */
+  padding-left: 9px; /* reserve room for the stripe */
+  box-shadow: var(--elev-1);
   transition: 0.15s ease;
 }
 .workout-entry-group::before {
@@ -374,20 +398,23 @@
   left: 0;
   top: 0;
   bottom: 0;
-  width: 6px;
+  width: 9px;
   background: var(--exercise-color, #6c757d);
 }
 .workout-entry-group:hover {
   border-color: var(--bs-primary-border-subtle);
-  box-shadow: 0 0 0 3px var(--bs-primary-bg-subtle);
+  box-shadow: var(--elev-2);
+  transform: translateY(-1px);
 }
 
 .workout-entry {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 8px 10px;
-  background: var(--bs-body-bg);
+  padding: 10px 12px;
+  /* Transparent so the group's exercise-colour wash shows through; per-state
+     rows (pending / voltra) still paint their own background over this. */
+  background: transparent;
   transition: 0.15s ease;
 }
 /* Subtle horizontal divider between rows in a multi-row group. */
@@ -438,8 +465,9 @@
 
 .entry-name {
   flex: 1;
-  font-weight: 500;
-  font-size: 0.9rem;
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
   min-width: 0;
   word-break: break-word;
 }
@@ -451,7 +479,7 @@
   color: var(--bs-secondary-color);
   background: var(--bs-secondary-bg);
   border: 1px solid var(--bs-border-color);
-  border-radius: 10px;
+  border-radius: var(--r-pill);
   padding: 1px 6px;
   letter-spacing: 0.03em;
   flex-shrink: 0;
@@ -460,16 +488,19 @@
 
 .entry-controls {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-end;
+  gap: 10px;
   flex-shrink: 0;
+  flex-wrap: wrap;
+  row-gap: 6px;
 }
 
 .entry-label {
-  font-size: 0.7rem;
+  font-size: 0.62rem;
+  font-weight: 600;
   color: var(--bs-secondary-color);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.09em;
   white-space: nowrap;
 }
 
@@ -481,11 +512,14 @@
 }
 
 .entry-num {
-  width: 64px;
+  width: 88px;
   text-align: center;
-  padding: 4px 6px;
-  font-size: 0.875rem;
-  border-radius: 8px;
+  padding: 6px 4px;
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  border-radius: var(--r-input);
 }
 
 .entry-del-btn {
@@ -712,8 +746,8 @@
 .volume-ex-btn {
   background: var(--bs-body-bg);
   border: 1px solid var(--bs-border-color);
-  border-left: 3px solid var(--ex-color, #6c757d);
-  border-radius: 8px;
+  border-left: 4px solid var(--ex-color, #6c757d);
+  border-radius: var(--r-input);
   padding: 5px 14px;
   font-size: 0.82rem;
   font-weight: 500;
@@ -723,6 +757,7 @@
   transition: 0.15s ease;
   line-height: 1.4;
 }
+.volume-ex-btn:active { transform: translateY(1px); }
 
 .volume-ex-btn:hover {
   background: var(--bs-secondary-bg);
@@ -751,6 +786,9 @@
      no way to tell weight from reps on a phone, which is where sets actually
      get logged. Shrink instead of hide. */
   .entry-label { font-size: 0.6rem; letter-spacing: 0.03em; }
+  /* Scale the scoreboard numerals down a step so the stat row doesn't overflow
+     the narrow logging column on a phone. */
+  .entry-num { width: 74px; font-size: 1.2rem; }
 }
 
 /* ─── Page tabs: allow horizontal scroll when many tabs ─────────────────── */
@@ -803,8 +841,10 @@
 }
 
 .pr-val {
-  font-weight: 600;
-  font-size: 0.875rem;
+  font-weight: 800;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
   white-space: nowrap;
 }
 
@@ -1049,4 +1089,16 @@
 
 @media (prefers-reduced-motion: reduce) {
   .voltra-load-btn { transition: none; }
+  /* Drop the tactile dip / hover lift for users who ask for less motion. */
+  .nav-day-btn:active,
+  .today-chip:active,
+  .group-chip:active,
+  .back-btn:active,
+  .ex-icon-btn:active,
+  .entry-del-btn:active,
+  .entry-confirm-btn:active,
+  .entry-reject-btn:active,
+  .entry-prior-note-btn:active,
+  .entry-note-clear:active,
+  .workout-entry-group:hover { transform: none; }
 }

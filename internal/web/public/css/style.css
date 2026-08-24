@@ -1,17 +1,38 @@
 /* ─── Global Custom Styles ──────────────────────────────────────────────── */
 
 :root {
-  --panel-radius: 14px;
-  --panel-shadow: 0 1px 2px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.06);
+  /* ── Shape & elevation system ──────────────────────────────────────────
+     One documented radius scale, applied everywhere (shape-consistency lock):
+       --r-input    text/number inputs, search, date field
+       --r-control  small interactive controls (icon buttons, nav arrows)
+       --r-card     panels and grouped entry cards
+       --r-pill     chips, badges, pill buttons (full radius)
+     Shadows are tinted to a slate near-black (never pure #000) and layered
+     into a two-step elevation scale: --elev-1 resting, --elev-2 raised. */
+  --r-input: 8px;
+  --r-control: 10px;
+  --r-card: 14px;
+  --r-pill: 999px;
+
+  --elev-1: 0 1px 2px rgba(15,23,42,0.07), 0 3px 12px rgba(15,23,42,0.06);
+  --elev-2: 0 2px 6px rgba(15,23,42,0.10), 0 10px 28px rgba(15,23,42,0.12);
+
+  --panel-radius: var(--r-card);
+  --panel-shadow: var(--elev-1);
   --panel-border: 1px solid var(--bs-border-color);
   --transition: 0.15s ease;
+  /* Tactile press curve: a hair of overshoot so taps feel physical. */
+  --ease-tactile: cubic-bezier(0.3, 0.7, 0.4, 1.2);
   /* Height the sticky sub-bars offset by; must track the navbar's
      rendered height (see .navbar padding + logo size below). */
   --navbar-height: 54px;
 }
 
 [data-bs-theme="dark"] {
-  --panel-shadow: 0 1px 3px rgba(0,0,0,0.3), 0 4px 20px rgba(0,0,0,0.3);
+  /* On a dark canvas a tinted shadow reads as noise, so lean on true black
+     but keep the same two-step scale so elevation stays legible. */
+  --elev-1: 0 1px 3px rgba(0,0,0,0.32), 0 3px 14px rgba(0,0,0,0.30);
+  --elev-2: 0 2px 8px rgba(0,0,0,0.45), 0 12px 32px rgba(0,0,0,0.42);
 }
 
 /* Native date input — inherit theme colours */
@@ -178,4 +199,48 @@ input[type="date"] {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* ─── Design language (rolled out site-wide) ──────────────────────────────
+   The workout page's treatment, applied to shared components so every page
+   inherits it: scoreboard numerals, a single athletic-blue accent, and
+   tactile press. See index.css for the workout-page-specific pieces. */
+
+/* Big metric numbers read as a scoreboard — tabular so columns align across
+   rows, heavy, slightly tightened. Pair with .stat-label (sizing stays with
+   the existing Bootstrap fs-* utility on the element). */
+.stat-value {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+/* Primary actions carry a single in-family blue gradient + soft glow. The
+   gradient stops live in custom properties so hover/active can darken them
+   while keeping the identity (a flat background-image would otherwise mask
+   Bootstrap's state colours). */
+.btn-primary {
+  --grad-a: color-mix(in srgb, var(--bs-primary) 84%, #63c2ff);
+  --grad-b: var(--bs-primary);
+  background-image: linear-gradient(150deg, var(--grad-a), var(--grad-b));
+  border-color: var(--bs-primary);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--bs-primary) 26%, transparent);
+}
+.btn-primary:hover,
+.btn-primary:focus-visible {
+  --grad-a: var(--bs-primary);
+  --grad-b: color-mix(in srgb, var(--bs-primary) 82%, #000);
+}
+.btn-primary:active {
+  --grad-a: color-mix(in srgb, var(--bs-primary) 80%, #000);
+  --grad-b: color-mix(in srgb, var(--bs-primary) 68%, #000);
+}
+
+/* Tactile press: any button dips a hair on pointer-down (composes with the
+   workout page's per-control :active rules). */
+.btn:active { transform: translateY(1px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .btn:active { transform: none; }
 }
