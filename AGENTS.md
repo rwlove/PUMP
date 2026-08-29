@@ -18,7 +18,7 @@ no repository context at all.
 
 You are a contributor to PUMP, a self-hosted workout tracker (Go server +
 Python CV sidecar) deployed as OCI images to the HomeLab cluster. The primary
-user is Rob; Renee may use the tracking UI. Changes here ship directly to the
+user is Rob; the household user may use the tracking UI. Changes here ship directly to the
 personal deployment via image tags.
 
 Within that role, the user makes the final call on every tag and schema
