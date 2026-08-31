@@ -165,15 +165,49 @@ async def _run_live(cfg, pump: PumpClient, namer: ExerciseNamer) -> None:
                 tracker.reset_workout()
 
                 loop = asyncio.get_running_loop()
-                poll = asyncio.create_task(_poll_load(client, tracker, cfg.load_poll_seconds))
-                try:
+                poll = asyncio.create_task(
+                    _poll_load(client, tracker, cfg.load_poll_seconds, cfg.max_load_lb)
+                )
+
+                async def _consume(_loop=loop) -> None:
                     while True:
                         payload = await queue.get()
-                        await runner.feed(payload, loop.time())
+                        await runner.feed(payload, _loop.time())
+
+                consume = asyncio.create_task(_consume())
+                # A session task dying must tear the session down, not be
+                # ignored. watch()/heartbeat()/poll are bare tasks; before this,
+                # only the consumer loop's own exit reached the finally: unload()
+                # below. So if watch() died (its reconcile stops) or heartbeat()
+                # died while the motor keepalive task kept the cable tensioned,
+                # nothing unloaded and the UI could show slack over a live cable.
+                # Treat ANY of these finishing as session death → fall through to
+                # teardown, which cancels the keepalive and unloads.
+                supervised = [*session, poll, consume]
+                try:
+                    done, _ = await asyncio.wait(
+                        supervised, return_when=asyncio.FIRST_COMPLETED
+                    )
+                    # Retrieve every finished task's exception — both to log the
+                    # cause and to avoid asyncio's "exception was never
+                    # retrieved" warning at GC. WorkoutInactive is not raised
+                    # here (only from client.start()/subscribe_telemetry above,
+                    # which still reach the except below), so there is no
+                    # backoff path to preserve — any finish means session death.
+                    for t in done:
+                        exc = None if t.cancelled() else t.exception()
+                        which = "consumer loop" if t is consume else "session task"
+                        logger.warning(
+                            f"{which} ended; tearing down the session",
+                            error=str(exc) if exc else "returned",
+                            error_type=type(exc).__name__ if exc else "clean",
+                        )
                 finally:
                     poll.cancel()
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await poll
+                    consume.cancel()
+                    for t in (poll, consume):
+                        with contextlib.suppress(asyncio.CancelledError, Exception):
+                            await t
             except WorkoutInactive as e:
                 # Normal when nobody is training. Back off and look again.
                 logger.info("waiting for a workout to start on the trainer", detail=str(e))
@@ -207,7 +241,9 @@ async def _run_live(cfg, pump: PumpClient, namer: ExerciseNamer) -> None:
             task.cancel()
 
 
-async def _poll_load(client, tracker: SetTracker, interval_s: float) -> None:
+async def _poll_load(
+    client, tracker: SetTracker, interval_s: float, max_load_lb: int
+) -> None:
     """Keep the tracker's idea of the resistance current.
 
     Doubles as the in-session heartbeat: it runs every interval_s for the life
@@ -216,14 +252,32 @@ async def _poll_load(client, tracker: SetTracker, interval_s: float) -> None:
     mistaking a legitimate lull for a wedge.
     """
     while True:
-        healthd.record_heartbeat()
         try:
-            if (load := await client.target_load()) is not None:
-                tracker.note_weight(load)
+            load = await client.target_load()
         except asyncio.CancelledError:
             raise
         except Exception as e:
+            # A failed read does NOT stamp the heartbeat: stamping before the
+            # read (as this used to) kept the liveness watchdog green while the
+            # in-session BLE link was dead — a GATT gone half-open reads-fail
+            # every cycle, yet the loop kept spinning and the watchdog never
+            # fired. Only a successful read proves the link is alive.
             logger.debug("target load read failed", error=str(e))
+            await asyncio.sleep(interval_s)
+            continue
+
+        healthd.record_heartbeat()
+        if load is not None:
+            if 0 < load <= max_load_lb:
+                tracker.note_weight(load)
+            else:
+                # The MAX_LOAD clamp guards what we WRITE to the motor; the
+                # recorded set weight came straight off the device with no
+                # bound. A CRC-valid frame carrying a garbage value (a decode
+                # desync, a firmware glitch reading the 16-bit field high) must
+                # not be logged as the set weight.
+                logger.warning("ignoring out-of-range polled load", load=load,
+                               max_load_lb=max_load_lb)
         await asyncio.sleep(interval_s)
 
 
