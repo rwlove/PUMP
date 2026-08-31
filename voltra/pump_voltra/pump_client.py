@@ -41,9 +41,20 @@ class AutoLogDisabled(PermissionError):
 
 
 class PumpClient:
-    def __init__(self, base_url: str, api_key: str = "", timeout_s: float = 10.0):
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str = "",
+        timeout_s: float = 10.0,
+        sse_read_timeout_s: float = 60.0,
+    ):
         self._base = base_url.rstrip("/")
         self._timeout_s = timeout_s
+        # Finite read-idle limit for the SSE streams. Must exceed PUMP's 25 s
+        # keepalive so a healthy idle stream is not torn down, but stay finite
+        # so a half-open connection surfaces as a ReadTimeout the watch loops
+        # reconnect from instead of hanging forever (read=None did the latter).
+        self._sse_read_timeout_s = sse_read_timeout_s
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["X-Api-Key"] = api_key
@@ -94,11 +105,14 @@ class PumpClient:
     async def stream_voltra_state(self) -> AsyncIterator[dict]:
         """Follow PUMP's desired Voltra state.
 
-        Read timeout disabled for the same reason as the sets stream: an SSE
-        connection is idle by design between changes, and the client-wide
-        timeout would tear down a healthy subscription.
+        Read timeout is loosened for the same reason as the sets stream: an SSE
+        connection is idle by design between changes, and the client-wide 10 s
+        read limit would tear down a healthy subscription. It is set to a finite
+        value above PUMP's 25 s keepalive rather than disabled, so a half-open
+        connection raises ReadTimeout (which watch() reconnects from and unloads
+        the cable on) instead of wedging the motor-control stream forever.
         """
-        timeout = httpx.Timeout(self._timeout_s, read=None)
+        timeout = httpx.Timeout(self._timeout_s, read=self._sse_read_timeout_s)
         async with aconnect_sse(
             self._client, "GET", "/api/voltra/stream", timeout=timeout
         ) as source:
@@ -113,15 +127,16 @@ class PumpClient:
     async def stream_set_events(self) -> AsyncIterator[SetEvent]:
         """Subscribe to the SSE feed. Reconnects are the caller's business.
 
-        The read timeout is disabled **for this request only**. An SSE stream
+        The read timeout is loosened **for this request only**. An SSE stream
         is idle by design between events, and PUMP only sends its keepalive
         comment every 25 s (see getSetsStream in internal/api/server.go), so
         the client-wide 10 s read timeout fires first and tears down a
-        perfectly healthy stream roughly every 15 s. Connect and write
-        timeouts are left in place — it is only "no bytes yet" that is normal
-        here.
+        perfectly healthy stream roughly every 15 s. It is raised to a finite
+        value above the keepalive rather than disabled — `read=None` blocks
+        forever on a half-open connection, and the caller only reconnects on an
+        exception. Connect and write timeouts are left in place.
         """
-        timeout = httpx.Timeout(self._timeout_s, read=None)
+        timeout = httpx.Timeout(self._timeout_s, read=self._sse_read_timeout_s)
         async with aconnect_sse(
             self._client, "GET", "/api/sets/stream", timeout=timeout
         ) as source:

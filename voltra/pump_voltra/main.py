@@ -234,7 +234,8 @@ async def _amain(args: argparse.Namespace) -> int:
 
     if args.replay:
         async with PumpClient(
-            cfg.pump.base_url, cfg.pump.api_key, cfg.pump.request_timeout_s
+            cfg.pump.base_url, cfg.pump.api_key, cfg.pump.request_timeout_s,
+            cfg.pump.sse_read_timeout_s,
         ) as pump:
             namer = ExerciseNamer(cfg.default_exercise)
             posted = await replay(args.replay, pump, namer, args.weight)
@@ -252,7 +253,10 @@ async def _amain(args: argparse.Namespace) -> int:
             loop.add_signal_handler(sig, stop.set)
 
     rc = 0
-    async with PumpClient(cfg.pump.base_url, cfg.pump.api_key, cfg.pump.request_timeout_s) as pump:
+    async with PumpClient(
+        cfg.pump.base_url, cfg.pump.api_key, cfg.pump.request_timeout_s,
+        cfg.pump.sse_read_timeout_s,
+    ) as pump:
         namer = ExerciseNamer(cfg.default_exercise)
         work = asyncio.create_task(_run_live(cfg, pump, namer)) if cfg.enabled else None
 
