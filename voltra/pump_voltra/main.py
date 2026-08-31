@@ -96,6 +96,16 @@ async def _run_live(cfg, pump: PumpClient, namer: ExerciseNamer) -> None:
             # proxy session owns the ESP32's single advertisement subscription,
             # and surrendering it is what makes the trainer look permanently
             # absent — so only a proxy-level failure may tear it down.
+            # A live link's on_stop callback clears its `alive` flag the moment
+            # the proxy TCP session drops. Rebuilding on a dead link (not only a
+            # None one) is what makes a proxy EOF self-heal in seconds instead
+            # of leaving a registered-but-deaf scanner running until a manual
+            # pod restart — the trainer looks permanently absent the whole time.
+            if link is not None and not link.is_alive:
+                logger.warning("esphome proxy link is dead; rebuilding")
+                with contextlib.suppress(Exception):
+                    await link.close()
+                link = None
             try:
                 if link is None:
                     link = await connect_proxy(cfg.proxy.host, cfg.proxy.port, cfg.proxy.psk)
@@ -224,7 +234,8 @@ async def _amain(args: argparse.Namespace) -> int:
 
     if args.replay:
         async with PumpClient(
-            cfg.pump.base_url, cfg.pump.api_key, cfg.pump.request_timeout_s
+            cfg.pump.base_url, cfg.pump.api_key, cfg.pump.request_timeout_s,
+            cfg.pump.sse_read_timeout_s,
         ) as pump:
             namer = ExerciseNamer(cfg.default_exercise)
             posted = await replay(args.replay, pump, namer, args.weight)
@@ -242,7 +253,10 @@ async def _amain(args: argparse.Namespace) -> int:
             loop.add_signal_handler(sig, stop.set)
 
     rc = 0
-    async with PumpClient(cfg.pump.base_url, cfg.pump.api_key, cfg.pump.request_timeout_s) as pump:
+    async with PumpClient(
+        cfg.pump.base_url, cfg.pump.api_key, cfg.pump.request_timeout_s,
+        cfg.pump.sse_read_timeout_s,
+    ) as pump:
         namer = ExerciseNamer(cfg.default_exercise)
         work = asyncio.create_task(_run_live(cfg, pump, namer)) if cfg.enabled else None
 

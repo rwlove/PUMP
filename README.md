@@ -171,6 +171,8 @@ Disabled by default — set `VOLTRA_AUTOLOG=true` on PUMP and `VOLTRA_ENABLED=tr
 | `VOLTRA_SET_IDLE_SECONDS` | Fallback set-completion timeout, used only if the device's end-of-set summary is lost | `30` |
 | `VOLTRA_LOAD_POLL_SECONDS` | Target-load poll interval | `5` |
 | `VOLTRA_MAX_LOAD_LB` | Ceiling on any weight written to the motor; requests above it are clamped | `130` |
+| `VOLTRA_HEARTBEAT_STALE_SECONDS` | Work-loop tick age before `/healthz` fails and the kubelet restarts a wedged sidecar | `600` |
+| `VOLTRA_SSE_READ_TIMEOUT_S` | Read-idle timeout for the PUMP SSE streams; above the 25 s keepalive so idle survives but a half-open connection reconnects instead of hanging | `60` |
 | `PUMP_API_BASE_URL` | PUMP base URL | `http://pump-api:8851` |
 | `PUMP_API_KEY` | Sent as `X-Api-Key`; **secret, not in yaml** | `""` |
 | `PUMP_VOLTRA_CONFIG` | Path to the yaml config | `configs/default.yaml` |

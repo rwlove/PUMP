@@ -63,6 +63,9 @@ site-specific identifiers are environment-only and must never be committed.**
 | `VOLTRA_EXERCISE_REFRESH_SECONDS` | how often to re-read the flag list | `300` |
 | `VOLTRA_SET_IDLE_SECONDS` | fallback set-completion timeout | `30` |
 | `VOLTRA_LOAD_POLL_SECONDS` | target-load poll interval | `5` |
+| `VOLTRA_MAX_LOAD_LB` | ceiling on any weight written to the motor; higher requests are clamped | `130` |
+| `VOLTRA_HEARTBEAT_STALE_SECONDS` | work-loop tick age before `/healthz` fails and the pod is restarted | `600` |
+| `VOLTRA_SSE_READ_TIMEOUT_S` | read-idle timeout for the PUMP SSE streams; above the 25 s keepalive so a dead stream reconnects instead of hanging | `60` |
 | `PUMP_API_BASE_URL` | PUMP base URL | `http://pump-api:8851` |
 | `PUMP_API_KEY` | sent as `X-Api-Key` — **secret** | `""` |
 | `PUMP_VOLTRA_CONFIG` | path to a YAML config file | `configs/default.yaml` |

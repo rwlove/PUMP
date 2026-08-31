@@ -19,6 +19,16 @@ class PumpConfig(BaseModel):
     base_url: str = "http://pump-api:8851"
     api_key: str = ""
     request_timeout_s: float = 10.0
+    # Read-idle timeout for the SSE streams (set events + Voltra desired state).
+    # These are deliberately idle between events, so the request_timeout_s read
+    # limit would tear a healthy stream down constantly. But `read=None` blocks
+    # forever on a half-open connection (PUMP pod rescheduled, dropped flow),
+    # wedging the motor-control stream silently — it stops applying LOAD/unload
+    # and never reaches the unload-on-teardown path. PUMP sends a `: keepalive`
+    # every 25 s (internal/api/helpers.go sseLoop), so a finite timeout above
+    # that survives idle but turns a dead connection into a ReadTimeout the
+    # watch loops reconnect from.
+    sse_read_timeout_s: float = 60.0
 
 
 class ProxyConfig(BaseModel):
@@ -112,5 +122,6 @@ def load(path: str | Path | None = None) -> VoltraConfig:
     # Shared with pump-cv: same 1Password field, same server.
     _env_str(cfg.pump, "base_url", "PUMP_API_BASE_URL")
     _env_str(cfg.pump, "api_key", "PUMP_API_KEY")
+    _env_float(cfg.pump, "sse_read_timeout_s", "VOLTRA_SSE_READ_TIMEOUT_S")
 
     return cfg
