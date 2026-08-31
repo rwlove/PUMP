@@ -25,11 +25,35 @@ type PostgresStore struct {
 // ready-to-use store. Call db.MigratePostgres before using the store.
 func NewPostgres(dsn string) (*PostgresStore, error) {
 	slog.Debug("postgres: dialing")
-	pool, err := pgxpool.New(context.Background(), dsn)
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("parse postgres dsn: %w", err)
+	}
+	// Bound the pool: a burst of slow queries (a failover, a lock) must not
+	// grow connections without limit, and stale/aged conns are recycled.
+	if cfg.MaxConns < 10 {
+		cfg.MaxConns = 10
+	}
+	cfg.MaxConnLifetime = time.Hour
+	cfg.MaxConnIdleTime = 30 * time.Minute
+	cfg.HealthCheckPeriod = time.Minute
+	// A server-side statement_timeout reclaims a wedged query instead of
+	// pinning a pool slot forever. 60s is generous for this app's queries and
+	// for any migration on this DB, while still bounding a runaway. Respect a
+	// value already set in the DSN.
+	if _, ok := cfg.ConnConfig.RuntimeParams["statement_timeout"]; !ok {
+		cfg.ConnConfig.RuntimeParams["statement_timeout"] = "60000"
+	}
+
+	// Bound connect + ping so an unreachable Postgres at startup fails fast
+	// (and the pod restarts) instead of hanging on context.Background forever.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("connect to postgres: %w", err)
 	}
-	if err := pool.Ping(context.Background()); err != nil {
+	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
