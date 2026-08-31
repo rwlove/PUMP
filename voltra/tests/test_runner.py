@@ -129,12 +129,17 @@ def test_metrics_render() -> None:
 
 
 @respx.mock
-async def test_sse_stream_disables_the_read_timeout() -> None:
-    """An idle SSE stream must not be torn down by the client read timeout.
+async def test_sse_stream_loosens_read_timeout_but_keeps_it_finite() -> None:
+    """An idle SSE stream must not be torn down by the client read timeout, but
+    it also must not hang forever on a half-open connection.
 
     PUMP only sends its keepalive comment every 25 s, so a client-wide 10 s
-    read timeout kills a healthy stream every ~15 s. Deployed, that showed up
-    as a reconnect loop with an empty error message.
+    read timeout kills a healthy stream every ~15 s (a reconnect loop with an
+    empty error). But `read=None` blocks forever when the connection half-opens
+    (PUMP rescheduled, dropped flow) and the caller only reconnects on an
+    exception — that wedged the motor-control stream silently. So the read
+    timeout is raised above the keepalive, not disabled: idle survives, a dead
+    connection surfaces as ReadTimeout.
     """
     captured: dict = {}
 
@@ -148,11 +153,12 @@ async def test_sse_stream_disables_the_read_timeout() -> None:
 
     respx.get(f"{BASE}/api/sets/stream").mock(side_effect=handler)
 
-    pump = PumpClient(BASE, timeout_s=10.0)
+    pump = PumpClient(BASE, timeout_s=10.0, sse_read_timeout_s=45.0)
     events = [e async for e in pump.stream_set_events()]
     await pump.aclose()
 
     assert len(events) == 1
-    # read=None is the fix; connect/write stay bounded.
-    assert captured["timeout"]["read"] is None
+    # Finite and above the 25 s keepalive; connect stays on the base timeout.
+    assert captured["timeout"]["read"] == 45.0
+    assert captured["timeout"]["read"] > 25.0
     assert captured["timeout"]["connect"] == 10.0
