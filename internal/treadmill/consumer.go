@@ -3,6 +3,7 @@ package treadmill
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"strconv"
@@ -78,6 +79,13 @@ func ConfigFromEnv() Config {
 // briefly unavailable never holds up PUMP startup. Returns an error only on
 // invalid configuration.
 func Start(cfg Config, store recorder) (*Consumer, error) {
+	// Fail loud on misconfig. With ConnectRetry set, an empty/typo'd broker
+	// otherwise produces a consumer that retries a bad address forever while
+	// Start returns nil — the operator sees "consumer started" and believes
+	// cardio auto-capture is live when it records nothing.
+	if cfg.Broker == "" {
+		return nil, fmt.Errorf("treadmill: enabled but TREADMILL_MQTT_BROKER is empty")
+	}
 	c := &Consumer{
 		cfg:   cfg,
 		store: store,
@@ -144,6 +152,14 @@ func (c *Consumer) onMessage(_ mqtt.Client, msg mqtt.Message) {
 // tickLoop re-evaluates the debounce window on a fixed cadence so a session
 // still closes when the plug stops reporting after going idle.
 func (c *Consumer) tickLoop() {
+	// Recover + relaunch: a bare goroutine's panic is not covered by
+	// gin.Recovery(), and a dead tickLoop silently stops closing idle sessions.
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("treadmill: tickLoop panicked; restarting", slog.Any("panic", r))
+			go c.tickLoop()
+		}
+	}()
 	t := time.NewTicker(tickInterval)
 	defer t.Stop()
 	for {

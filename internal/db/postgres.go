@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -315,7 +316,13 @@ CREATE INDEX IF NOT EXISTS measurements_metric_date_idx ON measurements (metric,
 // or corrupting data. Each migration runs in its own transaction; if one
 // fails the database is left at the last successfully applied version.
 func MigratePostgres(pool *pgxpool.Pool) error {
-	ctx := context.Background()
+	// Bound the whole migration run: a Postgres that is briefly unreachable at
+	// pod start (a failover) used to wedge startup forever on context.Background.
+	// A deadline makes it exit non-zero so the StatefulSet restarts it — a
+	// visible, self-healing crash-loop beats a silent hang. Generous enough for
+	// any realistic migration on this DB.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
 
 	_, err := pool.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_version (
@@ -374,6 +381,14 @@ func MigratePostgres(pool *pgxpool.Pool) error {
 		tx, err := pool.Begin(ctx)
 		if err != nil {
 			return fmt.Errorf("begin migration v%d: %w", m.Version, err)
+		}
+
+		// Fail fast if a DDL statement blocks on a conflicting lock (another
+		// connection holding an ACCESS EXCLUSIVE lock) instead of waiting
+		// forever inside the transaction. SET LOCAL is scoped to this tx.
+		if _, err := tx.Exec(ctx, "SET LOCAL lock_timeout = '15s'"); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("set lock_timeout for migration v%d: %w", m.Version, err)
 		}
 
 		if _, err := tx.Exec(ctx, m.SQL); err != nil {

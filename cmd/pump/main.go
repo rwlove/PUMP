@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 	"time"
 	_ "time/tzdata"
@@ -142,7 +143,14 @@ func main() {
 	// state once and then follows SSE, so without something publishing the
 	// transition the UI keeps saying "loaded — recording" after the trainer has
 	// physically released.
-	go voltra.WatchStale(context.Background(), 5*time.Second)
+	//
+	// Supervised: gin.Recovery() only covers request handlers, not bare
+	// goroutines — a panic here would silently kill the watchdog and leave the
+	// UI claiming a released motor is still loaded (safety-adjacent). supervise
+	// recovers and restarts it.
+	go superviseLoop("voltra-watchstale", func() {
+		voltra.WatchStale(context.Background(), 5*time.Second)
+	})
 
 	// Treadmill cardio auto-capture: subscribe to the smart-plug wattage feed
 	// zwave-js-ui publishes to MQTT and log detected workouts as cardio. Inert
@@ -163,8 +171,41 @@ func main() {
 	addr := host + ":" + port
 	slog.Info("PUMP ready", slog.String("addr", "http://"+addr))
 
-	if err := r.Run(addr); err != nil {
+	// Explicit http.Server instead of r.Run(): the default has no timeouts, so
+	// a half-open client (a flaky kiosk/phone on the home wifi) that sends a
+	// partial request header holds a connection and its goroutine forever
+	// (slowloris). ReadHeaderTimeout + IdleTimeout close that hole.
+	// WriteTimeout is deliberately left unset — the SSE endpoints hold
+	// responses open for the life of the connection by design.
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	if err := srv.ListenAndServe(); err != nil {
 		slog.Error("server failed", slog.Any("error", err))
 		os.Exit(1)
+	}
+}
+
+// superviseLoop runs fn and restarts it if it panics, so a background loop
+// (which gin.Recovery does not cover) cannot silently die. A clean return is
+// treated as "restart after a short backoff" too — the loops it guards
+// (WatchStale on a Background context) are meant to run for the process
+// lifetime, so any return is unexpected. The backoff prevents a tight
+// crash-restart spin from a persistent panic.
+func superviseLoop(name string, fn func()) {
+	for {
+		func() {
+			defer func() {
+				if rec := recover(); rec != nil {
+					slog.Error("background loop panicked; restarting",
+						slog.String("loop", name), slog.Any("panic", rec))
+				}
+			}()
+			fn()
+		}()
+		time.Sleep(time.Second)
 	}
 }

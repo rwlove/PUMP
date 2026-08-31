@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -170,6 +171,12 @@ func readWyomingEvent(r *bufio.Reader) (string, map[string]any, error) {
 	data, _ := header["data"].(map[string]any)
 
 	if dl, ok := header["data_length"].(float64); ok {
+		// Cap the allocation from an attacker/bug-influenced length. The
+		// Wyoming service is trusted, but a compromised/buggy one returning a
+		// huge data_length would OOM this memory-limited pod in a single make.
+		if dl < 0 || dl > 1<<20 {
+			return "", nil, fmt.Errorf("wyoming: data_length %.0f out of range", dl)
+		}
 		buf := make([]byte, int(dl))
 		if _, err := io.ReadFull(r, buf); err != nil {
 			return "", nil, err
