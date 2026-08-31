@@ -64,6 +64,37 @@ async def test_close_trainer_is_idempotent() -> None:
     await link.close_trainer()  # must not raise
 
 
+# ─── proxy liveness ──────────────────────────────────────────────────────
+#
+# The proxy TCP session can drop with the ProxyLink object none the wiser —
+# an ESP32 reboot, a Wi-Fi blip, an idle EOF. The registered scanner is then
+# dead and hears no advertisements, so the trainer looks permanently absent.
+# The supervisor rebuilds on `not link.is_alive`; once that reused a corpse for
+# 19 h because nothing ever flipped the flag, and only a pod restart cleared it.
+
+
+async def test_proxylink_starts_alive() -> None:
+    link = transport.ProxyLink(api=FakeApi(), manager=None)
+    assert link.is_alive, "a freshly connected proxy must report alive"
+
+
+async def test_proxylink_dies_when_on_stop_fires() -> None:
+    # connect_proxy hands aioesphomeapi an on_stop callback that clears exactly
+    # this Event. Simulate the disconnect: is_alive must flip so the supervisor
+    # tears the link down and reconnects instead of reusing a deaf scanner.
+    link = transport.ProxyLink(api=FakeApi(), manager=None)
+    link.alive.clear()
+    assert not link.is_alive, "a dropped proxy must report dead so it gets rebuilt"
+
+
+async def test_proxylink_survives_trainer_teardown() -> None:
+    # Dropping the BLE half (an absent trainer) must NOT mark the proxy dead —
+    # that is the normal empty-gym path and the proxy session is long-lived.
+    link = transport.ProxyLink(api=FakeApi(), manager=None, client=FakeClient())
+    await link.close_trainer()
+    assert link.is_alive, "an absent trainer must not look like a dead proxy"
+
+
 async def test_api_is_closed_even_if_ble_teardown_raises() -> None:
     # The API connection is the scarce resource; a failure disconnecting BLE
     # must not skip it.

@@ -108,11 +108,28 @@ class ProxyLink:
     Both halves are returned together because both have to be torn down. Earlier
     this function returned only the BleakClient, so every reconnect stranded an
     APIClient on the ESP32.
+
+    `alive` is set at construction and cleared by the APIClient's on_stop
+    callback (see connect_proxy). Once the proxy TCP session drops — the
+    ESP32 rebooting, a Wi-Fi blip, an idle EOF — the registered scanner is dead
+    and hears no advertisements, but nothing about the ProxyLink object itself
+    changes. Without this flag the supervisor kept reusing a corpse: the trainer
+    looked permanently absent and only a pod restart cleared it.
     """
 
     api: object
     manager: object
     client: object = None
+    alive: asyncio.Event = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.alive is None:
+            self.alive = asyncio.Event()
+        self.alive.set()
+
+    @property
+    def is_alive(self) -> bool:
+        return self.alive.is_set()
 
     async def close_trainer(self) -> None:
         """Drop the BLE client but keep the proxy session and its scanner."""
@@ -176,13 +193,23 @@ async def connect_proxy(host: str, port: int, psk: str) -> ProxyLink:
     manager = await _ensure_manager()
 
     api = APIClient(host, port, password="", noise_psk=psk or None)
+    link = ProxyLink(api=api, manager=manager)
+
+    async def _on_stop(expected: bool) -> None:
+        # Fired by aioesphomeapi when the proxy TCP session ends for any reason.
+        # Clearing this is what lets the supervisor notice a dead proxy and
+        # rebuild it — without it the loop reused a corpse for 19 h once,
+        # reporting the trainer permanently absent until a manual pod restart.
+        link.alive.clear()
+        logger.warning("esphome proxy disconnected", host=host, expected=expected)
+
     # Everything from here on must hand the APIClient back to the caller or
     # close it. The ESP32 accepts only a handful of concurrent API connections;
     # leaking one per failed attempt exhausts them within hours, after which it
     # drops new clients right after the encrypted hello — which reads like a
     # wrong key and sends you chasing the wrong bug entirely.
     try:
-        await api.connect(login=True)
+        await api.connect(on_stop=_on_stop, login=True)
         device_info = await api.device_info()
 
         # connect_scanner is SYNCHRONOUS and returns ESPHomeClientData —
@@ -197,7 +224,7 @@ async def connect_proxy(host: str, port: int, psk: str) -> ProxyLink:
         _unregister = manager.async_register_scanner(client_data.scanner)
 
         logger.info("esphome proxy connected", host=host, name=device_info.name)
-        return ProxyLink(api=api, manager=manager)
+        return link
     except BaseException:
         # Includes CancelledError: a shutdown mid-connect must not strand an
         # API connection on the device either.
