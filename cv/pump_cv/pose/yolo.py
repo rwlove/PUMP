@@ -21,6 +21,15 @@ from .types import FrameAndPoses, Keypoint, Pose
 logger = log.get(__name__)
 
 
+def _is_cuda_error(e: Exception) -> bool:
+    """Heuristic: is this exception a GPU/CUDA-context failure worth rebuilding
+    the model for? torch raises plain RuntimeErrors whose text carries the
+    signal (no stable exception type across versions)."""
+    s = f"{type(e).__name__}: {e}".lower()
+    return any(k in s for k in ("cuda", "cudnn", "out of memory", "device-side",
+                                "no kernel image", "device kernel"))
+
+
 class YOLOPoseSource:
     """Reads frames from a video path or RTSP URL and emits Pose objects.
 
@@ -38,6 +47,7 @@ class YOLOPoseSource:
         retry_on_failure: bool = True,
         retry_initial_seconds: float = 1.0,
         retry_max_seconds: float = 30.0,
+        read_stale_seconds: float = 15.0,
     ):
         self._source = source
         self._camera = camera_name or source
@@ -47,6 +57,14 @@ class YOLOPoseSource:
         self._retry = retry_on_failure
         self._retry_initial = retry_initial_seconds
         self._retry_max = retry_max_seconds
+        # A half-open RTSP stream leaves cap.read() blocked in its worker
+        # thread forever — no exception, no EOF — so the reconnect path never
+        # fires and the pipeline silently dies behind a green probe. If no
+        # frame reaches the consumer within this window, treat the capture as
+        # stalled and force a reconnect (belt-and-suspenders with the FFmpeg
+        # stimeout in OPENCV_FFMPEG_CAPTURE_OPTIONS, whose coverage varies by
+        # build).
+        self._read_stale = read_stale_seconds
         self._model = None
 
         # FPS + connection state — surfaced to the admin panel via the
@@ -87,6 +105,17 @@ class YOLOPoseSource:
             "connected": self._connected,
             "has_frame": self._latest_frame is not None,
         }
+
+    def last_frame_ts(self) -> float | None:
+        """Wall-clock time of the most recently decoded frame, or None if the
+        capture loop hasn't produced one yet. Drives the /healthz freshness
+        gate."""
+        return self._frame_times[-1] if self._frame_times else None
+
+    def is_file_source(self) -> bool:
+        """A file source legitimately ends and must not trip the liveness
+        freshness gate; a live RTSP camera going quiet is a fault."""
+        return Path(self._source).is_file()
 
     def latest_frame(self):
         """Return the most recent decoded BGR frame, or None if the
@@ -141,18 +170,31 @@ class YOLOPoseSource:
         non-file source we retry indefinitely with capped exponential
         backoff: a brief disconnect just costs a few dropped frames.
         """
-        self._ensure_model()
         is_file = Path(self._source).is_file()
 
         backoff = self._retry_initial
         while True:
             try:
+                # Model load is inside the retry loop, not before it: on a fresh
+                # pod the weights may not be on the PVC yet, the GPU may be
+                # claimed by another pod, or CUDA init may fail — loading it
+                # once before the loop turned any of those into an immediate
+                # process crash / CrashLoopBackOff instead of a backoff-retry.
+                self._ensure_model()
+
                 async for item in self._stream_one_capture():
                     yield item
                     backoff = self._retry_initial   # any success resets backoff
             except Exception as e:
                 logger.warning("yolo: capture loop crashed",
                                source=self._source, error=str(e))
+                # A poisoned CUDA context (OOM, device-lost) re-raises on every
+                # predict; drop the model so the next attempt rebuilds it rather
+                # than reusing a dead context forever.
+                if _is_cuda_error(e):
+                    logger.warning("yolo: dropping model to rebuild CUDA context",
+                                   source=self._source)
+                    self._model = None
 
             if is_file or not self._retry:
                 return
@@ -228,7 +270,17 @@ class YOLOPoseSource:
 
         try:
             while True:
-                item = await slot.get()
+                # Bounded wait so a half-open stream (reader parked forever in
+                # cap.read()) surfaces as a stall instead of hanging silently.
+                # Raising drops into the finally below (release the cap, cancel
+                # the reader) and the outer poses() loop reconnects.
+                try:
+                    item = await asyncio.wait_for(slot.get(), timeout=self._read_stale)
+                except asyncio.TimeoutError as e:
+                    raise RuntimeError(
+                        f"no frame from {self._source} in {self._read_stale:.0f}s "
+                        "— camera stalled, forcing reconnect"
+                    ) from e
                 if item is None:
                     return
                 ts, frame = item

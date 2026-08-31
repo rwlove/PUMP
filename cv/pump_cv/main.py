@@ -45,6 +45,11 @@ SNAPSHOT_DIR  = Path(os.getenv("PUMP_CV_SNAPSHOT_DIR", "snapshots"))
 CLIPS_DIR     = Path(os.getenv("PUMP_CV_CLIPS_DIR", "clips"))
 HEALTHD_PORT  = int(os.getenv("PUMP_CV_HEALTHD_PORT", "8080"))
 RETENTION_DAYS = float(os.getenv("PUMP_CV_RETENTION_DAYS", "30"))
+# Per-directory byte ceiling, enforced after the age sweep. Age-only retention
+# has no floor against a heavy training month filling a small cache PVC before
+# the 30-day cutoff bites; this deletes oldest-first until under the cap. 0
+# disables it.
+RETENTION_MAX_BYTES = float(os.getenv("PUMP_CV_RETENTION_MAX_BYTES", str(5 * 1024**3)))
 
 
 def _build_single_source(cam, cfg: CVConfig):
@@ -66,6 +71,7 @@ def _build_single_source(cam, cfg: CVConfig):
         model=cfg.pose.model,
         image_size=cfg.pose.image_size,
         device=cfg.pose.device,
+        read_stale_seconds=cfg.pose.read_stale_seconds,
     )
 
 
@@ -186,6 +192,7 @@ async def _amain() -> None:
             on_set_failed=healthd.record_set_failed,
         )
 
+        healthd.set_frame_stale_after(cfg.health.frame_stale_seconds)
         health_task = asyncio.create_task(
             healthd.serve(
                 port=HEALTHD_PORT,
@@ -195,7 +202,8 @@ async def _amain() -> None:
             ),
         )
         retention_task = asyncio.create_task(
-            retention.run_forever(SNAPSHOT_DIR, CLIPS_DIR, RETENTION_DAYS),
+            retention.run_forever(SNAPSHOT_DIR, CLIPS_DIR, RETENTION_DAYS,
+                                   max_bytes=RETENTION_MAX_BYTES),
         )
         # Re-reads the flag list on a timer, so ticking the checkbox on an
         # exercise in PUMP takes effect without a rolling restart.

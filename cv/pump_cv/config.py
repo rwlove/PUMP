@@ -33,6 +33,18 @@ class PoseConfig(BaseModel):
     model: str = "yolov8m-pose.pt"
     image_size: int = 640
     device: str = "cuda:0"
+    # Force a capture reconnect if no frame arrives within this window — the
+    # guard against a half-open RTSP stream wedging cap.read() forever.
+    read_stale_seconds: float = 15.0
+
+
+class HealthConfig(BaseModel):
+    """Liveness freshness gate: /healthz fails if no live camera has produced a
+    frame within this window, so a wedged pipeline is restarted instead of
+    sitting Ready-but-dead. Generous by default (well above read_stale_seconds ×
+    a reconnect cycle) so a single camera reboot does not flap the pod."""
+
+    frame_stale_seconds: float = 120.0
 
 
 class RepConfig(BaseModel):
@@ -75,6 +87,7 @@ class CVConfig(BaseModel):
     pump: PumpConfig = Field(default_factory=PumpConfig)
     confidence_threshold: float = 0.75
     voltra: VoltraConfig = Field(default_factory=VoltraConfig)
+    health: HealthConfig = Field(default_factory=HealthConfig)
 
 
 def load(path: str | Path | None = None) -> CVConfig:
