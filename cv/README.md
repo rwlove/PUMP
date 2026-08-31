@@ -73,7 +73,14 @@ for the shape. Key env vars:
 | `PUMP_API_BASE_URL` | Override the PUMP API URL |
 | `PUMP_API_KEY` | API key for X-Api-Key header |
 | `CV_CONFIDENCE_THRESHOLD` | Override the confidence cutoff for pending sets |
+| `PUMP_CV_RETENTION_DAYS` | Age cutoff for the snapshot/clip sweep (default `30`) |
+| `PUMP_CV_RETENTION_MAX_BYTES` | Per-directory byte ceiling; oldest deleted first after the age sweep (default `5Gi`, `0` disables) |
 | `LOG_LEVEL` | `debug` / `info` / `warn` / `error` |
+
+Two liveness knobs live in the yaml (`configs/default.yaml`): `pose.read_stale_seconds`
+(force a capture reconnect if no frame arrives within this window; default 15) and
+`health.frame_stale_seconds` (`/healthz` fails if no live camera has produced a frame
+within this window; default 120).
 
 ## Layout
 

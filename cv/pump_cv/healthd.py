@@ -24,6 +24,7 @@ import contextlib
 import os
 import shutil
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,37 @@ class _State:
 
 
 _state = _State()
+
+# /healthz fails once a live camera has gone this long with no decoded frame —
+# the backstop for a wedged capture/pipeline that leaves the pod Ready-but-dead.
+# Overridable from config; generous by default so a camera reboot doesn't flap.
+_frame_stale_after = 120.0
+
+
+def set_frame_stale_after(seconds: float) -> None:
+    global _frame_stale_after
+    _frame_stale_after = seconds
+
+
+def _freshest_live_frame_age() -> float | None:
+    """Age (seconds) of the most recent frame across all live (non-file)
+    cameras, or None if there are no live cameras that have ever produced a
+    frame — in which case there is nothing to assert freshness against
+    (startup, calibration hold, or a file/mock source)."""
+    from .pose.yolo import registered_cameras
+
+    newest: float | None = None
+    for cam in registered_cameras():
+        is_file = getattr(cam, "is_file_source", None)
+        if callable(is_file) and is_file():
+            continue
+        ts_fn = getattr(cam, "last_frame_ts", None)
+        ts = ts_fn() if callable(ts_fn) else None
+        if ts is not None and (newest is None or ts > newest):
+            newest = ts
+    if newest is None:
+        return None
+    return max(0.0, time.time() - newest)
 
 
 def mark_ready() -> None:
@@ -93,8 +125,17 @@ def build_app(
         return await call_next(request)
 
     @app.get("/healthz")
-    def healthz() -> dict[str, str]:
-        return {"status": "ok"}
+    def healthz(response: Response) -> dict[str, object]:
+        # Liveness asserts real progress, not just "the web server answers".
+        # Before ready (startup / calibration hold) there is nothing to assert.
+        # Once ready, a live camera that has gone _frame_stale_after with no
+        # decoded frame means the capture/pipeline has wedged behind an
+        # otherwise-green pod — fail so the kubelet restarts it.
+        age = _freshest_live_frame_age()
+        if _state.ready and age is not None and age > _frame_stale_after:
+            response.status_code = 503
+            return {"status": "stale", "frame_age_s": round(age, 1)}
+        return {"status": "ok", "frame_age_s": None if age is None else round(age, 1)}
 
     @app.get("/readyz")
     def readyz(response: Response) -> dict[str, object]:
@@ -105,11 +146,19 @@ def build_app(
 
     @app.get("/metrics")
     def metrics() -> Response:
+        age = _freshest_live_frame_age()
+        # -1 sentinel = no live camera has produced a frame yet (startup /
+        # calibration / file source): distinguishable from a genuine 0s age.
+        age_val = -1.0 if age is None else round(age, 3)
         body = (
             f"pump_cv_ready {1 if _state.ready else 0}\n"
             f"pump_cv_sets_posted_total {_state.sets_posted}\n"
             f"pump_cv_sets_pending_total {_state.sets_pending}\n"
             f"pump_cv_sets_failed_total {_state.sets_failed}\n"
+            "# HELP pump_cv_last_frame_age_seconds Age of the freshest live-camera "
+            "frame; -1 if none yet.\n"
+            "# TYPE pump_cv_last_frame_age_seconds gauge\n"
+            f"pump_cv_last_frame_age_seconds {age_val}\n"
         )
         return Response(content=body, media_type="text/plain; version=0.0.4")
 
