@@ -23,23 +23,6 @@ WORKOUT_STATE = 0x4FB0  # 0 inactive, 1 weight training
 TELEMETRY_RATE = 0x5182  # 0x28 == 40 Hz
 TELEMETRY_TOKEN = 0x5183  # subscribe token
 
-# Weight-training modifiers and the other-mode set points. Cross-checked across
-# three independent MIT implementations (voltra-node-sdk, voltra-knob,
-# voltra-diy-remote); ids and widths agree. We do not yet *drive* any of these
-# — they are registered so that decode_reply can walk past them in an async
-# state push (0x10) instead of stopping the walk at the first unknown id and
-# silently truncating the safety-gate parameters (WORKOUT_STATE, TARGET_LOAD,
-# FITNESS_MODE) that may follow.
-CHAINS = 0x3E87  # lb, 0..100 — progressive resistance that scales with position
-ECCENTRIC = 0x3E88  # SIGNED; eccentric overload. Units unconfirmed: node-sdk
-#                     and voltra-diy-remote read it as pounds, voltra-knob as a
-#                     percentage. Do NOT write this to the motor until the unit
-#                     is confirmed on hardware — a sign/scale error here is a
-#                     physical hazard, not a bad table row.
-INVERSE_CHAINS = 0x53B0  # 0 normal, 1 inverse — pairs with CHAINS
-ISOKINETIC_SPEED = 0x5350  # mm/s, 0..2000 — isokinetic target speed
-BAND_MAX_FORCE = 0x5362  # lb, 15..70 — resistance-band force cap
-
 # Width in bytes of each parameter's value, little-endian.
 WIDTHS: dict[int, int] = {
     TARGET_LOAD: 2,
@@ -50,20 +33,10 @@ WIDTHS: dict[int, int] = {
     WORKOUT_STATE: 1,
     TELEMETRY_RATE: 1,
     TELEMETRY_TOKEN: 4,
-    CHAINS: 2,
-    ECCENTRIC: 2,
-    INVERSE_CHAINS: 1,
-    ISOKINETIC_SPEED: 4,
-    BAND_MAX_FORCE: 2,
     0x520A: 2,
     0x520B: 2,
     0x520C: 2,
 }
-
-# Parameters whose value is two's-complement signed rather than unsigned.
-# Getting this wrong turns a small negative eccentric overload into a ~65000
-# reading and vice versa, so it must be tracked per parameter alongside width.
-SIGNED: frozenset[int] = frozenset({ECCENTRIC})
 
 # Values for FITNESS_MODE.
 MODE_UNLOADED = 0x0004
@@ -101,14 +74,14 @@ def encode_read(param_ids: list[int], seq: int = 0) -> bytes:
 
 
 def encode_write(param_id: int, value: int, seq: int = 0) -> bytes:
-    """Build a PARAM_WRITE frame. Width and signedness come from the registry.
+    """Build a PARAM_WRITE frame. Width comes from the registry.
 
-    A negative value for an unsigned parameter raises OverflowError from
-    to_bytes() rather than wrapping — refusing to encode nonsense is the right
-    failure for anything that feeds a motor write.
+    A negative value raises OverflowError from to_bytes() rather than wrapping —
+    refusing to encode nonsense is the right failure for anything that feeds a
+    motor write.
     """
     payload = b"\x01\x00" + param_id.to_bytes(2, "little")
-    payload += value.to_bytes(width_of(param_id), "little", signed=param_id in SIGNED)
+    payload += value.to_bytes(width_of(param_id), "little")
     return build_frame(CMD_PARAM_WRITE, payload, seq)
 
 
@@ -134,8 +107,6 @@ def decode_reply(payload: bytes) -> dict[int, int]:
             break
         if offset + width > len(payload):
             break
-        out[pid] = int.from_bytes(
-            payload[offset : offset + width], "little", signed=pid in SIGNED
-        )
+        out[pid] = int.from_bytes(payload[offset : offset + width], "little")
         offset += width
     return out

@@ -164,15 +164,10 @@ in a multi-parameter reply.
 | Param | Width | Meaning |
 | --- | --- | --- |
 | `0x3E86` | uint16 LE | target load, lb (valid 5–200) |
-| `0x3E87` | uint16 LE | chains — added resistance that scales with cable position, lb (0–100) |
-| `0x3E88` | **int16 LE** | eccentric overload — **signed**; units unconfirmed (see note) |
 | `0x3E89` | uint16 LE | fitness mode — `0x0004` ready/unloaded, `0x0005` loaded |
 | `0x4FB0` | uint8 | workout state — `0` inactive, `1` weight training |
 | `0x3E83` | uint16 LE | instantaneous force, **tenths of a pound** |
 | `0x3E82` | uint16 LE | cable position, **mm** (not cm — see note) |
-| `0x53B0` | uint8 | chain direction — `0` normal, `1` inverse; pairs with `0x3E87` |
-| `0x5350` | uint32 LE | isokinetic target speed, mm/s (0–2000) |
-| `0x5362` | uint16 LE | resistance-band max force, lb (15–70) |
 | `0x4E2D` | uint8 | battery percent (legacy alias `0x1B5D`) |
 | `0x5182` | uint8 | telemetry notify rate (`0x28` = 40 Hz) |
 | `0x5183` | uint32 | telemetry subscribe token (`F5 7B 65 00`) |
@@ -185,20 +180,14 @@ in a multi-parameter reply.
 > of a pound in the same stream. Neither is consumed by PUMP's set-logging path,
 > so this is a documentation correction rather than a behaviour change.
 
-> **Eccentric (`0x3E88`) is signed, and its unit is not yet confirmed.**
-> `voltra-node-sdk` and `voltra-diy-remote` read it as signed **pounds**;
-> `voltra-knob` reads it as a signed **percentage**. The range (±~195/200) fits
-> either. PUMP registers the id so a state push carrying it decodes cleanly, but
-> **does not write it** — a sign or scale error on a motor write is a physical
-> hazard. Confirm the unit on hardware before driving eccentric overload.
-
-> **Provenance of the new ids.** `0x3E87`/`0x3E88`/`0x53B0`/`0x5350`/`0x5362` are
-> cross-checked across three independent MIT-licensed implementations
+> **Corroboration.** Three independent MIT-licensed implementations
 > (`HJewkes/voltra-node-sdk`, `omarshahine/voltra-knob`,
-> `RyanMarkoff-eaton/voltra-diy-remote`), which agree on id and width. Those
-> same projects independently reproduce the CRC parameters, frame layout, UUIDs,
-> command ids and the workout-state enum below — strong corroboration of the
-> facts in this document.
+> `RyanMarkoff-eaton/voltra-diy-remote`) reproduce the CRC parameters, frame
+> layout, UUIDs, command ids and the workout-state enum below — strong
+> corroboration of the facts in this document. They also document further
+> parameter ids for modes PUMP does not use (chains, eccentric overload,
+> isokinetic, resistance-band); those are deliberately not registered here,
+> since PUMP only ever drives plain weight loading.
 
 Workout-state enum (`0x4FB0`): `0` inactive, `1` weight training, `2` resistance
 band, `3` rowing, `4` damper, `6` custom curve, `7` isokinetic, `8` isometric.
