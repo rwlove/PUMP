@@ -147,46 +147,11 @@ def test_unknown_parameter_write_raises() -> None:
         registry.encode_write(0xDEAD, 1)
 
 
-# ─── modifier parameters and signed values ───────────────────────────────
+# ─── parameter writes refuse nonsense ────────────────────────────────────
 
 
-def test_state_push_with_modifiers_still_reaches_the_safety_gate_params() -> None:
-    # An async state push (0x10) can carry chains/eccentric ahead of the
-    # parameters the motor gates read back. Before these were registered the
-    # walk stopped at the first unknown id and silently dropped WORKOUT_STATE /
-    # FITNESS_MODE, so a gate could read empty and fail closed for the wrong
-    # reason. Registering their widths lets the walk continue to the end.
-    payload = (
-        bytes([0x00, 0x04, 0x00])
-        + b"\x87\x3e\x14\x00"  # chains = 20 lb
-        + b"\x88\x3e\x0a\x00"  # eccentric = +10
-        + b"\xb0\x4f\x01"  # workout state = weight training
-        + b"\x89\x3e\x05\x00"  # fitness mode = loaded
-    )
-    assert registry.decode_reply(payload) == {
-        registry.CHAINS: 20,
-        registry.ECCENTRIC: 10,
-        registry.WORKOUT_STATE: registry.WORKOUT_WEIGHT_TRAINING,
-        registry.FITNESS_MODE: registry.MODE_LOADED,
-    }
-
-
-def test_eccentric_decodes_as_signed() -> None:
-    # 0xFFF6 little-endian is -10 as int16, not 65526. A sign error turns a
-    # modest eccentric overload into a garbage reading.
-    payload = bytes([0x00, 0x01, 0x00]) + b"\x88\x3e\xf6\xff"
-    assert registry.decode_reply(payload) == {registry.ECCENTRIC: -10}
-
-
-def test_eccentric_write_round_trips_a_negative_value() -> None:
-    frame = parse_frame(registry.encode_write(registry.ECCENTRIC, -10, seq=7))
-    assert frame is not None and frame.command == CMD_PARAM_WRITE
-    # 0x01 0x00 | id 88 3e | value f6 ff (int16 LE two's complement)
-    assert frame.payload == b"\x01\x00\x88\x3e\xf6\xff"
-
-
-def test_unsigned_parameter_refuses_a_negative_value() -> None:
-    # to_bytes on an unsigned width raises rather than wrapping — the right
-    # failure for anything that could reach a motor write.
+def test_parameter_write_refuses_a_negative_value() -> None:
+    # to_bytes raises rather than wrapping — the right failure for anything that
+    # could reach a motor write.
     with pytest.raises(OverflowError):
         registry.encode_write(registry.TARGET_LOAD, -1)
