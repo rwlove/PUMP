@@ -50,6 +50,18 @@ def test_metric_exposes_heartbeat_timestamp():
     assert float(line.split()[1]) == pytest.approx(healthd._state.heartbeat_ts)
 
 
+def test_proxy_disconnect_counter_increments_and_is_exposed():
+    assert healthd.state().proxy_disconnects == 0
+    healthd.record_proxy_disconnect()
+    healthd.record_proxy_disconnect()
+    assert healthd.state().proxy_disconnects == 2
+
+    out = healthd.render_metrics()
+    line = [ln for ln in out.splitlines()
+            if ln.startswith("pump_voltra_proxy_disconnects_total ")][0]
+    assert line.split()[1] == "2"
+
+
 def test_healthz_fails_when_wedged():
     fastapi = pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient

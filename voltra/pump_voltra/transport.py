@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 
+from . import healthd
 from .log import get
 
 logger = get(__name__)
@@ -201,6 +202,11 @@ async def connect_proxy(host: str, port: int, psk: str) -> ProxyLink:
         # rebuild it — without it the loop reused a corpse for 19 h once,
         # reporting the trainer permanently absent until a manual pod restart.
         link.alive.clear()
+        # Count only unexpected drops — a planned teardown on shutdown/reconnect
+        # is not a fault. This is the metric an alert keys on for the
+        # LOAD-dropped-mid-workout failure. See healthd.record_proxy_disconnect.
+        if not expected:
+            healthd.record_proxy_disconnect()
         logger.warning("esphome proxy disconnected", host=host, expected=expected)
 
     # Everything from here on must hand the APIClient back to the caller or

@@ -19,6 +19,13 @@ class State:
     sets_inferred: int = 0
     last_error: str = ""
     flagged_exercises: int = 0
+    # Count of UNEXPECTED losses of the always-on ESPHome proxy session (the
+    # gym ESP32 resetting, a Wi-Fi blip, an idle EOF) — i.e. on_stop with
+    # expected=False. Distinct from the trainer being switched off, which is the
+    # normal idle state and is never counted here. A single increment is the
+    # signature of the failure that drops a mid-workout LOAD: the proxy vanished
+    # from under a live BLE session.
+    proxy_disconnects: int = 0
     # Unix time of the last work-loop progress tick. Initialised to now so the
     # liveness gate has a full grace window at startup rather than tripping
     # before the first tick. A frozen value is the signature of a wedged loop:
@@ -83,6 +90,16 @@ def record_set_failed(err: str) -> None:
     _state.last_error = err
 
 
+def record_proxy_disconnect() -> None:
+    """Count one UNEXPECTED loss of the ESPHome proxy session.
+
+    Only unexpected drops (on_stop expected=False) are recorded; a planned
+    teardown on shutdown/reconnect is not a fault. The trainer being powered
+    off never reaches here — that path never establishes a proxy stop event.
+    """
+    _state.proxy_disconnects += 1
+
+
 def render_metrics() -> str:
     s = _state
     lines = [
@@ -109,6 +126,12 @@ def render_metrics() -> str:
         "# HELP pump_voltra_sets_failed_total Sets that could not be written.",
         "# TYPE pump_voltra_sets_failed_total counter",
         f"pump_voltra_sets_failed_total {s.sets_failed}",
+        # A single increment is the mid-workout failure that drops a LOAD: the
+        # always-on gym proxy vanished under a live BLE session. Alert on
+        # increase(...) >= 1 over a short window. Excludes the trainer being off.
+        "# HELP pump_voltra_proxy_disconnects_total Unexpected ESPHome proxy session drops.",
+        "# TYPE pump_voltra_proxy_disconnects_total counter",
+        f"pump_voltra_proxy_disconnects_total {s.proxy_disconnects}",
         # Freshness of the work loop. `time() - this` in a Prometheus rule
         # detects a wedged sidecar (probes still up, loop dead) that a plain
         # scrape can't — the other metrics simply freeze at their last values.
@@ -175,6 +198,7 @@ def build_app():
             "sets_pending": s.sets_pending,
             "sets_inferred": s.sets_inferred,
             "sets_failed": s.sets_failed,
+            "proxy_disconnects": s.proxy_disconnects,
             "last_error": s.last_error,
         }
 
