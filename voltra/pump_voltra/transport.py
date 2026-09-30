@@ -249,7 +249,23 @@ async def connect_trainer(link: ProxyLink, address: str, timeout_s: float = 30.0
     # establish_connection wants a BLEDevice, not an address, and handles the
     # retry/backoff that bleak's own connect() warns about omitting. Attribute
     # access on bleak, NOT `from bleak import BleakClient` — see module docs.
-    client = await establish_connection(bleak.BleakClient, device, address, max_attempts=3)
+    #
+    # A failure *here* is distinct from TrainerNotAdvertising: the trainer is
+    # switched on and advertising (we just heard it), but the connect itself
+    # won't complete. The most common cause is the Beyond+ phone app already
+    # holding the trainer's single BLE central slot — the connect then exhausts
+    # its attempts with a generic error that sends you chasing the proxy or the
+    # key. Name the likely cause so the next person doesn't.
+    try:
+        client = await establish_connection(
+            bleak.BleakClient, device, address, max_attempts=3
+        )
+    except Exception as e:
+        raise TransportError(
+            f"trainer {address} is advertising but would not connect ({e}); "
+            "the Beyond+ phone app may be holding the trainer's single BLE "
+            "connection — close it and retry"
+        ) from e
     link.client = client
     logger.info("trainer connected", address=address, mtu=getattr(client, "mtu_size", None))
     return client

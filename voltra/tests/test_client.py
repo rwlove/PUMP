@@ -11,8 +11,9 @@ import asyncio
 
 import pytest
 
+from pump_voltra import client as client_mod
 from pump_voltra import registry
-from pump_voltra.client import TRANSPORT, VoltraClient
+from pump_voltra.client import COMMAND, TRANSPORT, BootstrapTimeout, VoltraClient
 from pump_voltra.protocol import CMD_PARAM_READ, build_frame
 
 
@@ -40,6 +41,9 @@ class FakeBLE:
 
     def deliver(self, frame: bytes) -> None:
         self._handlers[TRANSPORT](None, bytearray(frame))
+
+    def deliver_on(self, char: str, frame: bytes) -> None:
+        self._handlers[char](None, bytearray(frame))
 
 
 async def attached() -> tuple[FakeBLE, VoltraClient]:
@@ -155,3 +159,32 @@ async def test_malformed_input_does_not_raise(junk: bytes) -> None:
     ble, client = await attached()
     ble.deliver(junk)  # must not raise
     assert client.cached(registry.TARGET_LOAD) is None
+
+
+# ─── bootstrap acceptance: prove the device answered, don't assume it ────────
+
+
+async def test_start_completes_once_the_device_answers(monkeypatch) -> None:
+    monkeypatch.setattr(client_mod, "BOOTSTRAP_TIMEOUT_S", 1.0)
+    ble = FakeBLE()
+    client = VoltraClient(ble, lambda _payload: None)
+
+    task = asyncio.create_task(client.start())
+    # Let the bootstrap writes go out, then answer on the command characteristic
+    # exactly as the device would.
+    await asyncio.sleep(0.5)
+    ble.deliver_on(COMMAND, param_reply({registry.TARGET_LOAD: 40}))
+
+    await asyncio.wait_for(task, timeout=1.0)
+    assert ble.writes, "bootstrap frames should have been written"
+
+
+async def test_start_raises_when_the_device_never_answers(monkeypatch) -> None:
+    # The failure this exists to catch: the handshake blob is invalidated and
+    # the device goes silent. The old code slept and declared success anyway.
+    monkeypatch.setattr(client_mod, "BOOTSTRAP_TIMEOUT_S", 0.2)
+    ble = FakeBLE()
+    client = VoltraClient(ble, lambda _payload: None)
+
+    with pytest.raises(BootstrapTimeout):
+        await client.start()
