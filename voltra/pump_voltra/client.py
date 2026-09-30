@@ -42,8 +42,26 @@ BOOTSTRAP = [
 ]
 
 
+# How long to wait after the bootstrap writes for the device to answer at all.
+# The knob firmware uses a 5 s handshake deadline; match it. The device
+# normally replies within ~1 s, so this only bites when nothing comes back.
+BOOTSTRAP_TIMEOUT_S = 5.0
+
+
 class WorkoutInactive(RuntimeError):
     """The trainer has no active workout, so it will silently ignore writes."""
+
+
+class BootstrapTimeout(RuntimeError):
+    """The device never answered the bootstrap.
+
+    The handshake (0x27) carries an opaque 18-byte magic blob that nothing
+    derives; if a firmware update ever invalidates it the device simply goes
+    silent, and the old code slept a fixed 1.2 s and then declared success
+    regardless. This turns that silent dead-end into a loud, retryable failure
+    so the supervisor reconnects instead of sitting in a session that will
+    never produce a frame.
+    """
 
 
 class VoltraClient:
@@ -54,6 +72,9 @@ class VoltraClient:
         self._on_telemetry = on_telemetry
         self._params: dict[int, int] = {}
         self._seq = 0x50
+        # Set the first time any well-formed frame arrives. start() waits on
+        # this to prove the device actually answered the bootstrap.
+        self._answered = asyncio.Event()
 
     def _next_seq(self) -> int:
         self._seq = (self._seq + 1) & 0xFFFF
@@ -73,6 +94,8 @@ class VoltraClient:
         if frame is None:
             logger.debug("dropped an unparseable or CRC-failing frame", nbytes=len(data))
             return
+        # Any well-formed frame proves the link is live and the bootstrap took.
+        self._answered.set()
         if frame.command in PARAM_COMMANDS:
             self._params.update(registry.decode_reply(frame.payload))
         elif frame.command == CMD_TELEMETRY:
@@ -84,7 +107,16 @@ class VoltraClient:
         for frame_hex in BOOTSTRAP:
             await self._ble.write_gatt_char(TRANSPORT, bytes.fromhex(frame_hex), response=True)
             await asyncio.sleep(0.09)
-        await asyncio.sleep(1.2)
+        # Wait for the device to actually answer rather than sleeping a fixed
+        # interval and assuming it did. See BootstrapTimeout.
+        try:
+            await asyncio.wait_for(self._answered.wait(), timeout=BOOTSTRAP_TIMEOUT_S)
+        except TimeoutError as e:
+            raise BootstrapTimeout(
+                f"no frame from the trainer within {BOOTSTRAP_TIMEOUT_S:.0f}s of "
+                "bootstrap — the handshake blob may have been invalidated by a "
+                "firmware update, or the device is wedged"
+            ) from e
         logger.info("bootstrap complete")
 
     # ─── parameters ──────────────────────────────────────────────────────

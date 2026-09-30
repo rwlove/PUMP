@@ -128,11 +128,22 @@ comes back on command or transport.
 Frames 4–8 are ordinary `0xAA`→`0x10` type-`0x04` frames and can be rebuilt from
 scratch; 1 and 2 use non-standard sender/receiver and are replayed verbatim.
 
-Frame 3 carries an **18-byte opaque blob** that nothing in any known
-implementation derives. It behaves as a static magic — it works across devices —
-but if a firmware update ever invalidates it, bootstrap will fail silently:
-no response ever arrives and the client retries forever. Detect this by timing
-out on the first command-characteristic response rather than assuming success.
+Frame 3 (command `0x27`) carries an **18-byte opaque blob** that nothing in any
+known implementation derives — confirmed against three independent
+reverse-engineered projects, none of which computes it; all hardcode a captured
+constant, exactly as we do. It is *not* the client-identity string — that lives
+in the separate `0x4F` frame (frame 1, `iPad`). The blob is **lineage-specific,
+not device-specific**: our value (and the unlicensed HA component's) begins
+`81 10 5e ab 9e f4 …`, while the `voltra-node-sdk` lineage (`voltra-knob`,
+`voltra-diy-remote`) uses a different constant beginning `81 10 65 f8 c6 b9 …`.
+Both are accepted by the device, so there is no single "correct" blob to derive.
+
+It behaves as a static magic — it works across devices — but if a firmware
+update ever invalidates it, bootstrap will fail silently: no response ever
+arrives. The client now detects this by **timing out on the first
+command-characteristic response** (`BootstrapTimeout`) rather than sleeping a
+fixed interval and assuming success — a silent dead-end becomes a loud,
+retryable failure.
 
 Frame 1 identifies the client as the ASCII string **`iPad`**, inherited from the
 capture this was derived from. The device shows that name on its authorisation
@@ -153,14 +164,41 @@ in a multi-parameter reply.
 | Param | Width | Meaning |
 | --- | --- | --- |
 | `0x3E86` | uint16 LE | target load, lb (valid 5–200) |
+| `0x3E87` | uint16 LE | chains — added resistance that scales with cable position, lb (0–100) |
+| `0x3E88` | **int16 LE** | eccentric overload — **signed**; units unconfirmed (see note) |
 | `0x3E89` | uint16 LE | fitness mode — `0x0004` ready/unloaded, `0x0005` loaded |
 | `0x4FB0` | uint8 | workout state — `0` inactive, `1` weight training |
-| `0x3E83` | uint16 LE | instantaneous force |
-| `0x3E82` | uint16 LE | cable position, cm |
+| `0x3E83` | uint16 LE | instantaneous force, **tenths of a pound** |
+| `0x3E82` | uint16 LE | cable position, **mm** (not cm — see note) |
+| `0x53B0` | uint8 | chain direction — `0` normal, `1` inverse; pairs with `0x3E87` |
+| `0x5350` | uint32 LE | isokinetic target speed, mm/s (0–2000) |
+| `0x5362` | uint16 LE | resistance-band max force, lb (15–70) |
 | `0x4E2D` | uint8 | battery percent (legacy alias `0x1B5D`) |
 | `0x5182` | uint8 | telemetry notify rate (`0x28` = 40 Hz) |
 | `0x5183` | uint32 | telemetry subscribe token (`F5 7B 65 00`) |
-| `0x520A`–`0x520C` | uint16 LE | unknown; pushed via `0x10` |
+| `0x520A`–`0x520C` | uint16 LE | unknown; pushed via `0x10`. Appear in none of the three third-party implementations either — likely app-version-specific. |
+
+> **Units — position and force.** Position was previously labelled cm here; it
+> is almost certainly **mm**. A single rep traces roughly 11 → 566 over the
+> field, and 566 cm (5.7 m) is impossible for a cable pull while 566 mm (0.57 m)
+> is exactly right; `voltra-node-sdk` also decodes it as mm. Force is in tenths
+> of a pound in the same stream. Neither is consumed by PUMP's set-logging path,
+> so this is a documentation correction rather than a behaviour change.
+
+> **Eccentric (`0x3E88`) is signed, and its unit is not yet confirmed.**
+> `voltra-node-sdk` and `voltra-diy-remote` read it as signed **pounds**;
+> `voltra-knob` reads it as a signed **percentage**. The range (±~195/200) fits
+> either. PUMP registers the id so a state push carrying it decodes cleanly, but
+> **does not write it** — a sign or scale error on a motor write is a physical
+> hazard. Confirm the unit on hardware before driving eccentric overload.
+
+> **Provenance of the new ids.** `0x3E87`/`0x3E88`/`0x53B0`/`0x5350`/`0x5362` are
+> cross-checked across three independent MIT-licensed implementations
+> (`HJewkes/voltra-node-sdk`, `omarshahine/voltra-knob`,
+> `RyanMarkoff-eaton/voltra-diy-remote`), which agree on id and width. Those
+> same projects independently reproduce the CRC parameters, frame layout, UUIDs,
+> command ids and the workout-state enum below — strong corroboration of the
+> facts in this document.
 
 Workout-state enum (`0x4FB0`): `0` inactive, `1` weight training, `2` resistance
 band, `3` rowing, `4` damper, `6` custom curve, `7` isokinetic, `8` isometric.
@@ -172,14 +210,16 @@ Nothing streams until you **subscribe**: write `0x5183 = F5 7B 65 00`, then
 
 ### `0xB4` — high-rate stream
 
-8-byte payload, four uint16 LE fields:
+8-byte payload, four LE fields — force (tenths lb), cable position (mm),
+velocity (**signed int16** mm/s; negative = eccentric), and a `0x0032` constant:
 
 ```
 [force][cable position][velocity][0x0032 constant]
 ```
 
 Position traces the rep curve cleanly — observed rising 11 → 566 and back over a
-single repetition. Roughly 40 Hz while loaded. **PUMP does not need this.**
+single repetition (mm, not cm — 566 mm is a plausible pull, 566 cm is not).
+Roughly 40 Hz while loaded. **PUMP does not need this.**
 
 ### `0xAA` — event and summary frames
 
@@ -231,6 +271,17 @@ Byte 0 is battery percent.
    silently disengages after a timeout. Re-assert every ~8 s to hold it. This
    presents as "the protocol is broken" — telemetry flows but force and position
    read 0 forever.
+
+   > **Unresolved — re-validate on hardware.** This ~8 s auto-expiry was
+   > observed on 2026-08-03 and is why we re-assert `MODE_LOADED` every 5 s. But
+   > three of the four third-party implementations (`voltra-node-sdk`,
+   > `voltra-knob`, and the HA component for strength mode) do **not** re-assert
+   > strength load at all — they rely on write-confirmation and device-side
+   > persistence. Either the expiry is mode-specific (and our keepalive is
+   > unnecessary churn for weight training), or those projects carry a latent
+   > silent-drop bug. This is motor-safety-adjacent; confirm which is true at the
+   > trainer before changing the keepalive. **Do not remove the keepalive on the
+   > strength of the other implementations alone.**
 2. **Parameter writes are rejected unless a workout is active.** With
    `0x4FB0 == 0` the device accepts the write, replies `0x11` with payload `00`,
    and changes nothing. Read state first and fail loudly.
