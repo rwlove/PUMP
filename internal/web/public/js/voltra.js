@@ -151,6 +151,22 @@ function voltraFlash(entry, msg) {
     setTimeout(function() { s.classList.remove('voltra-status-warn'); voltraPaint(entry); }, 2500);
 }
 
+// voltraActionable reports whether a sidecar error is one of the curated,
+// human-readable conditions the athlete can act on directly — as opposed to a
+// raw BLE/GATT failure string. These are short enough to live in the row and
+// they name the fix ("press LOAD again", correct the weight), so voltraPaint
+// shows them verbatim instead of flattening them to a generic banner with the
+// detail hidden on hover — otherwise the one message that tells the athlete how
+// to recover is the one they never see. The phrases are the stable, instructive
+// parts of the strings the sidecar/server already emit (pump_voltra control.py,
+// voltra/state.go); match on those rather than the whole string so wording
+// tweaks around them don't silently re-bury the message.
+function voltraActionable(err) {
+    if (!err) return false;
+    return err.indexOf('press LOAD again') !== -1 ||
+           err.indexOf('unusable weight') !== -1;
+}
+
 // voltraPaint renders one entry against the current state. Everything visual
 // lives here so there is exactly one place that decides what "ready" looks
 // like.
@@ -180,10 +196,19 @@ function voltraPaint(entry) {
     if (loaded) {
         status.textContent = 'loaded — recording';
     } else if (pending && _voltraState.Error) {
-        // The raw error is a BLE/GATT string that overflows the row and reads
-        // as noise. Show a short label and keep the full text on hover.
-        status.textContent = 'trainer error — CANCEL to stop';
-        status.title = _voltraState.Error;
+        if (voltraActionable(_voltraState.Error)) {
+            // A curated, actionable condition — e.g. reconnected while a load
+            // was pending. It is short and names exactly what to do, so show it
+            // in full: the whole point is that it gets read and acted on rather
+            // than buried behind a generic label.
+            status.textContent = _voltraState.Error;
+        } else {
+            // The raw error is a BLE/GATT string that overflows the row and
+            // reads as noise. Show a short label and keep the full text on
+            // hover.
+            status.textContent = 'trainer error — CANCEL to stop';
+            status.title = _voltraState.Error;
+        }
     } else if (pending) {
         status.textContent = 'loading…';
     } else if (armed) {
