@@ -102,6 +102,19 @@ input[type="date"] {
   margin: 0;
 }
 
+/* Net body-weight change for the selected period, shown at the right edge of
+   the Body Weight panel header (space-between pushes it opposite the title). */
+.weight-period-delta {
+  font-weight: 600;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  margin-left: auto;
+}
+.weight-period-delta.is-loss { color: var(--bs-success); }
+.weight-period-delta.is-gain { color: var(--bs-danger); }
+.weight-period-delta.is-flat { color: var(--bs-secondary-color); }
+
 .panel-body {
   padding: 1rem;
 }
