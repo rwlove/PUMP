@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -188,7 +189,52 @@ func getSessionFeedback(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	// Optional ?since=YYYY-MM-DD scopes the response for the weekly check-in
+	// reader, which only wants the current window. Dates are stored as
+	// YYYY-MM-DD so a lexical >= is a correct date comparison.
+	if since := c.Query("since"); since != "" {
+		if _, err := time.Parse("2006-01-02", since); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "since must be YYYY-MM-DD"})
+			return
+		}
+		out := make([]models.SessionFeedback, 0, len(fb))
+		for _, f := range fb {
+			if f.Date >= since {
+				out = append(out, f)
+			}
+		}
+		fb = out
+	}
 	c.JSON(http.StatusOK, fb)
+}
+
+// getPrescription returns the committed prescribed session for a date
+// (?date=YYYY-MM-DD, default today) with its items, or 204 when that day is
+// freestyle. Read is open — the workout UI and the weekly check-in both read
+// it; authoring stays behind PLAN_INGEST_KEY.
+func getPrescription(c *gin.Context) {
+	if !planReady(c) {
+		return
+	}
+	date := c.Query("date")
+	if date == "" {
+		date = time.Now().Format("2006-01-02")
+	} else if _, err := time.Parse("2006-01-02", date); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "date must be YYYY-MM-DD"})
+		return
+	}
+	ps, ok, err := planStore.SelectCommittedSessionOn(c.Request.Context(), date)
+	if err != nil {
+		slog.Error("getPrescription: SelectCommittedSessionOn failed",
+			slog.String("date", date), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if !ok {
+		c.Status(http.StatusNoContent)
+		return
+	}
+	c.JSON(http.StatusOK, ps)
 }
 
 func postSessionFeedback(c *gin.Context) {

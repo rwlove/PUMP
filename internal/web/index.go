@@ -73,6 +73,10 @@ func indexHandler(c *gin.Context) {
 	guiData.Muscles = muscles
 	guiData.ServerDate = time.Now().Format("2006-01-02")
 	guiData.DisplayCutoff = cutoff
+	// Today's committed coach prescription, if any. Non-nil makes the template
+	// present the plan header and hide the routine picker (Option 1); nil is a
+	// freestyle day. Soft-degrades to nil on any error.
+	guiData.Prescription = committedSessionToday(c, "indexHandler", guiData.ServerDate)
 
 	c.HTML(http.StatusOK, "index.html", guiData)
 }

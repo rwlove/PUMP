@@ -95,6 +95,9 @@ func registerRoutes(r *gin.Engine) {
 	// in-cluster posture), mirroring the weight/health ingest paths.
 	planAuth := ingestAuth(planIngestKey, "plan ingest")
 	r.GET("/api/programs", getPrograms)
+	// Today's (or ?date=) committed prescription with items — the date-scoped
+	// read the workout UI and weekly check-in use; 204 on a freestyle day.
+	r.GET("/api/prescription", getPrescription)
 	r.POST("/api/programs", planAuth, postProgram)
 	r.DELETE("/api/programs/:id", planAuth, deleteProgram)
 	r.POST("/api/programs/:id/sessions", planAuth, postPrescribedSession)
