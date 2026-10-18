@@ -36,6 +36,8 @@ rollback knows.
 | 8 | Create `health_record` table + `health_record_type_time_idx` | ✅ | Additive table; older code ignores it. Health ingest breaks (endpoint disappears in older code) but the table just accumulates nothing. |
 | 9 | Add `sets_date_idx`, `sets_name_date_idx`, `health_record_start_time_idx` | ✅ | Additive indexes; older code just doesn't use them. Storage cost only. |
 | 10 | Create `app_config` table (single-row settings persistence) | ✅ | Additive table; older code (v0.0.102 and earlier) never reads it. See "Behavior surprise" below. |
+| 11–18 | voltra flag, focus/bodyweight, position/added_weight, muscles/groups/exercise_muscles catalogs, routines/routine_items, measurements | ✅ | All additive columns/tables/indexes; this note lapsed over this range — older code ignores what it doesn't read. |
+| 19 | Add `sets.exercise_id` FK to `exercises`; backfill by normalized name match; `sets_exercise_id_idx` | ✅ | Additive nullable column + index; the free-text `sets.name` is retained, so older code (which reads name, not the FK) is unaffected. The backfill only writes the new column. |
 
 ## Rollback playbook
 

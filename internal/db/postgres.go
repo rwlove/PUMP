@@ -304,6 +304,30 @@ CREATE TABLE IF NOT EXISTS measurements (
 CREATE INDEX IF NOT EXISTS measurements_metric_date_idx ON measurements (metric, date);
 `,
 	},
+	{
+		Version:     19,
+		Description: "add sets.exercise_id FK to exercises; backfill by normalized name match",
+		SQL: `
+ALTER TABLE sets ADD COLUMN IF NOT EXISTS exercise_id INTEGER REFERENCES exercises(id);
+-- Backfill the FK from the free-text name by normalized (trim+lower) match.
+-- The name column stays as the logged record of what was actually typed;
+-- exercise_id augments it so reads and the prescription layer can join
+-- sets -> exercises without string matching. Deterministic: when two
+-- exercises share a normalized name, the lowest id wins. Idempotent — only
+-- fills rows still NULL, so re-running under at-least-once delivery is a no-op.
+UPDATE sets s
+SET exercise_id = m.id
+FROM (
+    SELECT DISTINCT ON (lower(btrim(name))) lower(btrim(name)) AS norm, id
+    FROM exercises
+    WHERE btrim(name) <> ''
+    ORDER BY lower(btrim(name)), id
+) m
+WHERE s.exercise_id IS NULL
+  AND lower(btrim(s.name)) = m.norm;
+CREATE INDEX IF NOT EXISTS sets_exercise_id_idx ON sets (exercise_id);
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any
