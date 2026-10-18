@@ -33,8 +33,11 @@ func testStore(t *testing.T) *PostgresStore {
 		t.Fatalf("migrate: %v", err)
 	}
 	// Start every test from a known-empty state rather than depending on
-	// execution order.
-	for _, tbl := range []string{"sets", "exercises", "weight"} {
+	// execution order. programs is cleared first so its ON DELETE CASCADE
+	// removes prescribed_sessions / prescribed_items (which FK exercises)
+	// before exercises is truncated; sets (which also FK exercises via
+	// exercise_id) is cleared before exercises for the same reason.
+	for _, tbl := range []string{"programs", "session_feedback", "sets", "exercises", "weight"} {
 		if _, err := s.Pool().Exec(context.Background(), "DELETE FROM "+tbl); err != nil {
 			t.Fatalf("truncate %s: %v", tbl, err)
 		}

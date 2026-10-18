@@ -40,10 +40,12 @@ var (
 func RegisterRoutes(r *gin.Engine, s *store.PostgresStore, p *notify.Pushover, pubURL string) {
 	dataStore = s
 	healthStore = s
+	planStore = s
 	pushover = p
 	publicURL = pubURL
 	weightIngestKey = os.Getenv("WEIGHT_INGEST_KEY")
 	healthIngestKey = os.Getenv("HEALTH_INGEST_KEY")
+	planIngestKey = os.Getenv("PLAN_INGEST_KEY")
 	whisperAddr = os.Getenv("WHISPER_WYOMING_ADDR")
 	registerRoutes(r)
 	slog.Debug("api routes registered",
@@ -86,6 +88,20 @@ func registerRoutes(r *gin.Engine) {
 	r.GET("/api/measurements", getMeasurements)
 	r.POST("/api/measurements", postMeasurement)
 	r.DELETE("/api/measurements/:id", deleteMeasurement)
+
+	// Prescription layer (programs, prescribed sessions/items, session
+	// feedback). Reads are open for the UI to present the plan; writes are
+	// authored by the coach agent and gated by PLAN_INGEST_KEY (empty = open,
+	// in-cluster posture), mirroring the weight/health ingest paths.
+	planAuth := ingestAuth(planIngestKey, "plan ingest")
+	r.GET("/api/programs", getPrograms)
+	r.POST("/api/programs", planAuth, postProgram)
+	r.DELETE("/api/programs/:id", planAuth, deleteProgram)
+	r.POST("/api/programs/:id/sessions", planAuth, postPrescribedSession)
+	r.PUT("/api/prescribed-sessions/:id/status", planAuth, putPrescribedSessionStatus)
+	r.PUT("/api/prescribed-sessions/:id/items", planAuth, putPrescribedItems)
+	r.GET("/api/session-feedback", getSessionFeedback)
+	r.POST("/api/session-feedback", planAuth, postSessionFeedback)
 
 	// Sets
 	r.GET("/api/sets", getSets)

@@ -221,6 +221,72 @@ type Measurement struct {
 	Value      decimal.Decimal `json:"Value"`  // lb for grip, seconds for dead_hang
 }
 
+// Program is a training block / mesocycle authored by a coach (e.g. the Arnold
+// agent): a start date, a length in weeks, and which week is the deload. It
+// holds intent — logged work still lives in sets. SelectPrograms resolves its
+// Sessions (and their Items) for display.
+type Program struct {
+	ID          int                 `json:"ID"`
+	Name        string              `json:"Name"`
+	StartDate   string              `json:"StartDate"` // YYYY-MM-DD
+	LengthWeeks int                 `json:"LengthWeeks"`
+	DeloadWeek  int                 `json:"DeloadWeek"` // 1-based; 0 = none
+	CreatedBy   string              `json:"CreatedBy"`
+	Notes       string              `json:"Notes"`
+	CreatedAt   string              `json:"CreatedAt,omitempty"`
+	Sessions    []PrescribedSession `json:"Sessions"`
+}
+
+// PrescribedSession is a dated planned session within a Program. Status is
+// "provisional" or "committed" — an author materializes the next session
+// concretely (committed) while leaving later ones provisional, the
+// one-exposure-ahead leash the plan design calls for.
+type PrescribedSession struct {
+	ID        int              `json:"ID"`
+	ProgramID int              `json:"ProgramID"`
+	Date      string           `json:"Date"` // YYYY-MM-DD
+	Label     string           `json:"Label"`
+	Status    string           `json:"Status"` // "provisional" | "committed"
+	Notes     string           `json:"Notes"`
+	Position  int              `json:"Position"`
+	Items     []PrescribedItem `json:"Items"`
+}
+
+// PrescribedItem is one planned exercise within a PrescribedSession. TargetRIR
+// and TargetWeight are nil when not prescribed / still provisional (a pull
+// whose load waits on the prior session's feedback). Flags is a comma-separated
+// tag list (e.g. "grip-offload,elbow-gated"). AltExerciseID is a substitution,
+// nil when none. ExerciseName/Color/AltExerciseName are resolved from the
+// catalog for display.
+type PrescribedItem struct {
+	ID              int              `json:"ID"`
+	SessionID       int              `json:"SessionID"`
+	ExerciseID      int              `json:"ExerciseID"`
+	Position        int              `json:"Position"`
+	TargetRepsLow   int              `json:"TargetRepsLow"`
+	TargetRepsHigh  int              `json:"TargetRepsHigh"`
+	TargetRIR       *int             `json:"TargetRIR,omitempty"`
+	TargetWeight    *decimal.Decimal `json:"TargetWeight,omitempty"`
+	Rationale       string           `json:"Rationale"`
+	Flags           string           `json:"Flags"`
+	AltExerciseID   *int             `json:"AltExerciseID,omitempty"`
+	ExerciseName    string           `json:"ExerciseName"`
+	Color           string           `json:"Color"`
+	AltExerciseName string           `json:"AltExerciseName,omitempty"`
+}
+
+// SessionFeedback is the athlete's post-session report for a given day: a
+// session RPE (6-10) and a 0-3 next-day soreness/irritation flag. Either may be
+// nil. Keyed by Date (PUMP has no session row); latest RecordedAt wins.
+type SessionFeedback struct {
+	ID         int      `json:"ID"`
+	Date       string   `json:"Date"` // YYYY-MM-DD
+	RPE        *float64 `json:"RPE,omitempty"`
+	ElbowFlag  *int     `json:"ElbowFlag,omitempty"`
+	Note       string   `json:"Note"`
+	RecordedAt string   `json:"RecordedAt,omitempty"`
+}
+
 // HealthRecord is one wearable health datum ingested from Android Health
 // Connect via the HC Webhook bridge. It is deliberately generic so new
 // Health Connect types ingest without a schema change: scalar readings land

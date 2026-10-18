@@ -133,3 +133,29 @@ type HealthStore interface {
 	// filtered to a single metricType ("" = all), newest first.
 	SelectHealthRecords(ctx context.Context, metricType string, since time.Time) ([]models.HealthRecord, error)
 }
+
+// PlanStore persists the prescription layer (schema v20): programs authored by
+// a coach, their dated prescribed sessions and items, and per-session athlete
+// feedback. Kept separate from Store (like HealthStore) so the UI/test mocks of
+// Store need not implement it; the Postgres store implements all three.
+type PlanStore interface {
+	// SelectPrograms returns all programs, each with its prescribed sessions
+	// and their items resolved to exercise name/color, ordered for display.
+	SelectPrograms(ctx context.Context) ([]models.Program, error)
+	// InsertProgram creates a program and returns its id.
+	InsertProgram(ctx context.Context, p models.Program) (int, error)
+	// DeleteProgram removes a program and its sessions/items (cascade).
+	DeleteProgram(ctx context.Context, id int) error
+	// InsertPrescribedSession creates a session under a program and returns its id.
+	InsertPrescribedSession(ctx context.Context, ps models.PrescribedSession) (int, error)
+	// UpdatePrescribedSessionStatus sets a session's status
+	// ("provisional"|"committed"); false means no row had that id.
+	UpdatePrescribedSessionStatus(ctx context.Context, id int, status string) (bool, error)
+	// ReplacePrescribedItems atomically replaces a session's items; positions
+	// are assigned from slice order.
+	ReplacePrescribedItems(ctx context.Context, sessionID int, items []models.PrescribedItem) error
+	// SelectSessionFeedback returns all feedback rows, oldest-first.
+	SelectSessionFeedback(ctx context.Context) ([]models.SessionFeedback, error)
+	// InsertSessionFeedback appends one feedback row for a date.
+	InsertSessionFeedback(ctx context.Context, f models.SessionFeedback) error
+}

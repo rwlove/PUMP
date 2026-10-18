@@ -1136,3 +1136,211 @@ func (s *PostgresStore) SelectHealthRecords(ctx context.Context, metricType stri
 	slog.Debug("db: SelectHealthRecords complete", slog.Int("rows", len(out)))
 	return out, rows.Err()
 }
+
+// ─── prescription layer (programs, prescribed sessions/items, feedback) ─────────
+
+// SelectPrograms returns every program with its sessions and their items
+// resolved to exercise name/color, ordered for display.
+func (s *PostgresStore) SelectPrograms(ctx context.Context) ([]models.Program, error) {
+	slog.Debug("db: SelectPrograms")
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, name, start_date::text, length_weeks, deload_week,
+		        created_by, notes, created_at::text
+		 FROM programs ORDER BY start_date DESC, id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var programs []models.Program
+	progIdx := map[int]int{} // program id → index in programs
+	for rows.Next() {
+		var p models.Program
+		if err := rows.Scan(&p.ID, &p.Name, &p.StartDate, &p.LengthWeeks,
+			&p.DeloadWeek, &p.CreatedBy, &p.Notes, &p.CreatedAt); err != nil {
+			return nil, err
+		}
+		progIdx[p.ID] = len(programs)
+		programs = append(programs, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(programs) == 0 {
+		return programs, nil
+	}
+
+	// Sessions, attached to their program.
+	srows, err := s.pool.Query(ctx,
+		`SELECT id, program_id, date::text, label, status, notes, position
+		 FROM prescribed_sessions ORDER BY date ASC, position ASC, id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer srows.Close()
+	sessIdx := map[int][2]int{} // session id → (program index, session index within program)
+	for srows.Next() {
+		var ps models.PrescribedSession
+		if err := srows.Scan(&ps.ID, &ps.ProgramID, &ps.Date, &ps.Label,
+			&ps.Status, &ps.Notes, &ps.Position); err != nil {
+			return nil, err
+		}
+		pi, ok := progIdx[ps.ProgramID]
+		if !ok {
+			continue
+		}
+		programs[pi].Sessions = append(programs[pi].Sessions, ps)
+		sessIdx[ps.ID] = [2]int{pi, len(programs[pi].Sessions) - 1}
+	}
+	if err := srows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Items, attached to their session; exercise + optional alternate resolved.
+	irows, err := s.pool.Query(ctx,
+		`SELECT pi.id, pi.session_id, pi.exercise_id, pi.position,
+		        pi.target_reps_low, pi.target_reps_high, pi.target_rir,
+		        pi.target_weight::text, pi.rationale, pi.flags, pi.alt_exercise_id,
+		        e.name, e.color, COALESCE(ae.name, '')
+		 FROM prescribed_items pi
+		 JOIN exercises e  ON e.id  = pi.exercise_id
+		 LEFT JOIN exercises ae ON ae.id = pi.alt_exercise_id
+		 ORDER BY pi.session_id, pi.position, pi.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer irows.Close()
+	for irows.Next() {
+		var it models.PrescribedItem
+		var tw *string
+		if err := irows.Scan(&it.ID, &it.SessionID, &it.ExerciseID, &it.Position,
+			&it.TargetRepsLow, &it.TargetRepsHigh, &it.TargetRIR,
+			&tw, &it.Rationale, &it.Flags, &it.AltExerciseID,
+			&it.ExerciseName, &it.Color, &it.AltExerciseName); err != nil {
+			return nil, err
+		}
+		if tw != nil {
+			if d, err := decimal.NewFromString(*tw); err == nil {
+				it.TargetWeight = &d
+			}
+		}
+		loc, ok := sessIdx[it.SessionID]
+		if !ok {
+			continue
+		}
+		programs[loc[0]].Sessions[loc[1]].Items = append(programs[loc[0]].Sessions[loc[1]].Items, it)
+	}
+	return programs, irows.Err()
+}
+
+// InsertProgram creates a program and returns its id.
+func (s *PostgresStore) InsertProgram(ctx context.Context, p models.Program) (int, error) {
+	slog.Debug("db: InsertProgram", slog.String("name", p.Name), slog.String("start", p.StartDate))
+	var id int
+	err := s.pool.QueryRow(ctx,
+		`INSERT INTO programs (name, start_date, length_weeks, deload_week, created_by, notes)
+		 VALUES ($1, $2::date, $3, $4, $5, $6)
+		 RETURNING id`,
+		p.Name, p.StartDate, p.LengthWeeks, p.DeloadWeek, p.CreatedBy, p.Notes).Scan(&id)
+	return id, err
+}
+
+// DeleteProgram removes a program; its sessions and items cascade.
+func (s *PostgresStore) DeleteProgram(ctx context.Context, id int) error {
+	slog.Debug("db: DeleteProgram", slog.Int("id", id))
+	_, err := s.pool.Exec(ctx, `DELETE FROM programs WHERE id = $1`, id)
+	return err
+}
+
+// InsertPrescribedSession creates a session under a program and returns its id.
+func (s *PostgresStore) InsertPrescribedSession(ctx context.Context, ps models.PrescribedSession) (int, error) {
+	slog.Debug("db: InsertPrescribedSession",
+		slog.Int("program_id", ps.ProgramID), slog.String("date", ps.Date), slog.String("status", ps.Status))
+	status := ps.Status
+	if status == "" {
+		status = "provisional"
+	}
+	var id int
+	err := s.pool.QueryRow(ctx,
+		`INSERT INTO prescribed_sessions (program_id, date, label, status, notes, position)
+		 VALUES ($1, $2::date, $3, $4, $5,
+		         COALESCE((SELECT max(position)+1 FROM prescribed_sessions WHERE program_id = $1), 0))
+		 RETURNING id`,
+		ps.ProgramID, ps.Date, ps.Label, status, ps.Notes).Scan(&id)
+	return id, err
+}
+
+// UpdatePrescribedSessionStatus sets a session's status; false means no row
+// had that id.
+func (s *PostgresStore) UpdatePrescribedSessionStatus(ctx context.Context, id int, status string) (bool, error) {
+	slog.Debug("db: UpdatePrescribedSessionStatus", slog.Int("id", id), slog.String("status", status))
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE prescribed_sessions SET status = $1 WHERE id = $2`, status, id)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// ReplacePrescribedItems atomically replaces a session's items, assigning
+// position from slice order.
+func (s *PostgresStore) ReplacePrescribedItems(ctx context.Context, sessionID int, items []models.PrescribedItem) error {
+	slog.Debug("db: ReplacePrescribedItems", slog.Int("session_id", sessionID), slog.Int("count", len(items)))
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op once Commit succeeds
+	if _, err := tx.Exec(ctx, `DELETE FROM prescribed_items WHERE session_id = $1`, sessionID); err != nil {
+		return err
+	}
+	for i, it := range items {
+		var tw *string
+		if it.TargetWeight != nil {
+			ts := it.TargetWeight.String()
+			tw = &ts
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO prescribed_items
+			   (session_id, exercise_id, position, target_reps_low, target_reps_high,
+			    target_rir, target_weight, rationale, flags, alt_exercise_id)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7::numeric, $8, $9, $10)`,
+			sessionID, it.ExerciseID, i, it.TargetRepsLow, it.TargetRepsHigh,
+			it.TargetRIR, tw, it.Rationale, it.Flags, it.AltExerciseID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+// SelectSessionFeedback returns all feedback rows, oldest-first.
+func (s *PostgresStore) SelectSessionFeedback(ctx context.Context) ([]models.SessionFeedback, error) {
+	slog.Debug("db: SelectSessionFeedback")
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, date::text, rpe::float8, elbow_flag, note, recorded_at::text
+		 FROM session_feedback ORDER BY date ASC, recorded_at ASC, id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.SessionFeedback
+	for rows.Next() {
+		var f models.SessionFeedback
+		if err := rows.Scan(&f.ID, &f.Date, &f.RPE, &f.ElbowFlag, &f.Note, &f.RecordedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
+// InsertSessionFeedback appends one feedback row for a date.
+func (s *PostgresStore) InsertSessionFeedback(ctx context.Context, f models.SessionFeedback) error {
+	slog.Debug("db: InsertSessionFeedback", slog.String("date", f.Date))
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO session_feedback (date, rpe, elbow_flag, note)
+		 VALUES ($1::date, $2, $3, $4)`,
+		f.Date, f.RPE, f.ElbowFlag, f.Note)
+	return err
+}
