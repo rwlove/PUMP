@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/rwlove/PUMP/internal/conf"
 	"github.com/rwlove/PUMP/internal/voltra"
 )
 
@@ -97,6 +98,47 @@ func postVoltraLoad(c *gin.Context) {
 type reportRequest struct {
 	Loaded bool   `json:"Loaded"`
 	Error  string `json:"Error"`
+}
+
+type repsRequest struct {
+	Reps int `json:"Reps"`
+}
+
+// postVoltraReps is the sidecar reporting how many reps the finished set had.
+// It attributes them to the armed set in shared state and bumps the completion
+// sequence; the browser writes the number into that set's own row on its next
+// autosave. The sidecar never writes the database here — the set row is the
+// browser's, so the trainer updates the UI's set rather than appending a hidden
+// parallel one.
+func postVoltraReps(c *gin.Context) {
+	var req repsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// The operator's opt-in still gates the feature; with it off the trainer
+	// must not drive the UI at all. Fail loud, matching the set-write gate, so
+	// a sidecar pointed at a server with the toggle off is visibly refused.
+	if !conf.Get().VoltraAutoLog {
+		slog.Warn("postVoltraReps: refused — VoltraAutoLog is off")
+		c.JSON(http.StatusForbidden, gin.H{"error": "Voltra auto-log is disabled"})
+		return
+	}
+	// Belt and braces with the sidecar's own gate: reps reported while nothing
+	// is armed and loaded belong to no set.
+	if !voltra.Get().Recording() {
+		st := voltra.Get()
+		slog.Warn("postVoltraReps: refused — not armed and loaded",
+			slog.Int("armed_set_id", st.ArmedSetID), slog.Bool("loaded", st.Loaded))
+		c.JSON(http.StatusConflict, gin.H{"error": "no Voltra set is armed and loaded"})
+		return
+	}
+	st := voltra.RecordReps(req.Reps)
+	slog.Info("voltra reps reported",
+		slog.Int("set_id", st.CompletedSetID),
+		slog.Int("reps", st.CompletedReps),
+		slog.Int("seq", st.CompletedSeq))
+	c.JSON(http.StatusOK, st)
 }
 
 // postVoltraReport is the sidecar telling us what the hardware actually did.

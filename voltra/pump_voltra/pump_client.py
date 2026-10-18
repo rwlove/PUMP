@@ -5,7 +5,7 @@ same SSE decoding — carrying only what the Voltra sidecar uses:
 
   GET    /api/exercises      — which exercises carry the Voltra flag
   GET    /api/sets           — today's sets, to find the naming anchor
-  POST   /api/sets           — append an auto-logged set
+  POST   /api/voltra/reps    — report a finished set's reps to the armed set
   GET    /api/sets/stream    — SSE: add / update / delete / bulk
 
 The X-Api-Key header is sent on every request when configured.
@@ -79,15 +79,27 @@ class PumpClient:
         r.raise_for_status()
         return r.json() or []
 
-    async def post_set(self, payload: dict[str, Any]) -> int:
-        """Insert a single set. Returns the new id."""
-        r = await self._client.post("/api/sets", json=payload)
+    async def report_reps(self, reps: int) -> bool:
+        """Report a finished set's rep count to PUMP's Voltra coordination state.
+
+        Returns True when PUMP recorded it. The server attributes the reps to
+        the armed set and the browser writes the number into that set's own row
+        — this never creates a set, so the trainer updates the UI instead of
+        appending a hidden parallel row.
+        """
+        r = await self._client.post("/api/voltra/reps", json={"Reps": reps})
         if r.status_code == 403:
             # The operator has the toggle off, presumably deliberately. Fail
-            # loud rather than retrying a write that will never be accepted.
+            # loud rather than retrying a report that will never be accepted.
             raise AutoLogDisabled(r.json().get("error", "Voltra auto-log is disabled"))
+        if r.status_code == 409:
+            # Nothing armed and loaded on the server — the set these reps belong
+            # to is gone. The sidecar's own recording() gate normally prevents
+            # this; treat the race as a skip, not a failure.
+            logger.debug("PUMP had no armed set for the reps; skipping", reps=reps)
+            return False
         r.raise_for_status()
-        return int(r.json()["id"])
+        return True
 
     # ─── voltra coordination ──────────────────────────────────────────────
 

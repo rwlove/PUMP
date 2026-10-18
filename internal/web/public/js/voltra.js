@@ -16,7 +16,14 @@
 // does the hardware and reports back. So `loaded` here always means "the
 // sidecar told us the read-back matched", never "we asked for it".
 
-var _voltraState = {ArmedSetID: 0, WantLoad: false, Loaded: false, Error: ''};
+var _voltraState = {ArmedSetID: 0, WantLoad: false, Loaded: false, Error: '', CompletedSeq: 0};
+
+// The last completion sequence this page has applied. The server bumps
+// CompletedSeq once per finished set; we act only on a higher value, so an SSE
+// reconnect — which re-sends the current state — or any duplicate delivery
+// never applies the same set twice. This is what makes the trainer update the
+// row exactly once instead of the old sidecar appending a duplicate.
+var _voltraLastSeq = 0;
 
 // voltraFlagged reports whether an exercise is performed on the trainer.
 // Driven by the per-exercise checkbox, not the name — plenty of exercises have
@@ -84,6 +91,82 @@ function voltraBindRowClick(entry) {
 function voltraSetId(entry) {
     var sid = entry.dataset.setId;
     return sid ? parseInt(sid, 10) : 0;
+}
+
+// voltraEntryBySetId finds the workout row for a PUMP set id, or null.
+function voltraEntryBySetId(sid) {
+    if (!sid) return null;
+    var entries = document.querySelectorAll('.workout-entry');
+    for (var i = 0; i < entries.length; i++) {
+        if (voltraSetId(entries[i]) === sid) return entries[i];
+    }
+    return null;
+}
+
+// voltraMaybeApplyCompletion acts on a finished set the trainer just reported.
+// The server carries the rep count (CompletedReps) for the set it was attributed
+// to (CompletedSetID) plus a monotonic CompletedSeq. We apply each seq exactly
+// once: write the reps into that set's own row, stamp its provenance, let the
+// existing per-set autosave PATCH it in place, then advance to the next Voltra
+// set. Nothing here creates a row — the set the athlete already has is updated.
+function voltraMaybeApplyCompletion(state) {
+    var seq = state.CompletedSeq || 0;
+    if (seq <= _voltraLastSeq) return;
+    // Mark applied before doing the work: even if the arm below round-trips and
+    // re-delivers this same state, the guard above now rejects it.
+    _voltraLastSeq = seq;
+
+    var entry = voltraEntryBySetId(state.CompletedSetID || 0);
+    if (!entry) return;
+
+    var repsInput = entry.querySelector('input[name="reps"]');
+    if (repsInput) repsInput.value = state.CompletedReps;
+    entry.dataset.source = 'voltra';
+    markDirty(entry);
+    scheduleAutosave();
+    voltraChip(entry);
+
+    voltraAdvance(entry);
+}
+
+// voltraAdvance arms the next Voltra set after `entry` in DOM order, so the
+// athlete moves straight onto it. Arming only points recording at the set and
+// marks it current (green); it never engages the motor — LOAD stays a deliberate
+// press. With no next Voltra set, nothing is armed.
+function voltraAdvance(entry) {
+    var entries = Array.prototype.slice.call(document.querySelectorAll('.workout-entry'));
+    var from = entries.indexOf(entry);
+    for (var i = from + 1; i < entries.length; i++) {
+        var next = entries[i];
+        if (voltraFlagged(voltraEntryName(next)) && voltraSetId(next)) {
+            voltraArm(next);
+            return;
+        }
+    }
+}
+
+// voltraChip shows (or removes) the non-editable "Updated by Voltra" marker on a
+// row, driven purely by its source. It renders on fresh page load too — the
+// server-rendered rows carry their source — so the provenance survives a reload
+// and the consistency-page round-trip. It lives beside the controls, never in
+// the editable note field.
+function voltraChip(entry) {
+    if (!entry) return;
+    var has = entry.dataset.source === 'voltra';
+    var chip = entry.querySelector('.voltra-updated-chip');
+    if (has && !chip) {
+        var controls = entry.querySelector('.entry-controls');
+        if (!controls) return;
+        chip = document.createElement('span');
+        chip.className = 'voltra-updated-chip';
+        chip.textContent = 'Updated by Voltra';
+        chip.setAttribute('title', 'Reps filled in by the Voltra trainer');
+        var ctl = controls.querySelector('.voltra-ctl');
+        if (ctl) controls.insertBefore(chip, ctl);
+        else controls.appendChild(chip);
+    } else if (!has && chip) {
+        chip.remove();
+    }
 }
 
 function voltraWeight(entry) {
@@ -178,7 +261,12 @@ function voltraPaint(entry) {
     // Requested but not (yet) confirmed — the mid-flight and the failing cases.
     var pending = armed && !loaded && !!_voltraState.WantLoad;
 
-    entry.classList.toggle('voltra-armed', armed && !loaded);
+    // The armed-but-not-yet-loaded set is the one you are on now ("current"):
+    // highlighted green so it reads as the active set after an auto-advance.
+    // This is NOT the engaged state — LOAD is still a deliberate press, and the
+    // status text below says so. voltra-loaded (motor confirmed) is a separate,
+    // filled style.
+    entry.classList.toggle('voltra-current', armed && !loaded);
     entry.classList.toggle('voltra-loaded', loaded);
 
     var btn = entry.querySelector('.voltra-load-btn');
@@ -222,12 +310,18 @@ function voltraPaintAll() {
     document.querySelectorAll('.workout-entry').forEach(function(entry) {
         voltraDecorate(entry);
         voltraBindRowClick(entry);
+        voltraChip(entry);
         voltraPaint(entry);
     });
 }
 
 function voltraApply(state) {
-    if (state) _voltraState = state;
+    if (state) {
+        _voltraState = state;
+        // Apply a finished set before repainting so the advanced-to row shows as
+        // current in the same pass.
+        voltraMaybeApplyCompletion(state);
+    }
     voltraPaintAll();
 }
 

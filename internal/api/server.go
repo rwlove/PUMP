@@ -103,6 +103,7 @@ func registerRoutes(r *gin.Engine) {
 	r.POST("/api/voltra/arm", postVoltraArm)
 	r.POST("/api/voltra/disarm", postVoltraDisarm)
 	r.POST("/api/voltra/load", postVoltraLoad)
+	r.POST("/api/voltra/reps", postVoltraReps)
 	r.POST("/api/voltra/report", postVoltraReport)
 
 	// Speech-to-text for set-note dictation. Relays browser-captured PCM to
