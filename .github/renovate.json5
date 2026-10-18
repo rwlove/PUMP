@@ -68,6 +68,12 @@
       enabled: false,
     },
     {
+      description: "The python base for pump-voltra must not move on its own. The 3.14 -> 3.15 bump (#158) broke the image build: the ESPHome BLE stack's transitive dep `lru-dict` has no cp315 wheel and can't compile against 3.15 in -slim. The image only builds on a release tag, so the break was invisible to PR CI until the next tag. Re-enable (and bump voltra/Containerfile) only once lru-dict ships cp315 wheels.",
+      matchManagers: ["dockerfile"],
+      matchDepNames: ["python", "docker.io/library/python"],
+      enabled: false,
+    },
+    {
       description: "setup-python's python-version mirrors the interpreter in the runtime image — 3.12 from the nvidia pytorch base for pump-cv, python:3.12-slim for pump-voltra. Letting it track latest is precisely the bug that was just fixed: CI passing on an interpreter production never runs. Change the base image first, then this.",
       matchManagers: ["github-actions"],
       matchDepNames: ["python"],
