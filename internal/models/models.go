@@ -305,6 +305,10 @@ type GuiData struct {
 	ExerciseMuscles map[int][]FocusMuscle
 	Measurements    []Measurement // grip / dead-hang readings for the Grip & Hang tab
 	Version         string
-	ServerDate      string      // today's date in server timezone (YYYY-MM-DD)
-	Health          HealthStats // wearable aggregates (Health page + Stats tabs)
+	ServerDate      string // today's date in server timezone (YYYY-MM-DD)
+	// DisplayCutoff is the oldest date (YYYY-MM-DD) included in the initial
+	// ExData.Sets window. The workout page fetches days older than this on
+	// demand instead of them silently rendering empty.
+	DisplayCutoff string
+	Health        HealthStats // wearable aggregates (Health page + Stats tabs)
 }

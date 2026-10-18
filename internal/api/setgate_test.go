@@ -20,6 +20,11 @@ import (
 // "accepted and written" — the distinction the source gate exists to make.
 type gateStore struct {
 	inserted []models.Set
+
+	// setsOn is returned by SelectSetsOn; setsOnDate records the date it was
+	// asked for, so a test can assert the ?date= value reached the store.
+	setsOn     []models.Set
+	setsOnDate string
 }
 
 func (g *gateStore) InsertSet(_ context.Context, set models.Set) (models.Set, error) {
@@ -34,10 +39,14 @@ func (g *gateStore) InsertEx(context.Context, models.Exercise) (int, error) { re
 func (g *gateStore) UpdateEx(context.Context, models.Exercise) (bool, error) {
 	return false, nil
 }
-func (g *gateStore) DeleteEx(context.Context, int) error                               { return nil }
-func (g *gateStore) UpdateExColor(context.Context, int, string) error                  { return nil }
-func (g *gateStore) SelectSet(context.Context) ([]models.Set, error)                   { return nil, nil }
-func (g *gateStore) SelectSetsSince(context.Context, string) ([]models.Set, error)     { return nil, nil }
+func (g *gateStore) DeleteEx(context.Context, int) error                           { return nil }
+func (g *gateStore) UpdateExColor(context.Context, int, string) error              { return nil }
+func (g *gateStore) SelectSet(context.Context) ([]models.Set, error)               { return nil, nil }
+func (g *gateStore) SelectSetsSince(context.Context, string) ([]models.Set, error) { return nil, nil }
+func (g *gateStore) SelectSetsOn(_ context.Context, date string) ([]models.Set, error) {
+	g.setsOnDate = date
+	return g.setsOn, nil
+}
 func (g *gateStore) BulkReplaceSetsByDate(context.Context, string, []models.Set) error { return nil }
 func (g *gateStore) GetSet(context.Context, int) (models.Set, error)                   { return models.Set{}, nil }
 func (g *gateStore) UpdateSet(context.Context, int, models.SetUpdate) (models.Set, error) {

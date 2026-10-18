@@ -47,6 +47,41 @@ func TestInsertSet_AssignsSequentialPosition(t *testing.T) {
 	}
 }
 
+// SelectSetsOn returns only the requested day's sets, in per-day display
+// order, and never leaks a neighbouring day — the query the workout page uses
+// to load an out-of-window day on demand.
+func TestSelectSetsOn(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	for _, n := range []string{"A", "B"} {
+		if _, err := s.InsertSet(ctx, models.Set{Date: "2026-07-12", Name: n, Reps: 5}); err != nil {
+			t.Fatalf("InsertSet %s: %v", n, err)
+		}
+	}
+	// A neighbouring day that must not leak into the result.
+	if _, err := s.InsertSet(ctx, models.Set{Date: "2026-07-11", Name: "Z", Reps: 5}); err != nil {
+		t.Fatalf("InsertSet Z: %v", err)
+	}
+
+	sets, err := s.SelectSetsOn(ctx, "2026-07-12")
+	if err != nil {
+		t.Fatalf("SelectSetsOn: %v", err)
+	}
+	if len(sets) != 2 {
+		t.Fatalf("got %d sets, want 2", len(sets))
+	}
+	for _, st := range sets {
+		if st.Date != "2026-07-12" {
+			t.Errorf("leaked a set dated %s", st.Date)
+		}
+	}
+	// Per-day display order is position ascending (insert order here).
+	if sets[0].Name != "A" || sets[1].Name != "B" {
+		t.Errorf("order = [%s %s], want [A B]", sets[0].Name, sets[1].Name)
+	}
+}
+
 // ReorderSets rewrites positions to the given id order and never touches a row
 // on another date, even if a stale client lists its id.
 func TestReorderSets(t *testing.T) {

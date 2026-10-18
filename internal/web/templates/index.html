@@ -86,7 +86,7 @@
         <button class="today-chip date-display-btn" id="dateDisplayBtn"
           onclick="document.getElementById('realDate').showPicker()" title="Pick a date" aria-label="Pick a date"></button>
         <input type="date" id="realDate" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;"
-          onchange='setFormContent(window._allSets, this.value)'>
+          onchange='navigateToDate(this.value)'>
         <button class="nav-day-btn" onclick='moveDayLeftRight(1, window._allSets)' title="Next day" aria-label="Next day">
           <i class="bi bi-chevron-right"></i>
         </button>
@@ -221,6 +221,9 @@
   // DOM and would wipe sidecar-written rows.
   window._autoLog    = {{ .Config.AutoLog }};
   window._serverDate = {{ .ServerDate | json }};
+  // Oldest date in the initial _allSets window; older days are fetched on
+  // demand by navigateToDate instead of rendering empty.
+  window._displayCutoff = {{ .DisplayCutoff | json }};
   renderWeekStreak(window._allSets);
   setFormDate(window._allSets);
   if (window._autoLog) {

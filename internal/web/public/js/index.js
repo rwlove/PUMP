@@ -983,12 +983,63 @@ function openSetsStream() {
     });
 }
 
+// showDayLoading reflects the target date immediately and shows a transient
+// note, so navigating to an older day doesn't flash as an empty "rest day"
+// while that day's sets are being fetched.
+function showDayLoading(date) {
+    document.getElementById("formDate").value = date;
+    document.getElementById("realDate").value = date;
+    var btn = document.getElementById('dateDisplayBtn');
+    if (btn) btn.textContent = formatFriendlyDate(date);
+    var container = document.getElementById('todayEx');
+    if (container) container.innerHTML =
+        '<div class="day-load-msg text-secondary p-3">Loading…</div>';
+    var empty = document.getElementById('emptyState');
+    if (empty) empty.style.display = 'none';
+}
+
+// navigateToDate renders the workout view for `date`. The initial page load
+// only ships sets within the display window (window._displayCutoff..today), so
+// a day older than the cutoff is otherwise blank even though its sets exist
+// server-side. Those days are fetched on demand and merged into _allSets;
+// in-window days render instantly from memory.
+function navigateToDate(date) {
+    if (!date) date = todayStr();
+    var cutoff = window._displayCutoff;
+    // String compare on YYYY-MM-DD — same reason as elsewhere, avoids the
+    // UTC-parse day shift. No cutoff (shouldn't happen) → treat as in-window.
+    if (!cutoff || date >= cutoff) {
+        setFormContent(window._allSets, date);
+        return;
+    }
+    showDayLoading(date);
+    fetch('/api/sets?date=' + encodeURIComponent(date))
+        .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(function(daySets) {
+            daySets = daySets || [];
+            // Drop any rows already held for this date, then add the fetched
+            // ones, so a re-visit stays consistent with the server.
+            var merged = (window._allSets || []).filter(function(s) { return s.Date !== date; });
+            window._allSets = merged.concat(daySets);
+            setFormContent(window._allSets, date);
+        })
+        .catch(function() {
+            // Don't wipe to a misleading empty "rest day" on a load failure —
+            // say so, and let the user retry by re-navigating.
+            var container = document.getElementById('todayEx');
+            if (container) container.innerHTML =
+                '<div class="day-load-msg text-danger p-3">Could not load this day — check your connection and try again.</div>';
+        });
+}
+
 function setFormDate(sets) {
     var date = window.sessionStorage.getItem("today");
     if (!date) {
         date = todayStr();
     }
-    setFormContent(sets, date);
+    // Route through navigateToDate so reloading while viewing an out-of-window
+    // day fetches it rather than showing it empty.
+    navigateToDate(date);
 }
 
 function goToToday() {
@@ -996,7 +1047,7 @@ function goToToday() {
     // rendered server-side at page load, so a phone left open across midnight
     // would otherwise send "Today" to yesterday. en-CA gives YYYY-MM-DD.
     var date = localDateStr(new Date());
-    setFormContent(window._allSets, date);
+    navigateToDate(date);
 }
 
 
@@ -1008,7 +1059,9 @@ function moveDayLeftRight(where, sets) {
     var date  = new Date(year, month - 1, day);
     date.setDate(date.getDate() + parseInt(where));
     var newDate = localDateStr(date);
-    setFormContent(sets, newDate);
+    // navigateToDate fetches the day if it predates the loaded window; `sets`
+    // is kept for the call-site signature but navigateToDate reads _allSets.
+    navigateToDate(newDate);
 }
 
 function selectGroup(gr) {
@@ -1070,8 +1123,8 @@ function renderWeekStreak(sets) {
         // Click a day to jump the workout view to it (same path as prev/next).
         return '<div class="week-dot-item" role="button" tabindex="0" title="' + item.date + '" aria-label="Go to ' + item.date + '"' +
             ' style="cursor:pointer" data-date="' + item.date + '"' +
-            ' onclick="setFormContent(window._allSets, \'' + item.date + '\')"' +
-            ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();setFormContent(window._allSets,\'' + item.date + '\');}">' +
+            ' onclick="navigateToDate(\'' + item.date + '\')"' +
+            ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();navigateToDate(\'' + item.date + '\');}">' +
             '<div class="' + dotCls + '"></div><span class="' + lblCls + '">' + item.label + '</span></div>';
     }).join('');
     el.innerHTML = '<div class="panel week-streak-panel"><div class="week-streak-inner">' +

@@ -354,6 +354,31 @@ func (s *PostgresStore) SelectSetsSince(ctx context.Context, cutoff string) ([]m
 	return sets, rows.Err()
 }
 
+// SelectSetsOn returns the sets for a single date (YYYY-MM-DD), in per-day
+// display order. The workout page uses this to load a day older than its
+// initial display window without fetching the whole history.
+func (s *PostgresStore) SelectSetsOn(ctx context.Context, date string) ([]models.Set, error) {
+	slog.Debug("db: SelectSetsOn", slog.String("date", date))
+	rows, err := s.pool.Query(ctx,
+		`SELECT `+setColumns+` FROM sets WHERE date = $1::date
+		 ORDER BY position ASC, id ASC`, date)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sets []models.Set
+	for rows.Next() {
+		set, err := scanSet(rows)
+		if err != nil {
+			return nil, err
+		}
+		sets = append(sets, set)
+	}
+	slog.Debug("db: SelectSetsOn complete", slog.Int("rows", len(sets)))
+	return sets, rows.Err()
+}
+
 func (s *PostgresStore) GetSet(ctx context.Context, id int) (models.Set, error) {
 	slog.Debug("db: GetSet", slog.Int("id", id))
 	row := s.pool.QueryRow(ctx,

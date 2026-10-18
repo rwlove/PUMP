@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rwlove/PUMP/internal/conf"
@@ -252,6 +253,26 @@ func deleteExercise(c *gin.Context) {
 // ─── sets ─────────────────────────────────────────────────────────────────────
 
 func getSets(c *gin.Context) {
+	// An optional ?date=YYYY-MM-DD scopes the response to a single day. The
+	// workout page uses it to load a day older than its initial display window
+	// on demand, rather than shipping the whole history to the browser.
+	if date := c.Query("date"); date != "" {
+		if _, err := time.Parse("2006-01-02", date); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "date must be YYYY-MM-DD"})
+			return
+		}
+		sets, err := dataStore.SelectSetsOn(c.Request.Context(), date)
+		if err != nil {
+			slog.Error("getSets: SelectSetsOn failed",
+				slog.String("date", date), slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		slog.Debug("getSets", slog.String("date", date), slog.Int("count", len(sets)))
+		c.JSON(http.StatusOK, sets)
+		return
+	}
+
 	sets, err := dataStore.SelectSet(c.Request.Context())
 	if err != nil {
 		slog.Error("getSets: SelectSet failed", slog.Any("error", err))
