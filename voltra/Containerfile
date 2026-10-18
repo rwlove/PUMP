@@ -1,6 +1,11 @@
 # Single stage: unlike pump-cv there is no GPU stack here, so the whole image
 # is small enough that the split base/runtime build buys nothing.
-FROM python:3.15-slim
+# Pinned to 3.14: the ESPHome BLE stack's transitive dep `lru-dict` ships no
+# cp315 wheel yet and won't compile against 3.15's C API in a -slim image (no
+# toolchain), so 3.15 breaks `pip install .`. 3.14 is the last base this image
+# built on (pump-voltra-v0.1.17). Renovate is held at the python base below;
+# revert both when lru-dict publishes cp315 wheels.
+FROM python:3.14-slim
 
 WORKDIR /app
 
