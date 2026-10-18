@@ -106,10 +106,8 @@ func postPrescribedSession(c *gin.Context) {
 		return
 	}
 	ps.ProgramID = programID
-	if strings.TrimSpace(ps.Date) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Date is required (YYYY-MM-DD)"})
-		return
-	}
+	// Date is optional in the queue model — a session lives in the rotation by
+	// position, not a calendar date. An empty Date stores NULL.
 	if ps.Status != "" && !validSessionStatus(ps.Status) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Status must be 'provisional' or 'committed'"})
 		return
@@ -235,6 +233,28 @@ func getPrescription(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, ps)
+}
+
+// getPlanCurrent returns the current training-queue view — the cursor session,
+// the full rotation for the picker, and the next-up label — or 204 when there
+// is no active queue (freestyle). Read is open, like getPrescription; it is
+// what the workout page and any external reader use to see "what's next".
+func getPlanCurrent(c *gin.Context) {
+	if !planReady(c) {
+		return
+	}
+	programs, err := planStore.SelectPrograms(c.Request.Context())
+	if err != nil {
+		slog.Error("getPlanCurrent: SelectPrograms failed", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	qp, ok := models.BuildQueuePlan(programs)
+	if !ok {
+		c.Status(http.StatusNoContent)
+		return
+	}
+	c.JSON(http.StatusOK, qp)
 }
 
 func postSessionFeedback(c *gin.Context) {

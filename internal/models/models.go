@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/json"
+	"sort"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -226,15 +227,20 @@ type Measurement struct {
 // holds intent — logged work still lives in sets. SelectPrograms resolves its
 // Sessions (and their Items) for display.
 type Program struct {
-	ID          int                 `json:"ID"`
-	Name        string              `json:"Name"`
-	StartDate   string              `json:"StartDate"` // YYYY-MM-DD
-	LengthWeeks int                 `json:"LengthWeeks"`
-	DeloadWeek  int                 `json:"DeloadWeek"` // 1-based; 0 = none
-	CreatedBy   string              `json:"CreatedBy"`
-	Notes       string              `json:"Notes"`
-	CreatedAt   string              `json:"CreatedAt,omitempty"`
-	Sessions    []PrescribedSession `json:"Sessions"`
+	ID          int    `json:"ID"`
+	Name        string `json:"Name"`
+	StartDate   string `json:"StartDate"` // YYYY-MM-DD
+	LengthWeeks int    `json:"LengthWeeks"`
+	DeloadWeek  int    `json:"DeloadWeek"` // 1-based; 0 = none
+	CreatedBy   string `json:"CreatedBy"`
+	Notes       string `json:"Notes"`
+	CreatedAt   string `json:"CreatedAt,omitempty"`
+	// CursorPosition is the position of the next-due session in the rotation
+	// queue. Rob trains autoregulated (by feel, no schedule), so the workout
+	// page serves the committed session at this position rather than one dated
+	// to today; completing a session advances it to the next position (wrap).
+	CursorPosition int                 `json:"CursorPosition"`
+	Sessions       []PrescribedSession `json:"Sessions"`
 }
 
 // PrescribedSession is a dated planned session within a Program. Status is
@@ -286,6 +292,66 @@ type SessionFeedback struct {
 	ElbowFlag  *int     `json:"ElbowFlag,omitempty"`
 	Note       string   `json:"Note"`
 	RecordedAt string   `json:"RecordedAt,omitempty"`
+}
+
+// QueuePlan is the workout page's view of the training queue. Rob trains
+// autoregulated (by feel, no schedule), so the plan is a repeating rotation of
+// committed sessions in position order; the active program's cursor marks the
+// next-due session. Current is the session the "Arnold's Routine" button loads;
+// Sessions is the full rotation for the picker; NextLabel names the session the
+// cursor advances to when Current is completed.
+type QueuePlan struct {
+	ProgramID      int                 `json:"ProgramID"`
+	CursorPosition int                 `json:"CursorPosition"`
+	Current        PrescribedSession   `json:"Current"`
+	Sessions       []PrescribedSession `json:"Sessions"`
+	NextLabel      string              `json:"NextLabel"`
+}
+
+// BuildQueuePlan derives the queue view from the authored programs. The active
+// program is the most recently authored (highest id); its committed sessions,
+// in position order, are the rotation. Current is the committed session at or
+// after the cursor position (wrapping to the first when the cursor has moved
+// past the end). ok is false — a freestyle state — when there is no program or
+// the active one has no committed sessions. Provisional sessions are drafts and
+// never enter the rotation.
+func BuildQueuePlan(programs []Program) (*QueuePlan, bool) {
+	if len(programs) == 0 {
+		return nil, false
+	}
+	active := programs[0]
+	for _, p := range programs[1:] {
+		if p.ID > active.ID {
+			active = p
+		}
+	}
+	committed := make([]PrescribedSession, 0, len(active.Sessions))
+	for _, s := range active.Sessions {
+		if s.Status == "committed" {
+			committed = append(committed, s)
+		}
+	}
+	if len(committed) == 0 {
+		return nil, false
+	}
+	sort.SliceStable(committed, func(i, j int) bool {
+		return committed[i].Position < committed[j].Position
+	})
+	cur := 0
+	for i, s := range committed {
+		if s.Position >= active.CursorPosition {
+			cur = i
+			break
+		}
+	}
+	next := committed[(cur+1)%len(committed)]
+	return &QueuePlan{
+		ProgramID:      active.ID,
+		CursorPosition: active.CursorPosition,
+		Current:        committed[cur],
+		Sessions:       committed,
+		NextLabel:      next.Label,
+	}, true
 }
 
 // HealthRecord is one wearable health datum ingested from Android Health
@@ -374,11 +440,11 @@ type GuiData struct {
 	PrimaryIDs   map[int]bool
 	SecondaryIDs map[int]bool
 	Routines     []Routine // workout templates (Library management + workout-page scaffolding)
-	// Prescription is today's committed coach-authored session, when one
-	// exists. Non-nil makes the workout page present the plan header and hide
-	// the "Start routine" picker (Option 1: prescription supersedes); nil is a
-	// freestyle day where the picker behaves as usual.
-	Prescription *PrescribedSession
+	// Queue is the training-queue view: the cursor session the "Arnold's
+	// Routine" button loads, the rotation for the picker, and the next-up
+	// label. Non-nil adds the button + picker + plan header alongside the
+	// always-present "Start routine" picker; nil is a freestyle state.
+	Queue *QueuePlan
 	// ExerciseMuscles maps exercise id → its focus muscles, for the
 	// muscle-level Muscle Balance view. JSON-encoded to the stats page.
 	ExerciseMuscles map[int][]FocusMuscle

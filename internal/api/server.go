@@ -98,6 +98,8 @@ func registerRoutes(r *gin.Engine) {
 	// Today's (or ?date=) committed prescription with items — the date-scoped
 	// read the workout UI and weekly check-in use; 204 on a freestyle day.
 	r.GET("/api/prescription", getPrescription)
+	// Current training-queue view (cursor session + rotation + next-up); open.
+	r.GET("/api/plan/current", getPlanCurrent)
 	r.POST("/api/programs", planAuth, postProgram)
 	r.DELETE("/api/programs/:id", planAuth, deleteProgram)
 	r.POST("/api/programs/:id/sessions", planAuth, postPrescribedSession)

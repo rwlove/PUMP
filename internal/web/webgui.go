@@ -61,6 +61,9 @@ func RegisterRoutes(r *gin.Engine, s *store.PostgresStore) {
 	// unkeyed — the coach-authoring API twin (/api/session-feedback) is what
 	// PLAN_INGEST_KEY gates.
 	r.POST("/feedback/", feedbackHandler)
+	// Advance the training queue to the next session after the one just
+	// completed. Same-origin and unkeyed, like /feedback/.
+	r.POST("/plan/advance/", advanceHandler)
 }
 
 // templateFuncs returns the FuncMap every HTML template is parsed with. It is

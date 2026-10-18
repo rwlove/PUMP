@@ -412,6 +412,20 @@ CREATE INDEX IF NOT EXISTS session_feedback_date_idx ON session_feedback (date, 
 ALTER TABLE prescribed_items ADD COLUMN IF NOT EXISTS target_sets INTEGER NOT NULL DEFAULT 3;
 `,
 	},
+	{
+		Version:     22,
+		Description: "queue/rotation model: nullable session date + program cursor",
+		SQL: `
+-- Rob trains autoregulated (by feel, no schedule), so sessions are a repeating
+-- QUEUE in position order, not calendar-dated. date becomes optional (kept for
+-- reference/logging), and the program carries a cursor pointing at the next-due
+-- session's position. The workout page serves the committed session at the
+-- cursor; completing a session advances the cursor to the next committed
+-- position (wrapping). cursor_position defaults to 1 (the first position).
+ALTER TABLE prescribed_sessions ALTER COLUMN date DROP NOT NULL;
+ALTER TABLE programs ADD COLUMN IF NOT EXISTS cursor_position INTEGER NOT NULL DEFAULT 1;
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any

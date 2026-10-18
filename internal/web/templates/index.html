@@ -132,13 +132,22 @@
           </button>
           <ul class="dropdown-menu" id="routineMenu"></ul>
         </div>
-        {{/* Arnold's Routine: shown only when a coach prescription is committed
-             for today; loads that session's exercises/sets/reps like a routine. */}}
-        {{ if .Prescription }}
-        <button class="btn btn-sm btn-primary rounded-pill px-3" type="button"
-          onclick="startPrescription()" title="Load today's coach-prescribed workout into the log">
-          <i class="bi bi-clipboard-check me-1"></i>Arnold's Routine
-        </button>
+        {{/* Arnold's Routine: present when the queue has sessions. The button
+             loads the cursor (next-up) session into the log; the split caret
+             opens a picker to jump to a different day in the rotation. */}}
+        {{ if .Queue }}
+        <div class="btn-group">
+          <button class="btn btn-sm btn-primary px-3" type="button"
+            onclick="loadQueueSession(window._activeSessionID)"
+            title="Load the next queued workout into the log">
+            <i class="bi bi-clipboard-check me-1"></i>Arnold's Routine
+          </button>
+          <button class="btn btn-sm btn-primary dropdown-toggle dropdown-toggle-split"
+            type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Pick a different day">
+            <span class="visually-hidden">Pick a different day</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end" id="queueMenu"></ul>
+        </div>
         {{ end }}
         <button class="btn btn-sm btn-outline-secondary rounded-pill px-3"
           data-bs-toggle="modal" data-bs-target="#feedbackModal" onclick="openFeedback()"
@@ -158,38 +167,10 @@
 <!-- ── Main Content ───────────────────────────────────────────────────────── -->
 <div class="container-xl py-4">
 
-  {{/* ── Today's plan (the coach's prescription; load it with "Arnold's Routine") ── */}}
-  {{ if .Prescription }}
-  <div class="panel mb-4" id="planHeader">
-    <div class="panel-header d-flex align-items-center justify-content-between">
-      <span class="panel-title">
-        <i class="bi bi-clipboard-check me-2"></i>Today's plan{{ if .Prescription.Label }} · {{ .Prescription.Label }}{{ end }}
-      </span>
-      <span class="badge rounded-pill text-bg-primary">Prescribed</span>
-    </div>
-    {{ if .Prescription.Notes }}<p class="small text-body-secondary mb-2">{{ .Prescription.Notes }}</p>{{ end }}
-    <ul class="list-unstyled mb-0">
-      {{ range .Prescription.Items }}
-      <li class="d-flex align-items-start gap-2 py-2 border-top">
-        <span style="background:{{ .Color }};width:12px;height:12px;border-radius:50%;margin-top:5px;flex-shrink:0;display:inline-block;"></span>
-        <div class="flex-grow-1">
-          <div class="d-flex flex-wrap align-items-baseline gap-2">
-            <span class="fw-semibold">{{ .ExerciseName }}</span>
-            <span class="text-body-secondary small">
-              {{ if .TargetRepsLow }}{{ .TargetRepsLow }}{{ if gt .TargetRepsHigh .TargetRepsLow }}–{{ .TargetRepsHigh }}{{ end }} reps{{ end }}
-              {{ if .TargetRIR }} · RIR {{ derefInt .TargetRIR }}{{ end }}
-              {{ with weightStr .TargetWeight }} · {{ . }} lb{{ else }} · load TBD{{ end }}
-            </span>
-          </div>
-          {{ if .Rationale }}<div class="small text-body-tertiary">{{ .Rationale }}</div>{{ end }}
-          {{ if .AltExerciseName }}<div class="small text-body-tertiary">or {{ .AltExerciseName }}</div>{{ end }}
-          {{ range splitComma .Flags }}<span class="badge rounded-pill text-bg-secondary me-1 mt-1">{{ . }}</span>{{ end }}
-        </div>
-      </li>
-      {{ end }}
-    </ul>
-    <p class="small text-body-tertiary mb-0 mt-2">Tap <strong>Arnold's Routine</strong> above to load this into today's log, then adjust and save as usual.</p>
-  </div>
+  {{/* ── Training queue: the next-up session. JS fills #planHeader from
+        window._queue and re-renders it when a different day is picked. ── */}}
+  {{ if .Queue }}
+  <div class="panel mb-4" id="planHeader"></div>
   {{ end }}
 
   <!-- 7-day streak -->
@@ -290,9 +271,12 @@
   window._allSets    = {{ .ExData.Sets }};
   window._allExs     = {{ .ExData.Exs }};
   window._routines   = {{ .Routines }};
-  // Today's committed coach prescription (null on a freestyle day). Drives the
-  // "Arnold's Routine" button, which scaffolds it into the log like a routine.
-  window._prescription = {{ .Prescription }};
+  // The training queue (null when freestyle). Drives the "Arnold's Routine"
+  // button, the day picker, and the plan header, which scaffold a session into
+  // the log like a routine. _activeSessionID is the session those act on — the
+  // cursor (next-up) by default, or the last day picked.
+  window._queue = {{ .Queue }};
+  window._activeSessionID = (window._queue && window._queue.Current) ? window._queue.Current.ID : 0;
   // Body-weight history (oldest-first), used to pre-fill bodyweight exercises
   // with the most recent reading on or before the viewed day (Feature 6).
   window._allWeight  = {{ .ExData.Weight }};
@@ -326,15 +310,24 @@
       addExercise(it.ExerciseName, weight, reps, color, true); // one set per routine item
     });
   }
-  // Arnold's Routine: scaffold today's committed prescription into the log the
-  // same way startRoutine does — repeated addExercise() calls — but TargetSets
-  // rows per item, pre-filled with the prescribed reps/weight. A provisional
-  // (NULL) load falls back to the exercise's own default, exactly like a
-  // routine; every scaffolded row is an ordinary editable set afterwards.
-  function startPrescription() {
-    var p = window._prescription;
-    if (!p || !p.Items) return;
-    p.Items.forEach(function(it) {
+  // ── Training queue ───────────────────────────────────────────────────────
+  // The "Arnold's Routine" button loads the cursor (next-up) session; the split
+  // picker jumps to any day in the rotation; "Mark complete" advances the
+  // cursor to the next day. Scaffolding a session is just repeated
+  // addExercise() calls (TargetSets rows per item, pre-filled reps/weight),
+  // exactly like startRoutine — every scaffolded row is an ordinary editable
+  // set afterwards, and a provisional (NULL) load falls back to the exercise's
+  // own default like a routine.
+  function qEsc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+  function queueSessionById(id) {
+    if (!window._queue || !window._queue.Sessions) return null;
+    return window._queue.Sessions.find(function(s) { return s.ID === id; });
+  }
+  function loadQueueSession(id) {
+    var s = queueSessionById(id);
+    if (!s || !s.Items) return;
+    window._activeSessionID = id;
+    s.Items.forEach(function(it) {
       var ex = (window._allExs || []).find(function(e) { return e.ID === it.ExerciseID; });
       var weight = (it.TargetWeight && Number(it.TargetWeight) > 0) ? it.TargetWeight : (ex ? ex.Weight : 0);
       var reps = it.TargetRepsLow > 0 ? it.TargetRepsLow : (ex ? ex.Reps : 0);
@@ -344,6 +337,61 @@
         addExercise(it.ExerciseName, weight, reps, color, true);
       }
     });
+    renderQueueHeader(id);
+  }
+  function markCompleteQueue() {
+    if (!window._queue || !window._activeSessionID) return;
+    var body = new URLSearchParams(); body.set('session_id', window._activeSessionID);
+    fetch('/plan/advance/', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
+      .then(function(r) { if (r.ok) location.reload(); });
+  }
+  function renderQueueMenu() {
+    var menu = document.getElementById('queueMenu');
+    if (!menu || !window._queue) return;
+    menu.innerHTML = '';
+    (window._queue.Sessions || []).forEach(function(s) {
+      var li = document.createElement('li'), b = document.createElement('button');
+      b.type = 'button'; b.className = 'dropdown-item';
+      var isCur = window._queue.Current && s.ID === window._queue.Current.ID;
+      b.textContent = s.Label + (isCur ? '  · next up' : '');
+      b.addEventListener('click', function() { loadQueueSession(s.ID); });
+      li.appendChild(b); menu.appendChild(li);
+    });
+  }
+  function renderQueueHeader(id) {
+    var el = document.getElementById('planHeader');
+    if (!el || !window._queue) return;
+    var s = queueSessionById(id) || window._queue.Current;
+    if (!s) { el.innerHTML = ''; return; }
+    var sessions = window._queue.Sessions || [];
+    var idx = sessions.findIndex(function(x) { return x.ID === s.ID; });
+    var nextLabel = (idx >= 0 && sessions.length) ? sessions[(idx + 1) % sessions.length].Label : (window._queue.NextLabel || '');
+    var h = '';
+    h += '<div class="panel-header d-flex align-items-center justify-content-between">';
+    h += '<span class="panel-title"><i class="bi bi-clipboard-check me-2"></i>Next up' + (s.Label ? ' · ' + qEsc(s.Label) : '') + '</span>';
+    h += '<span class="badge rounded-pill text-bg-primary">Queued</span></div>';
+    if (s.Notes) h += '<p class="small text-body-secondary mb-2">' + qEsc(s.Notes) + '</p>';
+    h += '<ul class="list-unstyled mb-0">';
+    (s.Items || []).forEach(function(it) {
+      var reps = it.TargetRepsLow ? (it.TargetRepsLow + (it.TargetRepsHigh > it.TargetRepsLow ? '–' + it.TargetRepsHigh : '') + ' reps') : '';
+      var rir = (it.TargetRIR != null) ? ' · RIR ' + it.TargetRIR : '';
+      var wt = (it.TargetWeight && Number(it.TargetWeight) > 0) ? ' · ' + qEsc(it.TargetWeight) + ' lb' : ' · load TBD';
+      h += '<li class="d-flex align-items-start gap-2 py-2 border-top">';
+      h += '<span style="background:' + qEsc(it.Color || '#2780e3') + ';width:12px;height:12px;border-radius:50%;margin-top:5px;flex-shrink:0;display:inline-block;"></span>';
+      h += '<div class="flex-grow-1"><div class="d-flex flex-wrap align-items-baseline gap-2">';
+      h += '<span class="fw-semibold">' + qEsc(it.ExerciseName) + '</span>';
+      h += '<span class="text-body-secondary small">' + reps + rir + wt + '</span></div>';
+      if (it.Rationale) h += '<div class="small text-body-tertiary">' + qEsc(it.Rationale) + '</div>';
+      if (it.AltExerciseName) h += '<div class="small text-body-tertiary">or ' + qEsc(it.AltExerciseName) + '</div>';
+      (it.Flags ? String(it.Flags).split(',') : []).forEach(function(f) { f = f.trim(); if (f) h += '<span class="badge rounded-pill text-bg-secondary me-1 mt-1">' + qEsc(f) + '</span>'; });
+      h += '</div></li>';
+    });
+    h += '</ul>';
+    h += '<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-2">';
+    h += '<span class="small text-body-tertiary">Tap <strong>Arnold\'s Routine</strong> to load this, then adjust and save.</span>';
+    h += '<button class="btn btn-sm btn-outline-success rounded-pill px-3" type="button" onclick="markCompleteQueue()" title="Mark this day done and advance the queue">Mark complete → ' + qEsc(nextLabel) + '</button>';
+    h += '</div>';
+    el.innerHTML = h;
   }
   function renderRoutineMenu() {
     var menu = document.getElementById('routineMenu');
@@ -367,6 +415,7 @@
     });
   }
   renderRoutineMenu();
+  if (window._queue) { renderQueueMenu(); renderQueueHeader(window._activeSessionID); }
 
   // Open the first exercise group on load so the picker shows exercises
   // immediately instead of a large empty panel. Purely presentational —
