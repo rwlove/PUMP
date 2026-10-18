@@ -23,6 +23,10 @@ type Store interface {
 	// SelectSetsSince returns sets dated on or after cutoff (YYYY-MM-DD),
 	// in the same id order as SelectSet.
 	SelectSetsSince(ctx context.Context, cutoff string) ([]models.Set, error)
+	// SelectSetsOn returns the sets for a single date (YYYY-MM-DD), in per-day
+	// display order. The workout page uses this to load a day older than its
+	// initial display window on demand, instead of shipping all history.
+	SelectSetsOn(ctx context.Context, date string) ([]models.Set, error)
 	// BulkReplaceSetsByDate atomically replaces all sets for a given date.
 	// Used by the manual-entry form path. Per-set ops below are used by the
 	// CV auto-log path and any UI that edits one set at a time.

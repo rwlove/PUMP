@@ -49,6 +49,7 @@ func (f *fakeStore) DeleteEx(context.Context, int) error                        
 func (f *fakeStore) UpdateExColor(context.Context, int, string) error                  { return nil }
 func (f *fakeStore) SelectSet(context.Context) ([]models.Set, error)                   { return nil, nil }
 func (f *fakeStore) SelectSetsSince(context.Context, string) ([]models.Set, error)     { return nil, nil }
+func (f *fakeStore) SelectSetsOn(context.Context, string) ([]models.Set, error)        { return nil, nil }
 func (f *fakeStore) BulkReplaceSetsByDate(context.Context, string, []models.Set) error { return nil }
 func (f *fakeStore) ReorderSets(context.Context, string, []int) error                  { return nil }
 func (f *fakeStore) LastPerformed(context.Context) (map[string]models.ExerciseRecency, error) {

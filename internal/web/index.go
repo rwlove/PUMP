@@ -72,6 +72,7 @@ func indexHandler(c *gin.Context) {
 	guiData.Routines = selectRoutinesSoft(c, "indexHandler")
 	guiData.Muscles = muscles
 	guiData.ServerDate = time.Now().Format("2006-01-02")
+	guiData.DisplayCutoff = cutoff
 
 	c.HTML(http.StatusOK, "index.html", guiData)
 }
