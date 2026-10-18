@@ -422,6 +422,9 @@ func (s *PostgresStore) UpdateSet(ctx context.Context, id int, upd models.SetUpd
 	if upd.Note != nil {
 		add("note", *upd.Note)
 	}
+	if upd.Source != nil {
+		add("source", *upd.Source)
+	}
 	if upd.Confidence != nil {
 		add("confidence", *upd.Confidence)
 	}

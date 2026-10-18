@@ -90,6 +90,11 @@ function saveWorkoutPerSet() {
                 Note: body.Note,
             };
             if (body.AddedWeight !== undefined) patch.AddedWeight = body.AddedWeight;
+            // Carry provenance so a Voltra-filled set keeps its source across
+            // the next load — the "Updated by Voltra" chip is driven by it. Only
+            // sent when the row is Voltra-stamped; a manual edit leaves source
+            // untouched server-side.
+            if (entry.dataset.source === 'voltra') patch.Source = 'voltra';
             p = fetch('/api/sets/' + sid, {
                 method: 'PATCH',
                 headers: writeHeaders(),

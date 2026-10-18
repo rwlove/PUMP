@@ -1,12 +1,9 @@
 """Entrypoint.
 
-Two modes:
-
-  pump-voltra              connect to the trainer and auto-log sets
-  pump-voltra --replay F   feed a captured telemetry file into PUMP instead
-
-Replay exists so the whole path — decode, set tracking, naming, HTTP — can be
-verified against a real PUMP without a trainer in the room.
+Connect to the trainer, count reps, and report each finished set's rep count to
+PUMP's Voltra coordination state. PUMP attributes the reps to the armed set and
+the browser writes them into that set's own row — the sidecar never writes a set
+row of its own.
 """
 
 from __future__ import annotations
@@ -19,7 +16,7 @@ import signal
 from . import config, healthd, log
 from .naming import ExerciseNamer
 from .pump_client import PumpClient
-from .runner import Runner, replay
+from .runner import Runner
 from .session import SetTracker
 
 logger = log.get(__name__)
@@ -286,16 +283,6 @@ async def _amain(args: argparse.Namespace) -> int:
     log.configure()
     healthd.set_heartbeat_stale_after(cfg.heartbeat_stale_seconds)
 
-    if args.replay:
-        async with PumpClient(
-            cfg.pump.base_url, cfg.pump.api_key, cfg.pump.request_timeout_s,
-            cfg.pump.sse_read_timeout_s,
-        ) as pump:
-            namer = ExerciseNamer(cfg.default_exercise)
-            posted = await replay(args.replay, pump, namer, args.weight)
-            logger.info("replay complete", sets_posted=posted, source=args.replay)
-            return 0 if posted else 1
-
     if not cfg.enabled:
         logger.info("VOLTRA_ENABLED is false — no BLE activity; idling")
 
@@ -345,17 +332,6 @@ async def _amain(args: argparse.Namespace) -> int:
 def run() -> None:
     parser = argparse.ArgumentParser(prog="pump-voltra")
     parser.add_argument("--config", help="path to a YAML config file")
-    parser.add_argument(
-        "--replay",
-        metavar="FILE",
-        help="replay a captured telemetry file into PUMP instead of connecting",
-    )
-    parser.add_argument(
-        "--weight",
-        type=int,
-        default=5,
-        help="resistance in lb to attribute to replayed sets (default: 5)",
-    )
     args = parser.parse_args()
     raise SystemExit(asyncio.run(_amain(args)))
 

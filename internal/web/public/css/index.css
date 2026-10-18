@@ -1060,17 +1060,14 @@
   font-weight: 600;
 }
 
-/* ARMED, NOT LOADED — provisional. Dashed outline, faded content, no fill.
-   The row looks like it has not happened yet, because it has not.            */
-.workout-entry.voltra-armed {
-  outline: 2px dashed var(--bs-warning, #ffc107);
+/* CURRENT — armed, not yet loaded: the set you are on now, highlighted green
+   so it reads as active after an auto-advance. A solid green OUTLINE, no fill —
+   deliberately distinct from the filled "loaded/recording" state below, because
+   the motor is not engaged yet and LOAD is still a deliberate press.          */
+.workout-entry.voltra-current {
+  outline: 2px solid var(--bs-success, #198754);
   outline-offset: -3px;
   background: transparent;
-}
-.workout-entry.voltra-armed .entry-name,
-.workout-entry.voltra-armed .entry-num,
-.workout-entry.voltra-armed .set-badge {
-  opacity: 0.55;
 }
 
 /* LOADED — solid and filled. Recording is live. */
@@ -1081,10 +1078,26 @@
 }
 .workout-entry.voltra-loaded .entry-name { font-weight: 700; }
 
-/* A Voltra row that is neither armed nor loaded stays completely ordinary —
+/* A Voltra row that is neither current nor loaded stays completely ordinary —
    the controls should not shout at you on every cable exercise in the day.  */
-.workout-entry.voltra-set:not(.voltra-armed):not(.voltra-loaded) .voltra-status {
+.workout-entry.voltra-set:not(.voltra-current):not(.voltra-loaded) .voltra-status {
   opacity: 0.45;
+}
+
+/* "Updated by Voltra" provenance chip — a small, non-editable marker that a
+   row's reps were filled in by the trainer. Driven by the row's source, so it
+   survives a reload. */
+.voltra-updated-chip {
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--bs-success-text-emphasis, #0a3622);
+  background: var(--bs-success-bg-subtle, #d1e7dd);
+  border: 1px solid var(--bs-success-border-subtle, #a3cfbb);
+  border-radius: 999px;
+  padding: 3px 8px;
+  margin-right: 6px;
 }
 
 @media (prefers-reduced-motion: reduce) {

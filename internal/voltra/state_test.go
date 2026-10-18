@@ -279,3 +279,69 @@ func TestReArmingDoesNotRepublishAStaleLoad(t *testing.T) {
 		t.Error("re-arming republished a stale load as engaged")
 	}
 }
+
+// RecordReps attributes a finished set's reps to the armed set only when a set
+// is armed and loaded — the same gate as Recording — and bumps the completion
+// sequence so the browser can apply it.
+func TestRecordRepsAttributesToArmedWhenRecording(t *testing.T) {
+	t.Cleanup(Reset)
+	Reset()
+	Arm(11, "40")
+	Report(true, "") // armed and loaded → recording
+
+	s := RecordReps(12)
+	if s.CompletedSetID != 11 || s.CompletedReps != 12 {
+		t.Fatalf("CompletedSetID=%d CompletedReps=%d, want 11/12", s.CompletedSetID, s.CompletedReps)
+	}
+	if s.CompletedSeq != 1 {
+		t.Fatalf("CompletedSeq=%d, want 1", s.CompletedSeq)
+	}
+}
+
+// Reps reported with nothing armed, or armed-but-unloaded, must not be
+// attributed to any set — otherwise a count would land on a set performed at a
+// load that was never confirmed.
+func TestRecordRepsIgnoredWhenNotRecording(t *testing.T) {
+	t.Cleanup(Reset)
+
+	Reset()
+	Arm(5, "30") // armed, never loaded
+	if s := RecordReps(8); s.CompletedSeq != 0 || s.CompletedSetID != 0 {
+		t.Fatalf("armed-but-unloaded recorded reps: seq=%d setID=%d", s.CompletedSeq, s.CompletedSetID)
+	}
+
+	Reset()
+	Report(true, "") // loaded, nothing armed
+	if s := RecordReps(8); s.CompletedSeq != 0 {
+		t.Fatalf("recorded reps with nothing armed: seq=%d", s.CompletedSeq)
+	}
+}
+
+// A non-positive count is not a set and must not bump the sequence.
+func TestRecordRepsIgnoresZeroReps(t *testing.T) {
+	t.Cleanup(Reset)
+	Reset()
+	Arm(3, "20")
+	Report(true, "")
+	if s := RecordReps(0); s.CompletedSeq != 0 {
+		t.Fatalf("zero reps bumped the sequence: seq=%d", s.CompletedSeq)
+	}
+}
+
+// Each completion advances the sequence monotonically, so the browser can tell
+// a new finished set from a re-delivered state and apply each exactly once.
+func TestRecordRepsSequenceIsMonotonic(t *testing.T) {
+	t.Cleanup(Reset)
+	Reset()
+	Arm(1, "10")
+	Report(true, "")
+
+	first := RecordReps(5).CompletedSeq
+	Arm(2, "10") // advance to the next set
+	Report(true, "")
+	second := RecordReps(7).CompletedSeq
+
+	if first != 1 || second != 2 {
+		t.Fatalf("sequence not monotonic: first=%d second=%d, want 1,2", first, second)
+	}
+}

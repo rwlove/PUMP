@@ -49,6 +49,25 @@ type State struct {
 	// Loaded=true means the sidecar died holding the motor, and the device's
 	// own ~8 s expiry has since released it.
 	SidecarSeen time.Time `json:"SidecarSeen"`
+
+	// ─── completion: a finished set's reps, attributed to the armed set ──
+	//
+	// When the trainer finishes a set the sidecar reports the rep count here
+	// rather than writing a row of its own. The browser owns the armed set's
+	// row and writes the count into it, so the trainer updates the UI's set
+	// instead of appending a hidden parallel one.
+	//
+	// CompletedSetID is the set the reps belong to (the armed set at the
+	// moment of completion); CompletedReps is the count.
+	CompletedSetID int `json:"CompletedSetID"`
+	CompletedReps  int `json:"CompletedReps"`
+	// CompletedSeq increments once per recorded completion. The browser
+	// applies a completion only when it sees a seq higher than the last it
+	// acted on, so an SSE reconnect — which re-sends the current state — or
+	// any duplicate delivery cannot apply the same finished set twice. This
+	// is the whole anti-duplication guarantee now that nothing writes a
+	// second row.
+	CompletedSeq int `json:"CompletedSeq"`
 }
 
 // Recording reports whether a set may be recorded right now.
@@ -204,6 +223,26 @@ func SetWantLoad(want bool) State {
 			s.Loaded = false
 		}
 		s.Error = ""
+	})
+}
+
+// RecordReps attributes a finished set's rep count to the currently-armed set
+// and bumps the completion sequence so the browser applies it exactly once. It
+// records nothing unless a set is armed and the motor is confirmed loaded — the
+// same gate as Recording — because reps performed against an unconfirmed load
+// must not be attributed to PUMP's weight. It never touches the database: the
+// set row belongs to the browser, which PATCHes the count in on its next
+// autosave. The sidecar reporting proves it is alive, so SidecarSeen is stamped
+// either way.
+func RecordReps(reps int) State {
+	return mutate(func(s *State) {
+		s.SidecarSeen = time.Now()
+		if reps <= 0 || !s.Recording() {
+			return
+		}
+		s.CompletedSetID = s.ArmedSetID
+		s.CompletedReps = reps
+		s.CompletedSeq++
 	})
 }
 

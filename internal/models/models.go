@@ -169,10 +169,15 @@ type Set struct {
 
 // SetUpdate - partial update for one set. Only non-nil fields are applied.
 type SetUpdate struct {
-	Name        *string          `json:"Name,omitempty"`
-	Weight      *decimal.Decimal `json:"Weight,omitempty"`
-	Reps        *int             `json:"Reps,omitempty"`
-	Note        *string          `json:"Note,omitempty"`
+	Name   *string          `json:"Name,omitempty"`
+	Weight *decimal.Decimal `json:"Weight,omitempty"`
+	Reps   *int             `json:"Reps,omitempty"`
+	Note   *string          `json:"Note,omitempty"`
+	// Source lets the browser stamp provenance when it fills a set's reps from
+	// the trainer — the row stays browser-owned (one row, PATCHed in place) but
+	// records that the count came from Voltra, so the "Updated by Voltra" chip
+	// survives a reload.
+	Source      *string          `json:"Source,omitempty"`
 	Confidence  *float64         `json:"Confidence,omitempty"`
 	Pending     *bool            `json:"Pending,omitempty"`
 	ClipPath    *string          `json:"ClipPath,omitempty"`

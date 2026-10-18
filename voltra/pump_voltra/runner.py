@@ -1,14 +1,14 @@
-"""Ties telemetry to PUMP: track sets, name them, post them.
+"""Ties telemetry to PUMP: track sets and report finished-set reps.
 
 Deliberately independent of the BLE layer — it consumes decoded 0xAA payloads
-and a weight source, which is what lets `--replay` drive the exact same code
-path from a captured file with no trainer present.
+and a weight source. The sidecar does not write set rows: on a completed set it
+reports the rep count for the armed set, and the browser writes it into that
+set's own row.
 """
 
 from __future__ import annotations
 
 import asyncio
-import contextlib
 from datetime import datetime
 
 from . import healthd, telemetry
@@ -85,11 +85,11 @@ class Runner:
 
     # ─── the write path ──────────────────────────────────────────────────
 
-    async def post(self, done: CompletedSet) -> None:
+    async def report(self, done: CompletedSet) -> None:
         if self._controller is not None and not self._controller.recording():
             # Not armed, or armed but the motor was never confirmed engaged.
-            # Recording anyway would attribute PUMP's weight to reps performed
-            # against whatever load the trainer happened to be holding.
+            # Reporting anyway would attribute reps to a set that was never
+            # loaded at PUMP's weight.
             logger.info(
                 "set not recorded — no armed and loaded Voltra set",
                 reps=done.reps,
@@ -97,43 +97,31 @@ class Runner:
             )
             return
 
-        today = today_str()
-        anchor, pending = self._namer.resolve(today)
-
-        payload = {
-            "Date": today,
-            "Name": anchor.name,
-            "Color": anchor.color,
-            "WorkoutColor": anchor.workout_color,
-            "Weight": str(done.weight_lb),
-            "Reps": done.reps,
-            "Source": "voltra",
-            "Confidence": 1.0,
-            "Pending": pending,
-            "Note": "Voltra — confirm the exercise." if pending else "",
-        }
-
+        # The browser owns the set row; we only report the rep count for the
+        # armed set, and PUMP attributes it there. Nothing is written to the DB
+        # by the sidecar — the trainer updates the UI's set, it does not create
+        # a parallel one.
         try:
-            set_id = await self._pump.post_set(payload)
+            recorded = await self._pump.report_reps(done.reps)
         except AutoLogDisabled as e:
             # Not retryable: the operator has the toggle off on purpose.
-            logger.error("PUMP refused the write — VOLTRA_AUTOLOG is off", error=str(e))
+            logger.error("PUMP refused the rep report — VOLTRA_AUTOLOG is off", error=str(e))
             healthd.record_set_failed(str(e))
             return
         except Exception as e:
-            logger.error("set write failed", error=str(e), reps=done.reps)
+            logger.error("rep report failed", error=str(e), reps=done.reps)
             healthd.record_set_failed(str(e))
             return
 
-        healthd.record_set_posted(pending=pending, inferred=done.inferred)
+        if not recorded:
+            return
+
+        healthd.record_set_posted(pending=False, inferred=done.inferred)
         logger.info(
-            "set logged",
-            id=set_id,
-            exercise=anchor.name,
+            "reps reported",
             weight_lb=done.weight_lb,
             reps=done.reps,
             device_set=done.set_number,
-            pending=pending,
             inferred=done.inferred,
         )
 
@@ -143,7 +131,7 @@ class Runner:
         if event is None:
             return
         if (done := self._tracker.observe(event, now)) is not None:
-            await self.post(done)
+            await self.report(done)
 
     async def tick_forever(self, interval_s: float = 5.0) -> None:
         """Drive the idle-timeout fallback; telemetry may simply stop."""
@@ -151,30 +139,4 @@ class Runner:
         while True:
             await asyncio.sleep(interval_s)
             if (done := self._tracker.tick(loop.time())) is not None:
-                await self.post(done)
-
-
-async def replay(path: str, pump: PumpClient, namer: ExerciseNamer, weight_lb: int) -> int:
-    """Replay a captured telemetry file into a live PUMP.
-
-    The point of this is end-to-end verification with no trainer: it exercises
-    the real decode, the real set tracker, the real naming resolver and real
-    HTTP writes. Timestamps come from the capture, so it runs instantly.
-    """
-    tracker = SetTracker()
-    tracker.note_weight(weight_lb)
-    runner = Runner(pump, namer, tracker)
-
-    await runner.refresh_exercises()
-    await runner.seed_anchor()
-
-    posted_before = healthd.state().sets_posted
-    for line in open(path):
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        parts = line.split("\t")
-        elapsed, payload_hex = float(parts[0]), parts[-1]
-        with contextlib.suppress(ValueError):
-            await runner.feed(bytes.fromhex(payload_hex), elapsed)
-    return healthd.state().sets_posted - posted_before
+                await self.report(done)
