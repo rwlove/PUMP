@@ -56,13 +56,16 @@ curl -s -XPOST "$BASE/api/programs/12/sessions" -H "X-Api-Key: $KEY" -H 'Content
   "Date": "2026-10-21", "Label": "Back", "Status": "committed"
 }'
 
-# 3. Set its items. ExerciseID references the exercises catalog. TargetWeight /
-#    TargetRIR are optional (omit → provisional load, shown as "load TBD").
-#    Flags is a comma-separated tag list; AltExerciseID is a substitution.
+# 3. Set its items. ExerciseID references the exercises catalog. TargetSets is
+#    how many working-set rows the "Arnold's Routine" button scaffolds for this
+#    item (omit → defaults to 3). TargetWeight / TargetRIR are optional (omit →
+#    provisional load, shown as "load TBD", and the button pre-fills that row
+#    from the exercise's own default). Flags is a comma-separated tag list;
+#    AltExerciseID is a substitution.
 curl -s -XPUT "$BASE/api/prescribed-sessions/34/items" -H "X-Api-Key: $KEY" -H 'Content-Type: application/json' -d '[
-  {"ExerciseID": 47, "TargetRepsLow": 10, "TargetRepsHigh": 12, "TargetRIR": 2,
+  {"ExerciseID": 47, "TargetSets": 4, "TargetRepsLow": 10, "TargetRepsHigh": 12, "TargetRIR": 2,
    "TargetWeight": "120", "Rationale": "hold load", "Flags": "grip-offload,gated"},
-  {"ExerciseID": 48, "TargetRepsLow": 10, "TargetRepsHigh": 12,
+  {"ExerciseID": 48, "TargetSets": 3, "TargetRepsLow": 10, "TargetRepsHigh": 12,
    "Rationale": "load decided at the session", "Flags": "gated"}
 ]'
 

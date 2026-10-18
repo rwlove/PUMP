@@ -208,8 +208,13 @@ func TestIndexTemplateRendersPrescription(t *testing.T) {
 			t.Errorf("planned render missing %q", want)
 		}
 	}
-	if strings.Contains(out, "Start routine") {
-		t.Error("planned render must hide the Start routine picker (Option 1)")
+	// Both actions coexist: the always-available "Start routine" picker plus the
+	// "Arnold's Routine" button that loads today's committed prescription.
+	if !strings.Contains(out, "Start routine") {
+		t.Error("planned render should still show the Start routine picker")
+	}
+	if !strings.Contains(out, "Arnold&#39;s Routine") && !strings.Contains(out, "Arnold's Routine") {
+		t.Error("planned render should show the Arnold's Routine button")
 	}
 
 	var buf2 bytes.Buffer
@@ -222,5 +227,8 @@ func TestIndexTemplateRendersPrescription(t *testing.T) {
 	}
 	if strings.Contains(free, "Today's plan") {
 		t.Error("freestyle render should not show a plan header")
+	}
+	if strings.Contains(free, "Arnold's Routine") || strings.Contains(free, "Arnold&#39;s Routine") {
+		t.Error("freestyle render should not show the Arnold's Routine button")
 	}
 }

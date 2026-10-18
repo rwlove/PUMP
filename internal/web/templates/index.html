@@ -124,10 +124,7 @@
       </div>
       <!-- Right-side actions -->
       <div class="d-flex align-items-center gap-2">
-        {{/* Option 1 — prescription supersedes: on a planned day the plan
-             header below already answers "what's today", so the routine
-             picker is hidden. Freestyle days keep it. */}}
-        {{ if not .Prescription }}
+        {{/* Start routine: pre-fill today from a saved routine. Always available. */}}
         <div class="dropdown">
           <button class="btn btn-sm btn-outline-primary rounded-pill px-3 dropdown-toggle" type="button"
             data-bs-toggle="dropdown" aria-expanded="false" title="Pre-fill today from a routine">
@@ -135,6 +132,13 @@
           </button>
           <ul class="dropdown-menu" id="routineMenu"></ul>
         </div>
+        {{/* Arnold's Routine: shown only when a coach prescription is committed
+             for today; loads that session's exercises/sets/reps like a routine. */}}
+        {{ if .Prescription }}
+        <button class="btn btn-sm btn-primary rounded-pill px-3" type="button"
+          onclick="startPrescription()" title="Load today's coach-prescribed workout into the log">
+          <i class="bi bi-clipboard-check me-1"></i>Arnold's Routine
+        </button>
         {{ end }}
         <button class="btn btn-sm btn-outline-secondary rounded-pill px-3"
           data-bs-toggle="modal" data-bs-target="#feedbackModal" onclick="openFeedback()"
@@ -154,7 +158,7 @@
 <!-- ── Main Content ───────────────────────────────────────────────────────── -->
 <div class="container-xl py-4">
 
-  {{/* ── Today's prescription (Option 1: prescription supersedes) ──────── */}}
+  {{/* ── Today's plan (the coach's prescription; load it with "Arnold's Routine") ── */}}
   {{ if .Prescription }}
   <div class="panel mb-4" id="planHeader">
     <div class="panel-header d-flex align-items-center justify-content-between">
@@ -184,7 +188,7 @@
       </li>
       {{ end }}
     </ul>
-    <p class="small text-body-tertiary mb-0 mt-2">Log your sets below as usual — this is your coach's plan for today.</p>
+    <p class="small text-body-tertiary mb-0 mt-2">Tap <strong>Arnold's Routine</strong> above to load this into today's log, then adjust and save as usual.</p>
   </div>
   {{ end }}
 
@@ -286,6 +290,9 @@
   window._allSets    = {{ .ExData.Sets }};
   window._allExs     = {{ .ExData.Exs }};
   window._routines   = {{ .Routines }};
+  // Today's committed coach prescription (null on a freestyle day). Drives the
+  // "Arnold's Routine" button, which scaffolds it into the log like a routine.
+  window._prescription = {{ .Prescription }};
   // Body-weight history (oldest-first), used to pre-fill bodyweight exercises
   // with the most recent reading on or before the viewed day (Feature 6).
   window._allWeight  = {{ .ExData.Weight }};
@@ -317,6 +324,25 @@
       var reps = it.TargetReps > 0 ? it.TargetReps : (ex ? ex.Reps : 0);
       var color = it.Color || (ex ? ex.Color : '#2780e3');
       addExercise(it.ExerciseName, weight, reps, color, true); // one set per routine item
+    });
+  }
+  // Arnold's Routine: scaffold today's committed prescription into the log the
+  // same way startRoutine does — repeated addExercise() calls — but TargetSets
+  // rows per item, pre-filled with the prescribed reps/weight. A provisional
+  // (NULL) load falls back to the exercise's own default, exactly like a
+  // routine; every scaffolded row is an ordinary editable set afterwards.
+  function startPrescription() {
+    var p = window._prescription;
+    if (!p || !p.Items) return;
+    p.Items.forEach(function(it) {
+      var ex = (window._allExs || []).find(function(e) { return e.ID === it.ExerciseID; });
+      var weight = (it.TargetWeight && Number(it.TargetWeight) > 0) ? it.TargetWeight : (ex ? ex.Weight : 0);
+      var reps = it.TargetRepsLow > 0 ? it.TargetRepsLow : (ex ? ex.Reps : 0);
+      var color = it.Color || (ex ? ex.Color : '#2780e3');
+      var sets = it.TargetSets > 0 ? it.TargetSets : 1;
+      for (var i = 0; i < sets; i++) {
+        addExercise(it.ExerciseName, weight, reps, color, true);
+      }
     });
   }
   function renderRoutineMenu() {

@@ -401,6 +401,17 @@ CREATE TABLE IF NOT EXISTS session_feedback (
 CREATE INDEX IF NOT EXISTS session_feedback_date_idx ON session_feedback (date, recorded_at DESC);
 `,
 	},
+	{
+		Version:     21,
+		Description: "add target_sets to prescribed_items (set count the plan scaffolds)",
+		SQL: `
+-- How many working sets the author prescribes for this item. The workout page's
+-- "Arnold's Routine" button scaffolds this many pre-filled set rows per item
+-- (as a saved routine's items each scaffold a row). Default 3 — the common
+-- working-set count — so an item always scaffolds something; authors override it.
+ALTER TABLE prescribed_items ADD COLUMN IF NOT EXISTS target_sets INTEGER NOT NULL DEFAULT 3;
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any
