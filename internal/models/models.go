@@ -165,6 +165,13 @@ type Set struct {
 	// marks the row as a bodyweight set whose Weight is the body-weight
 	// snapshot taken when it was logged. Total load = Weight + AddedWeight.
 	AddedWeight *decimal.Decimal `db:"ADDED_WEIGHT" json:"AddedWeight,omitempty"`
+	// ExerciseID is the normalized foreign key to exercises(id), added in
+	// schema v19. The free-text Name column remains the logged record of what
+	// was typed; ExerciseID augments it so reads and the prescription layer can
+	// join sets -> exercises without string matching. It is resolved from Name
+	// on insert and nil when the name matched no exercise (ad-hoc free-text
+	// entry, or an exercise renamed after the set was logged).
+	ExerciseID *int `db:"EXERCISE_ID" json:"ExerciseID,omitempty"`
 }
 
 // SetUpdate - partial update for one set. Only non-nil fields are applied.

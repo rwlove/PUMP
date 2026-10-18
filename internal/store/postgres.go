@@ -287,7 +287,7 @@ func (s *PostgresStore) UpdateExColor(ctx context.Context, id int, color string)
 
 const setColumns = `id, date::text, name, color, workout_color,
 	weight::text, reps, note, source, confidence, pending, clip_path,
-	position, added_weight::text`
+	position, added_weight::text, exercise_id`
 
 func scanSet(row interface{ Scan(...any) error }) (models.Set, error) {
 	var set models.Set
@@ -296,7 +296,7 @@ func scanSet(row interface{ Scan(...any) error }) (models.Set, error) {
 	if err := row.Scan(&set.ID, &set.Date, &set.Name, &set.Color,
 		&set.WorkoutColor, &weightStr, &set.Reps, &set.Note,
 		&set.Source, &set.Confidence, &set.Pending, &set.ClipPath,
-		&set.Position, &addedStr); err != nil {
+		&set.Position, &addedStr, &set.ExerciseID); err != nil {
 		return set, err
 	}
 	set.Weight, _ = decimal.NewFromString(weightStr)
@@ -410,10 +410,11 @@ func (s *PostgresStore) InsertSet(ctx context.Context, set models.Set) (models.S
 	row := s.pool.QueryRow(ctx,
 		`INSERT INTO sets (date, name, color, workout_color, weight, reps,
 		                   note, source, confidence, pending, clip_path,
-		                   position, added_weight)
+		                   position, added_weight, exercise_id)
 		 VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
 		         (SELECT COALESCE(MAX(position), -1) + 1 FROM sets WHERE date = $1::date),
-		         $12::numeric)
+		         $12::numeric,
+		         (SELECT id FROM exercises WHERE lower(btrim(name)) = lower(btrim($2)) ORDER BY id LIMIT 1))
 		 RETURNING `+setColumns,
 		set.Date, set.Name, set.Color, set.WorkoutColor,
 		set.Weight.String(), set.Reps, set.Note,
