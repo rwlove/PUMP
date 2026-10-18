@@ -158,4 +158,10 @@ type PlanStore interface {
 	SelectSessionFeedback(ctx context.Context) ([]models.SessionFeedback, error)
 	// InsertSessionFeedback appends one feedback row for a date.
 	InsertSessionFeedback(ctx context.Context, f models.SessionFeedback) error
+	// SelectCommittedSessionOn returns the committed prescribed session for a
+	// date (YYYY-MM-DD) with its items resolved to exercise name/color. This
+	// is the "what's prescribed today" read the workout page presents.
+	// ok=false means no committed session on that date — a freestyle day,
+	// where the routine picker takes over.
+	SelectCommittedSessionOn(ctx context.Context, date string) (models.PrescribedSession, bool, error)
 }

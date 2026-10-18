@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 
 	"github.com/rwlove/PUMP/internal/store"
 )
@@ -17,16 +19,9 @@ import (
 func RegisterRoutes(r *gin.Engine, s *store.PostgresStore) {
 	dataStore = s
 	healthStore = s
+	planStore = s
 
-	templ := template.New("").Funcs(template.FuncMap{
-		"json": func(v interface{}) template.JS {
-			j, _ := json.Marshal(v)
-			return template.JS(j)
-		},
-		"safeJS": func(s interface{}) template.JS {
-			return template.JS(fmt.Sprint(s))
-		},
-	})
+	templ := template.New("").Funcs(templateFuncs())
 	templ = template.Must(templ.ParseFS(templFS, "templates/*"))
 	r.SetHTMLTemplate(templ)
 	r.StaticFS("/fs/", http.FS(pubFS))
@@ -62,6 +57,57 @@ func RegisterRoutes(r *gin.Engine, s *store.PostgresStore) {
 	r.POST("/set/", setHandler)
 	r.POST("/weight/", addWeightHandler)
 	r.POST("/wdel/", deleteWeightHandler)
+	// Athlete feedback (session RPE + next-day soreness). Same-origin form,
+	// unkeyed — the coach-authoring API twin (/api/session-feedback) is what
+	// PLAN_INGEST_KEY gates.
+	r.POST("/feedback/", feedbackHandler)
+}
+
+// templateFuncs returns the FuncMap every HTML template is parsed with. It is
+// a package function (not inline in RegisterRoutes) so the template-parse test
+// can validate the templates against the exact same funcs the app uses.
+func templateFuncs() template.FuncMap {
+	return template.FuncMap{
+		"json": func(v interface{}) template.JS {
+			j, _ := json.Marshal(v)
+			return template.JS(j)
+		},
+		"safeJS": func(s interface{}) template.JS {
+			return template.JS(fmt.Sprint(s))
+		},
+		// derefInt renders a *int target (RIR) — nil prints nothing; guard the
+		// surrounding block with {{ if .TargetRIR }} first.
+		"derefInt": func(p *int) int {
+			if p == nil {
+				return 0
+			}
+			return *p
+		},
+		// weightStr renders a *decimal target weight; "" when not prescribed
+		// (a provisional pull whose load waits on feedback).
+		"weightStr": func(p *decimal.Decimal) string {
+			if p == nil {
+				return ""
+			}
+			return p.String()
+		},
+		// splitComma turns a "grip-offload,elbow-gated" flag string into its
+		// individual tags so the template can render one badge per flag.
+		"splitComma": func(s string) []string {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				return nil
+			}
+			parts := strings.Split(s, ",")
+			out := make([]string, 0, len(parts))
+			for _, p := range parts {
+				if p = strings.TrimSpace(p); p != "" {
+					out = append(out, p)
+				}
+			}
+			return out
+		},
+	}
 }
 
 // serviceWorkerHandler serves the app service worker at the root path so its

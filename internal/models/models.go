@@ -373,6 +373,11 @@ type GuiData struct {
 	PrimaryIDs   map[int]bool
 	SecondaryIDs map[int]bool
 	Routines     []Routine // workout templates (Library management + workout-page scaffolding)
+	// Prescription is today's committed coach-authored session, when one
+	// exists. Non-nil makes the workout page present the plan header and hide
+	// the "Start routine" picker (Option 1: prescription supersedes); nil is a
+	// freestyle day where the picker behaves as usual.
+	Prescription *PrescribedSession
 	// ExerciseMuscles maps exercise id → its focus muscles, for the
 	// muscle-level Muscle Balance view. JSON-encoded to the stats page.
 	ExerciseMuscles map[int][]FocusMuscle

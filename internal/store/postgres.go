@@ -1344,3 +1344,61 @@ func (s *PostgresStore) InsertSessionFeedback(ctx context.Context, f models.Sess
 		f.Date, f.RPE, f.ElbowFlag, f.Note)
 	return err
 }
+
+// SelectCommittedSessionOn returns the committed prescribed session for date
+// (YYYY-MM-DD) with its items resolved, or ok=false when the day is freestyle.
+// Only committed sessions surface — a provisional session is still being
+// authored and must not drive the UI. If more than one committed session
+// somehow shares a date, the lowest position/id wins (deterministic).
+func (s *PostgresStore) SelectCommittedSessionOn(ctx context.Context, date string) (models.PrescribedSession, bool, error) {
+	slog.Debug("db: SelectCommittedSessionOn", slog.String("date", date))
+	var ps models.PrescribedSession
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, program_id, date::text, label, status, notes, position
+		 FROM prescribed_sessions
+		 WHERE date = $1::date AND status = 'committed'
+		 ORDER BY position ASC, id ASC
+		 LIMIT 1`, date).Scan(&ps.ID, &ps.ProgramID, &ps.Date, &ps.Label,
+		&ps.Status, &ps.Notes, &ps.Position)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.PrescribedSession{}, false, nil
+	}
+	if err != nil {
+		return models.PrescribedSession{}, false, err
+	}
+
+	irows, err := s.pool.Query(ctx,
+		`SELECT pi.id, pi.session_id, pi.exercise_id, pi.position,
+		        pi.target_reps_low, pi.target_reps_high, pi.target_rir,
+		        pi.target_weight::text, pi.rationale, pi.flags, pi.alt_exercise_id,
+		        e.name, e.color, COALESCE(ae.name, '')
+		 FROM prescribed_items pi
+		 JOIN exercises e  ON e.id  = pi.exercise_id
+		 LEFT JOIN exercises ae ON ae.id = pi.alt_exercise_id
+		 WHERE pi.session_id = $1
+		 ORDER BY pi.position, pi.id`, ps.ID)
+	if err != nil {
+		return models.PrescribedSession{}, false, err
+	}
+	defer irows.Close()
+	for irows.Next() {
+		var it models.PrescribedItem
+		var tw *string
+		if err := irows.Scan(&it.ID, &it.SessionID, &it.ExerciseID, &it.Position,
+			&it.TargetRepsLow, &it.TargetRepsHigh, &it.TargetRIR,
+			&tw, &it.Rationale, &it.Flags, &it.AltExerciseID,
+			&it.ExerciseName, &it.Color, &it.AltExerciseName); err != nil {
+			return models.PrescribedSession{}, false, err
+		}
+		if tw != nil {
+			if d, err := decimal.NewFromString(*tw); err == nil {
+				it.TargetWeight = &d
+			}
+		}
+		ps.Items = append(ps.Items, it)
+	}
+	if err := irows.Err(); err != nil {
+		return models.PrescribedSession{}, false, err
+	}
+	return ps, true, nil
+}

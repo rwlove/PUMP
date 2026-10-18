@@ -220,3 +220,65 @@ func TestSessionFeedback_InsertSelectAndRanges(t *testing.T) {
 		t.Error("expected elbow_flag=5 to violate the CHECK constraint, got nil")
 	}
 }
+
+// SelectCommittedSessionOn returns only a committed session on the exact date,
+// with items resolved; a provisional session on that date, and any session on
+// another date, do not surface.
+func TestSelectCommittedSessionOn(t *testing.T) {
+	s := testStore(t)
+	cleanPlanTables(t, s)
+	ctx := context.Background()
+
+	exID := mustInsertEx(t, s, "Lat Pulldown", "Back", "#123")
+	progID, err := s.InsertProgram(ctx, models.Program{
+		Name: "Block B", StartDate: "2026-10-20", LengthWeeks: 4,
+	})
+	if err != nil {
+		t.Fatalf("InsertProgram: %v", err)
+	}
+
+	// Committed session on the target date, with one concrete item.
+	cID, err := s.InsertPrescribedSession(ctx, models.PrescribedSession{
+		ProgramID: progID, Date: "2026-10-21", Label: "Back", Status: "committed",
+	})
+	if err != nil {
+		t.Fatalf("InsertPrescribedSession (committed): %v", err)
+	}
+	tw := decimal.NewFromInt(120)
+	if err := s.ReplacePrescribedItems(ctx, cID, []models.PrescribedItem{
+		{ExerciseID: exID, TargetRepsLow: 10, TargetRepsHigh: 12, TargetRIR: intp(2),
+			TargetWeight: &tw, Rationale: "hold load", Flags: "grip-offload"},
+	}); err != nil {
+		t.Fatalf("ReplacePrescribedItems: %v", err)
+	}
+
+	// A provisional session on the SAME date must not win.
+	if _, err := s.InsertPrescribedSession(ctx, models.PrescribedSession{
+		ProgramID: progID, Date: "2026-10-21", Label: "Back (prov)", Status: "provisional",
+	}); err != nil {
+		t.Fatalf("InsertPrescribedSession (provisional): %v", err)
+	}
+
+	ps, ok, err := s.SelectCommittedSessionOn(ctx, "2026-10-21")
+	if err != nil {
+		t.Fatalf("SelectCommittedSessionOn: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected a committed session on 2026-10-21")
+	}
+	if ps.ID != cID || ps.Status != "committed" || ps.Label != "Back" {
+		t.Fatalf("wrong session returned: %+v", ps)
+	}
+	if len(ps.Items) != 1 {
+		t.Fatalf("got %d items, want 1", len(ps.Items))
+	}
+	it := ps.Items[0]
+	if it.ExerciseName != "Lat Pulldown" || it.TargetWeight == nil || !it.TargetWeight.Equal(tw) || it.Flags != "grip-offload" {
+		t.Fatalf("item not resolved: %+v", it)
+	}
+
+	// A date with no committed session is freestyle (ok=false).
+	if _, ok, err := s.SelectCommittedSessionOn(ctx, "2026-10-25"); err != nil || ok {
+		t.Fatalf("freestyle date: ok=%v err=%v, want ok=false", ok, err)
+	}
+}

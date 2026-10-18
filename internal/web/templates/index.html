@@ -74,6 +74,36 @@
   </div>
 </div>
 
+<!-- ── Session Feedback Modal ───────────────────────────────────────────── -->
+<div class="modal fade" id="feedbackModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content rounded-4 border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h6 class="modal-title fw-bold"><i class="bi bi-clipboard-heart me-2"></i>Session feedback</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form action="/feedback/" method="post" class="d-flex flex-column gap-3" id="feedbackForm">
+          <div>
+            <label class="form-label small text-body-secondary mb-1">Today's session RPE (6–10)</label>
+            <input name="rpe" type="number" step="0.5" min="6" max="10" class="form-control rounded-3"
+              placeholder="how hard — blank to skip">
+            <input name="rpe_date" type="hidden" id="feedbackRpeDate">
+          </div>
+          <div>
+            <label class="form-label small text-body-secondary mb-1">Yesterday's soreness / irritation (0–3)</label>
+            <input name="soreness" type="number" step="1" min="0" max="3" class="form-control rounded-3"
+              placeholder="0 none … 3 marked — blank to skip">
+            <input name="soreness_date" type="hidden" id="feedbackSoreDate">
+          </div>
+          <p class="small text-body-tertiary mb-0">Next-day rating is about <em>yesterday's</em> session — soreness often shows up a day later.</p>
+          <button type="submit" class="btn btn-primary rounded-3"><i class="bi bi-check-lg me-1"></i>Save</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Sticky Date Navigation Bar ───────────────────────────────────────── -->
 <div class="date-nav-bar">
   <div class="container-xl">
@@ -94,6 +124,10 @@
       </div>
       <!-- Right-side actions -->
       <div class="d-flex align-items-center gap-2">
+        {{/* Option 1 — prescription supersedes: on a planned day the plan
+             header below already answers "what's today", so the routine
+             picker is hidden. Freestyle days keep it. */}}
+        {{ if not .Prescription }}
         <div class="dropdown">
           <button class="btn btn-sm btn-outline-primary rounded-pill px-3 dropdown-toggle" type="button"
             data-bs-toggle="dropdown" aria-expanded="false" title="Pre-fill today from a routine">
@@ -101,6 +135,12 @@
           </button>
           <ul class="dropdown-menu" id="routineMenu"></ul>
         </div>
+        {{ end }}
+        <button class="btn btn-sm btn-outline-secondary rounded-pill px-3"
+          data-bs-toggle="modal" data-bs-target="#feedbackModal" onclick="openFeedback()"
+          title="Log session RPE and next-day soreness">
+          <i class="bi bi-clipboard-heart me-1"></i>Feedback
+        </button>
         <button class="btn btn-sm btn-outline-secondary rounded-pill px-3"
           data-bs-toggle="modal" data-bs-target="#logWeightModal"
           onclick="document.getElementById('logWeightDate').value=document.getElementById('realDate').value">
@@ -113,6 +153,40 @@
 
 <!-- ── Main Content ───────────────────────────────────────────────────────── -->
 <div class="container-xl py-4">
+
+  {{/* ── Today's prescription (Option 1: prescription supersedes) ──────── */}}
+  {{ if .Prescription }}
+  <div class="panel mb-4" id="planHeader">
+    <div class="panel-header d-flex align-items-center justify-content-between">
+      <span class="panel-title">
+        <i class="bi bi-clipboard-check me-2"></i>Today's plan{{ if .Prescription.Label }} · {{ .Prescription.Label }}{{ end }}
+      </span>
+      <span class="badge rounded-pill text-bg-primary">Prescribed</span>
+    </div>
+    {{ if .Prescription.Notes }}<p class="small text-body-secondary mb-2">{{ .Prescription.Notes }}</p>{{ end }}
+    <ul class="list-unstyled mb-0">
+      {{ range .Prescription.Items }}
+      <li class="d-flex align-items-start gap-2 py-2 border-top">
+        <span style="background:{{ .Color }};width:12px;height:12px;border-radius:50%;margin-top:5px;flex-shrink:0;display:inline-block;"></span>
+        <div class="flex-grow-1">
+          <div class="d-flex flex-wrap align-items-baseline gap-2">
+            <span class="fw-semibold">{{ .ExerciseName }}</span>
+            <span class="text-body-secondary small">
+              {{ if .TargetRepsLow }}{{ .TargetRepsLow }}{{ if gt .TargetRepsHigh .TargetRepsLow }}–{{ .TargetRepsHigh }}{{ end }} reps{{ end }}
+              {{ if .TargetRIR }} · RIR {{ derefInt .TargetRIR }}{{ end }}
+              {{ with weightStr .TargetWeight }} · {{ . }} lb{{ else }} · load TBD{{ end }}
+            </span>
+          </div>
+          {{ if .Rationale }}<div class="small text-body-tertiary">{{ .Rationale }}</div>{{ end }}
+          {{ if .AltExerciseName }}<div class="small text-body-tertiary">or {{ .AltExerciseName }}</div>{{ end }}
+          {{ range splitComma .Flags }}<span class="badge rounded-pill text-bg-secondary me-1 mt-1">{{ . }}</span>{{ end }}
+        </div>
+      </li>
+      {{ end }}
+    </ul>
+    <p class="small text-body-tertiary mb-0 mt-2">Log your sets below as usual — this is your coach's plan for today.</p>
+  </div>
+  {{ end }}
 
   <!-- 7-day streak -->
   <div id="weekStreak" class="mb-4"></div>
@@ -277,6 +351,23 @@
       selectGroup(first.getAttribute('data-group'));
     }
   })();
+
+  // Feedback modal: default RPE to the viewed day and soreness to the day
+  // before it (the next-day rating is about the prior session). Function
+  // declaration is hoisted, so the toolbar onclick can call it.
+  function openFeedback() {
+    var d = (document.getElementById('realDate') || {}).value || window._serverDate;
+    var rpeEl = document.getElementById('feedbackRpeDate');
+    var soreEl = document.getElementById('feedbackSoreDate');
+    if (rpeEl) rpeEl.value = d;
+    if (soreEl) {
+      var dt = new Date(d + 'T00:00:00');
+      dt.setDate(dt.getDate() - 1);
+      soreEl.value = dt.getFullYear() + '-' +
+        String(dt.getMonth() + 1).padStart(2, '0') + '-' +
+        String(dt.getDate()).padStart(2, '0');
+    }
+  }
 
   voltraInit();
 </script>

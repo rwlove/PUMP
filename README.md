@@ -82,6 +82,10 @@ Notes on source coverage: sleep stages arrive as Health Connect numeric stage co
 
 Cardio sessions can also be captured **directly from the gym treadmill** with no wearable involved. The treadmill's Z-Wave metering smart plug publishes its wattage to MQTT (via `zwave-js-ui`); when `TREADMILL_MQTT_ENABLED` is set, PUMP subscribes to that feed, detects a workout with a wattage threshold + off-debounce state machine, and writes each session as an `exercise` record (duration only — a plug can't measure distance). These land on the **Cardio** tab alongside wearable sessions and dedupe on `(metric_type, start_time, end_time)` like every other health record. See the `TREADMILL_MQTT_*` settings below.
 
+### Training plans (prescription layer)
+
+A coach — a person or an external agent — can author a dated training block (a **program** of prescribed sessions and items) through a REST API; the workout page then **presents** today's committed session as a plan header and the athlete logs sets as usual (Option 1: on a planned day the prescription supersedes the "Start routine" picker; freestyle days are unchanged). The athlete's post-session feedback (session RPE + a next-day 0–3 soreness rating) is captured from the page's **Feedback** button. Plan authoring writes are gated by `PLAN_INGEST_KEY`; reads are open. PUMP presents plans — it does not do the programming, and there is no in-app plan editor. Full endpoint contract and a worked authoring example: [`docs/prescription-api.md`](docs/prescription-api.md).
+
 ## Configuration
 
 All configuration is via environment variables. No config file is required.
