@@ -73,10 +73,11 @@ func indexHandler(c *gin.Context) {
 	guiData.Muscles = muscles
 	guiData.ServerDate = time.Now().Format("2006-01-02")
 	guiData.DisplayCutoff = cutoff
-	// Today's committed coach prescription, if any. Non-nil makes the template
-	// present the plan header and hide the routine picker (Option 1); nil is a
-	// freestyle day. Soft-degrades to nil on any error.
-	guiData.Prescription = committedSessionToday(c, "indexHandler", guiData.ServerDate)
+	// The training queue: the cursor session the "Arnold's Routine" button
+	// loads, the rotation for the picker, and the next-up label. Non-nil adds
+	// the button + picker + plan header alongside the always-present routine
+	// picker; nil is a freestyle state. Soft-degrades to nil on any error.
+	guiData.Queue = currentQueue(c, "indexHandler")
 
 	c.HTML(http.StatusOK, "index.html", guiData)
 }

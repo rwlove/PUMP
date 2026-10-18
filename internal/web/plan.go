@@ -40,6 +40,28 @@ func committedSessionToday(c *gin.Context, who, date string) *models.PrescribedS
 	return &ps
 }
 
+// currentQueue builds the training-queue view the workout page presents: the
+// cursor session the "Arnold's Routine" button loads, the rotation for the
+// picker, and the next-up label. It reads all programs and derives the queue
+// from the active one (models.BuildQueuePlan). Returns nil — a freestyle state
+// — when there is no queue or anything fails; the queue is an enrichment, never
+// a reason to fail the workout page.
+func currentQueue(c *gin.Context, who string) *models.QueuePlan {
+	if planStore == nil {
+		return nil
+	}
+	programs, err := planStore.SelectPrograms(c.Request.Context())
+	if err != nil {
+		slog.Warn(who+": SelectPrograms failed; freestyle fallback", slog.Any("error", err))
+		return nil
+	}
+	qp, ok := models.BuildQueuePlan(programs)
+	if !ok {
+		return nil
+	}
+	return qp
+}
+
 // feedbackHandler persists the athlete's post-session feedback from the
 // same-origin workout-page form. Two independent values, each keyed to its own
 // date so they land as separate rows (readers merge by date, latest wins):
@@ -110,4 +132,32 @@ func feedbackHandler(c *gin.Context) {
 		ref = "/"
 	}
 	c.Redirect(http.StatusFound, ref)
+}
+
+// advanceHandler moves the training queue to the next session after the one the
+// athlete just completed. Same-origin and unkeyed (like /feedback/ and /set/):
+// this is the browser/athlete path, not the coach-authoring API. It expects a
+// session_id form field (the completed session) and returns JSON
+// {"next_position": N} so the page can reload onto the new cursor.
+func advanceHandler(c *gin.Context) {
+	if planStore == nil {
+		c.Status(http.StatusServiceUnavailable)
+		return
+	}
+	id, err := strconv.Atoi(strings.TrimSpace(c.PostForm("session_id")))
+	if err != nil || id <= 0 {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+	next, ok, err := planStore.AdvanceCursor(c.Request.Context(), id)
+	if err != nil {
+		slog.Error("advanceHandler: AdvanceCursor failed", slog.Int("session_id", id), slog.Any("error", err))
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"next_position": next})
 }

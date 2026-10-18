@@ -282,3 +282,77 @@ func TestSelectCommittedSessionOn(t *testing.T) {
 		t.Fatalf("freestyle date: ok=%v err=%v, want ok=false", ok, err)
 	}
 }
+
+// AdvanceCursor moves a program's cursor to the next committed session's
+// position, wrapping at the end; SelectPrograms + BuildQueuePlan reflect it.
+func TestQueue_AdvanceCursorWraps(t *testing.T) {
+	s := testStore(t)
+	cleanPlanTables(t, s)
+	ctx := context.Background()
+
+	exID := mustInsertEx(t, s, "Barbell Squats", "Legs", "#123")
+	progID, err := s.InsertProgram(ctx, models.Program{Name: "Q", StartDate: "2026-10-20"})
+	if err != nil {
+		t.Fatalf("InsertProgram: %v", err)
+	}
+	// Three committed sessions → positions 1,2,3 (1-based).
+	var ids []int
+	for _, label := range []string{"Legs", "Chest", "Back"} {
+		id, err := s.InsertPrescribedSession(ctx, models.PrescribedSession{
+			ProgramID: progID, Label: label, Status: "committed",
+		})
+		if err != nil {
+			t.Fatalf("InsertPrescribedSession(%s): %v", label, err)
+		}
+		ids = append(ids, id)
+	}
+	if err := s.ReplacePrescribedItems(ctx, ids[0], []models.PrescribedItem{
+		{ExerciseID: exID, TargetSets: 2, TargetRepsLow: 8, TargetRepsHigh: 10},
+	}); err != nil {
+		t.Fatalf("ReplacePrescribedItems: %v", err)
+	}
+
+	// Completing session 2 (position 2) advances the cursor to position 3.
+	if next, ok, err := s.AdvanceCursor(ctx, ids[1]); err != nil || !ok || next != 3 {
+		t.Fatalf("advance from pos2: next=%d ok=%v err=%v, want 3/true", next, ok, err)
+	}
+	// Completing the last session (position 3) wraps to position 1.
+	if next, ok, err := s.AdvanceCursor(ctx, ids[2]); err != nil || !ok || next != 1 {
+		t.Fatalf("advance from last: next=%d ok=%v err=%v, want 1/true (wrap)", next, ok, err)
+	}
+
+	progs, err := s.SelectPrograms(ctx)
+	if err != nil || len(progs) != 1 {
+		t.Fatalf("SelectPrograms: progs=%d err=%v", len(progs), err)
+	}
+	if progs[0].CursorPosition != 1 {
+		t.Fatalf("cursor_position = %d, want 1", progs[0].CursorPosition)
+	}
+	if qp, qok := models.BuildQueuePlan(progs); !qok || qp.Current.Label != "Legs" {
+		t.Fatalf("queue current = %+v (ok=%v), want Legs", qp, qok)
+	}
+	if _, ok, _ := s.AdvanceCursor(ctx, 999999); ok {
+		t.Fatal("advance unknown session should be ok=false")
+	}
+}
+
+// A session inserted without a date stores NULL and round-trips as an empty
+// Date string (queue sessions are position-based, not dated).
+func TestQueue_NullableDateRoundTrips(t *testing.T) {
+	s := testStore(t)
+	cleanPlanTables(t, s)
+	ctx := context.Background()
+	progID, _ := s.InsertProgram(ctx, models.Program{Name: "Q", StartDate: "2026-10-20"})
+	if _, err := s.InsertPrescribedSession(ctx, models.PrescribedSession{
+		ProgramID: progID, Label: "Legs", Status: "committed", // no Date
+	}); err != nil {
+		t.Fatalf("InsertPrescribedSession (no date): %v", err)
+	}
+	progs, err := s.SelectPrograms(ctx)
+	if err != nil || len(progs) != 1 || len(progs[0].Sessions) != 1 {
+		t.Fatalf("SelectPrograms: %v (progs=%d)", err, len(progs))
+	}
+	if progs[0].Sessions[0].Date != "" {
+		t.Fatalf("null date should round-trip as empty string, got %q", progs[0].Sessions[0].Date)
+	}
+}

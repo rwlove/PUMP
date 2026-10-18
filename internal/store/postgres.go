@@ -1145,7 +1145,7 @@ func (s *PostgresStore) SelectPrograms(ctx context.Context) ([]models.Program, e
 	slog.Debug("db: SelectPrograms")
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, name, start_date::text, length_weeks, deload_week,
-		        created_by, notes, created_at::text
+		        created_by, notes, created_at::text, cursor_position
 		 FROM programs ORDER BY start_date DESC, id DESC`)
 	if err != nil {
 		return nil, err
@@ -1157,7 +1157,7 @@ func (s *PostgresStore) SelectPrograms(ctx context.Context) ([]models.Program, e
 	for rows.Next() {
 		var p models.Program
 		if err := rows.Scan(&p.ID, &p.Name, &p.StartDate, &p.LengthWeeks,
-			&p.DeloadWeek, &p.CreatedBy, &p.Notes, &p.CreatedAt); err != nil {
+			&p.DeloadWeek, &p.CreatedBy, &p.Notes, &p.CreatedAt, &p.CursorPosition); err != nil {
 			return nil, err
 		}
 		progIdx[p.ID] = len(programs)
@@ -1172,8 +1172,8 @@ func (s *PostgresStore) SelectPrograms(ctx context.Context) ([]models.Program, e
 
 	// Sessions, attached to their program.
 	srows, err := s.pool.Query(ctx,
-		`SELECT id, program_id, date::text, label, status, notes, position
-		 FROM prescribed_sessions ORDER BY date ASC, position ASC, id ASC`)
+		`SELECT id, program_id, COALESCE(date::text, ''), label, status, notes, position
+		 FROM prescribed_sessions ORDER BY position ASC, id ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -1263,8 +1263,8 @@ func (s *PostgresStore) InsertPrescribedSession(ctx context.Context, ps models.P
 	var id int
 	err := s.pool.QueryRow(ctx,
 		`INSERT INTO prescribed_sessions (program_id, date, label, status, notes, position)
-		 VALUES ($1, $2::date, $3, $4, $5,
-		         COALESCE((SELECT max(position)+1 FROM prescribed_sessions WHERE program_id = $1), 0))
+		 VALUES ($1, NULLIF($2, '')::date, $3, $4, $5,
+		         COALESCE((SELECT max(position)+1 FROM prescribed_sessions WHERE program_id = $1), 1))
 		 RETURNING id`,
 		ps.ProgramID, ps.Date, ps.Label, status, ps.Notes).Scan(&id)
 	return id, err
@@ -1354,7 +1354,7 @@ func (s *PostgresStore) SelectCommittedSessionOn(ctx context.Context, date strin
 	slog.Debug("db: SelectCommittedSessionOn", slog.String("date", date))
 	var ps models.PrescribedSession
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, program_id, date::text, label, status, notes, position
+		`SELECT id, program_id, COALESCE(date::text, ''), label, status, notes, position
 		 FROM prescribed_sessions
 		 WHERE date = $1::date AND status = 'committed'
 		 ORDER BY position ASC, id ASC
@@ -1401,4 +1401,40 @@ func (s *PostgresStore) SelectCommittedSessionOn(ctx context.Context, date strin
 		return models.PrescribedSession{}, false, err
 	}
 	return ps, true, nil
+}
+
+// AdvanceCursor moves the completed session's program cursor to the next
+// committed session's position, wrapping to the first committed position when
+// the completed session is the last in the rotation. Returns the new cursor
+// position; ok=false when no committed session has completedSessionID.
+func (s *PostgresStore) AdvanceCursor(ctx context.Context, completedSessionID int) (int, bool, error) {
+	slog.Debug("db: AdvanceCursor", slog.Int("completed_session_id", completedSessionID))
+	var programID, pos int
+	err := s.pool.QueryRow(ctx,
+		`SELECT program_id, position FROM prescribed_sessions
+		 WHERE id = $1 AND status = 'committed'`, completedSessionID).Scan(&programID, &pos)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	// Next committed position after this one, wrapping to the lowest committed
+	// position when the completed session is last.
+	var next int
+	err = s.pool.QueryRow(ctx,
+		`SELECT COALESCE(
+		          (SELECT min(position) FROM prescribed_sessions
+		             WHERE program_id = $1 AND status = 'committed' AND position > $2),
+		          (SELECT min(position) FROM prescribed_sessions
+		             WHERE program_id = $1 AND status = 'committed'))`,
+		programID, pos).Scan(&next)
+	if err != nil {
+		return 0, false, err
+	}
+	if _, err := s.pool.Exec(ctx,
+		`UPDATE programs SET cursor_position = $1 WHERE id = $2`, next, programID); err != nil {
+		return 0, false, err
+	}
+	return next, true, nil
 }

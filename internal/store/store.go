@@ -164,4 +164,10 @@ type PlanStore interface {
 	// ok=false means no committed session on that date — a freestyle day,
 	// where the routine picker takes over.
 	SelectCommittedSessionOn(ctx context.Context, date string) (models.PrescribedSession, bool, error)
+	// AdvanceCursor moves the completed session's program cursor to the next
+	// committed session's position, wrapping to the first when the completed
+	// one is last. It returns the new cursor position; ok=false means no
+	// committed session has that id. This is how finishing a queued session
+	// advances the rotation.
+	AdvanceCursor(ctx context.Context, completedSessionID int) (int, bool, error)
 }

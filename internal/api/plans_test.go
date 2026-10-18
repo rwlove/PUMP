@@ -21,9 +21,12 @@ type mockPlanStore struct {
 	committedOK bool
 	committedOn string
 	feedback    []models.SessionFeedback
+	programs    []models.Program
 }
 
-func (m *mockPlanStore) SelectPrograms(context.Context) ([]models.Program, error) { return nil, nil }
+func (m *mockPlanStore) SelectPrograms(context.Context) ([]models.Program, error) {
+	return m.programs, nil
+}
 func (m *mockPlanStore) InsertProgram(context.Context, models.Program) (int, error) {
 	return 1, nil
 }
@@ -47,6 +50,9 @@ func (m *mockPlanStore) SelectCommittedSessionOn(_ context.Context, date string)
 	m.committedOn = date
 	return m.committed, m.committedOK, nil
 }
+func (m *mockPlanStore) AdvanceCursor(context.Context, int) (int, bool, error) {
+	return 0, true, nil
+}
 
 var _ store.PlanStore = (*mockPlanStore)(nil)
 
@@ -69,6 +75,35 @@ func doGET(path string, register func(*gin.Engine)) *httptest.ResponseRecorder {
 
 func regPrescription(r *gin.Engine) { r.GET("/api/prescription", getPrescription) }
 func regFeedback(r *gin.Engine)     { r.GET("/api/session-feedback", getSessionFeedback) }
+func regPlanCurrent(r *gin.Engine)  { r.GET("/api/plan/current", getPlanCurrent) }
+
+func TestGetPlanCurrent_ReturnsQueue(t *testing.T) {
+	withPlanStore(t, &mockPlanStore{programs: []models.Program{{
+		ID: 1, CursorPosition: 2,
+		Sessions: []models.PrescribedSession{
+			{ID: 10, Position: 1, Label: "Legs", Status: "committed"},
+			{ID: 11, Position: 2, Label: "Chest", Status: "committed"},
+		},
+	}}})
+	w := doGET("/api/plan/current", regPlanCurrent)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	var qp models.QueuePlan
+	if err := json.Unmarshal(w.Body.Bytes(), &qp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if qp.Current.Label != "Chest" || qp.NextLabel != "Legs" {
+		t.Fatalf("got current=%q next=%q, want Chest/Legs(wrap)", qp.Current.Label, qp.NextLabel)
+	}
+}
+
+func TestGetPlanCurrent_NoQueueIs204(t *testing.T) {
+	withPlanStore(t, &mockPlanStore{programs: nil})
+	if w := doGET("/api/plan/current", regPlanCurrent); w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204 when no queue", w.Code)
+	}
+}
 
 func TestGetPrescription_CommittedReturnsSession(t *testing.T) {
 	m := &mockPlanStore{

@@ -22,6 +22,9 @@ type webPlanMock struct {
 	inserted    []models.SessionFeedback
 	committed   models.PrescribedSession
 	committedOK bool
+	advancedID  int
+	advanceNext int
+	advanceOK   bool
 }
 
 func (m *webPlanMock) SelectPrograms(context.Context) ([]models.Program, error) { return nil, nil }
@@ -47,6 +50,10 @@ func (m *webPlanMock) InsertSessionFeedback(_ context.Context, f models.SessionF
 }
 func (m *webPlanMock) SelectCommittedSessionOn(context.Context, string) (models.PrescribedSession, bool, error) {
 	return m.committed, m.committedOK, nil
+}
+func (m *webPlanMock) AdvanceCursor(_ context.Context, id int) (int, bool, error) {
+	m.advancedID = id
+	return m.advanceNext, m.advanceOK, nil
 }
 
 var _ store.PlanStore = (*webPlanMock)(nil)
@@ -170,12 +177,48 @@ func testCtx() *gin.Context {
 	return c
 }
 
-// TestIndexTemplateRendersPrescription parses every template with the real
-// FuncMap and renders index.html in both planned and freestyle states. This is
-// the guard for the prescription block + its template funcs (derefInt /
-// weightStr / splitComma) and the Option-1 picker toggle — a syntax error or a
-// bad field/func reference fails here instead of in the browser.
-func TestIndexTemplateRendersPrescription(t *testing.T) {
+func TestAdvanceHandler(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	m := &webPlanMock{advanceNext: 2, advanceOK: true}
+	prev := planStore
+	t.Cleanup(func() { planStore = prev })
+	planStore = m
+
+	r := gin.New()
+	r.POST("/plan/advance/", advanceHandler)
+
+	post := func(form url.Values) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/plan/advance/", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w
+	}
+
+	// Valid completed session advances and returns the new cursor position.
+	if w := post(url.Values{"session_id": {"7"}}); w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+	} else if m.advancedID != 7 || !strings.Contains(w.Body.String(), "2") {
+		t.Fatalf("advanced id=%d body=%s, want id 7 / next_position 2", m.advancedID, w.Body.String())
+	}
+	// Missing session_id → 400.
+	if w := post(url.Values{}); w.Code != http.StatusBadRequest {
+		t.Fatalf("empty session_id status = %d, want 400", w.Code)
+	}
+	// Unknown session (ok=false) → 404.
+	m.advanceOK = false
+	if w := post(url.Values{"session_id": {"99"}}); w.Code != http.StatusNotFound {
+		t.Fatalf("unknown session status = %d, want 404", w.Code)
+	}
+}
+
+// TestIndexTemplateRendersQueue parses every template with the real FuncMap and
+// renders index.html in both queued and freestyle states. The plan header is
+// filled client-side from window._queue, so the queued render carries the queue
+// data (serialized into the script) plus the "Arnold's Routine" button, the day
+// picker, and the Mark-complete control. A syntax error or a bad field/func
+// reference fails here instead of in the browser.
+func TestIndexTemplateRendersQueue(t *testing.T) {
 	tmpl, err := template.New("").Funcs(templateFuncs()).ParseFS(templFS, "templates/*")
 	if err != nil {
 		t.Fatalf("ParseFS: %v", err)
@@ -183,38 +226,45 @@ func TestIndexTemplateRendersPrescription(t *testing.T) {
 
 	rir := 2
 	tw := decimal.NewFromInt(120)
-	planned := models.GuiData{
+	back := models.PrescribedSession{
+		ID: 7, Label: "Back", Status: "committed", Position: 1,
+		Items: []models.PrescribedItem{
+			{ExerciseName: "Lat Pulldown", Color: "#123", TargetSets: 4, TargetRepsLow: 10, TargetRepsHigh: 12,
+				TargetRIR: &rir, TargetWeight: &tw, Rationale: "hold load",
+				Flags: "grip-offload,elbow-gated"},
+			// provisional pull: no RIR/weight → "load TBD"; has a substitution.
+			{ExerciseName: "Cable Row", Color: "#456", TargetSets: 3, TargetRepsLow: 10, TargetRepsHigh: 10,
+				AltExerciseName: "Chest-Supported Row"},
+		},
+	}
+	legs := models.PrescribedSession{ID: 8, Label: "Legs", Status: "committed", Position: 2}
+	queued := models.GuiData{
 		ServerDate: "2026-10-21",
-		Prescription: &models.PrescribedSession{
-			Label: "Back", Status: "committed", Date: "2026-10-21",
-			Items: []models.PrescribedItem{
-				{ExerciseName: "Lat Pulldown", Color: "#123", TargetRepsLow: 10, TargetRepsHigh: 12,
-					TargetRIR: &rir, TargetWeight: &tw, Rationale: "hold load",
-					Flags: "grip-offload,elbow-gated"},
-				// provisional pull: no RIR/weight → "load TBD"; has a substitution.
-				{ExerciseName: "Cable Row", Color: "#456", TargetRepsLow: 10, TargetRepsHigh: 10,
-					AltExerciseName: "Chest-Supported Row"},
-			},
+		Queue: &models.QueuePlan{
+			ProgramID: 1, CursorPosition: 1,
+			Current:   back,
+			Sessions:  []models.PrescribedSession{back, legs},
+			NextLabel: "Legs",
 		},
 	}
 	var buf bytes.Buffer
-	if err := tmpl.ExecuteTemplate(&buf, "index.html", planned); err != nil {
-		t.Fatalf("execute index.html (planned): %v", err)
+	if err := tmpl.ExecuteTemplate(&buf, "index.html", queued); err != nil {
+		t.Fatalf("execute index.html (queued): %v", err)
 	}
 	out := buf.String()
-	for _, want := range []string{"Today's plan", "Lat Pulldown", "RIR 2", "120 lb", "load TBD",
-		"grip-offload", "Chest-Supported Row", "Session feedback"} {
+	// Queue data serializes into window._queue (html/template JSON-encodes in a
+	// script context); the actions + plan-header container are present.
+	for _, want := range []string{"window._queue", "Lat Pulldown", "grip-offload",
+		"Chest-Supported Row", "Legs", "planHeader", "Mark complete", "Session feedback"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("planned render missing %q", want)
+			t.Errorf("queued render missing %q", want)
 		}
 	}
-	// Both actions coexist: the always-available "Start routine" picker plus the
-	// "Arnold's Routine" button that loads today's committed prescription.
 	if !strings.Contains(out, "Start routine") {
-		t.Error("planned render should still show the Start routine picker")
+		t.Error("queued render should still show the Start routine picker")
 	}
 	if !strings.Contains(out, "Arnold&#39;s Routine") && !strings.Contains(out, "Arnold's Routine") {
-		t.Error("planned render should show the Arnold's Routine button")
+		t.Error("queued render should show the Arnold's Routine button")
 	}
 
 	var buf2 bytes.Buffer
@@ -224,9 +274,6 @@ func TestIndexTemplateRendersPrescription(t *testing.T) {
 	free := buf2.String()
 	if !strings.Contains(free, "Start routine") {
 		t.Error("freestyle render should show the Start routine picker")
-	}
-	if strings.Contains(free, "Today's plan") {
-		t.Error("freestyle render should not show a plan header")
 	}
 	if strings.Contains(free, "Arnold's Routine") || strings.Contains(free, "Arnold&#39;s Routine") {
 		t.Error("freestyle render should not show the Arnold's Routine button")
