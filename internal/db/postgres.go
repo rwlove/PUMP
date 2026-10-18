@@ -328,6 +328,79 @@ WHERE s.exercise_id IS NULL
 CREATE INDEX IF NOT EXISTS sets_exercise_id_idx ON sets (exercise_id);
 `,
 	},
+	{
+		Version:     20,
+		Description: "create prescription layer: programs, prescribed_sessions, prescribed_items, session_feedback",
+		SQL: `
+-- A program is a training block / mesocycle an author (e.g. a coach agent)
+-- lays out: a start date, a length in weeks, and which week is the deload.
+-- It holds intent; logged work still lives in sets.
+CREATE TABLE IF NOT EXISTS programs (
+    id           SERIAL      PRIMARY KEY,
+    name         TEXT        NOT NULL DEFAULT '',
+    start_date   DATE        NOT NULL,
+    length_weeks INTEGER     NOT NULL DEFAULT 4,
+    deload_week  INTEGER     NOT NULL DEFAULT 0,   -- 1-based week that is the deload; 0 = none
+    created_by   TEXT        NOT NULL DEFAULT '',  -- authoring identity (e.g. 'arnold')
+    notes        TEXT        NOT NULL DEFAULT '',
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- A prescribed session is a dated planned session within a program. status
+-- distinguishes a concrete committed session from provisional intent, so an
+-- author can materialize the next session concretely while leaving later ones
+-- provisional (the one-exposure-ahead leash the plan design calls for).
+CREATE TABLE IF NOT EXISTS prescribed_sessions (
+    id         SERIAL  PRIMARY KEY,
+    program_id INTEGER NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
+    date       DATE    NOT NULL,
+    label      TEXT    NOT NULL DEFAULT '',          -- "Push" / "Back" / ...
+    status     TEXT    NOT NULL DEFAULT 'provisional'
+        CHECK (status IN ('provisional', 'committed')),
+    notes      TEXT    NOT NULL DEFAULT '',
+    position   INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS prescribed_sessions_program_idx ON prescribed_sessions (program_id, date, position);
+CREATE INDEX IF NOT EXISTS prescribed_sessions_date_idx ON prescribed_sessions (date);
+
+-- A prescribed item is one planned exercise within a session: a rep-range and
+-- RIR target, an optional concrete load (left NULL while provisional — e.g. a
+-- pull whose load waits on the prior session's feedback), the one-line "why",
+-- free-text flags (e.g. 'grip-offload', 'elbow-gated'), and an optional
+-- substitution exercise.
+CREATE TABLE IF NOT EXISTS prescribed_items (
+    id               SERIAL        PRIMARY KEY,
+    session_id       INTEGER       NOT NULL REFERENCES prescribed_sessions(id) ON DELETE CASCADE,
+    exercise_id      INTEGER       NOT NULL REFERENCES exercises(id),
+    position         INTEGER       NOT NULL DEFAULT 0,
+    target_reps_low  INTEGER       NOT NULL DEFAULT 0,
+    target_reps_high INTEGER       NOT NULL DEFAULT 0,
+    target_rir       INTEGER,                        -- NULL when not prescribed
+    target_weight    NUMERIC(10,2),                  -- NULL while provisional
+    rationale        TEXT          NOT NULL DEFAULT '',
+    flags            TEXT          NOT NULL DEFAULT '',  -- comma-separated tags
+    alt_exercise_id  INTEGER       REFERENCES exercises(id)  -- substitution; NULL when none
+);
+CREATE INDEX IF NOT EXISTS prescribed_items_session_idx ON prescribed_items (session_id, position);
+
+-- Per-session feedback the athlete returns after training: a session RPE
+-- (6-10) and a 0-3 next-day soreness/irritation flag. Keyed by date — PUMP has
+-- no session row, and this split logs one session per day — so it associates
+-- with that day's logged sets by date. Multiple rows per date are allowed (a
+-- correction appends); readers take the latest recorded_at, mirroring weight.
+CREATE TABLE IF NOT EXISTS session_feedback (
+    id          SERIAL      PRIMARY KEY,
+    date        DATE        NOT NULL,
+    rpe         NUMERIC(3,1),   -- 6.0-10.0; NULL when not reported
+    elbow_flag  INTEGER,        -- 0-3 next-day soreness/irritation; NULL when not reported
+    note        TEXT        NOT NULL DEFAULT '',
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT session_feedback_rpe_range   CHECK (rpe IS NULL OR (rpe >= 6 AND rpe <= 10)),
+    CONSTRAINT session_feedback_elbow_range CHECK (elbow_flag IS NULL OR (elbow_flag >= 0 AND elbow_flag <= 3))
+);
+CREATE INDEX IF NOT EXISTS session_feedback_date_idx ON session_feedback (date, recorded_at DESC);
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any
