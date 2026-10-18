@@ -1198,7 +1198,7 @@ func (s *PostgresStore) SelectPrograms(ctx context.Context) ([]models.Program, e
 
 	// Items, attached to their session; exercise + optional alternate resolved.
 	irows, err := s.pool.Query(ctx,
-		`SELECT pi.id, pi.session_id, pi.exercise_id, pi.position,
+		`SELECT pi.id, pi.session_id, pi.exercise_id, pi.position, pi.target_sets,
 		        pi.target_reps_low, pi.target_reps_high, pi.target_rir,
 		        pi.target_weight::text, pi.rationale, pi.flags, pi.alt_exercise_id,
 		        e.name, e.color, COALESCE(ae.name, '')
@@ -1213,7 +1213,7 @@ func (s *PostgresStore) SelectPrograms(ctx context.Context) ([]models.Program, e
 	for irows.Next() {
 		var it models.PrescribedItem
 		var tw *string
-		if err := irows.Scan(&it.ID, &it.SessionID, &it.ExerciseID, &it.Position,
+		if err := irows.Scan(&it.ID, &it.SessionID, &it.ExerciseID, &it.Position, &it.TargetSets,
 			&it.TargetRepsLow, &it.TargetRepsHigh, &it.TargetRIR,
 			&tw, &it.Rationale, &it.Flags, &it.AltExerciseID,
 			&it.ExerciseName, &it.Color, &it.AltExerciseName); err != nil {
@@ -1302,10 +1302,10 @@ func (s *PostgresStore) ReplacePrescribedItems(ctx context.Context, sessionID in
 		}
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO prescribed_items
-			   (session_id, exercise_id, position, target_reps_low, target_reps_high,
+			   (session_id, exercise_id, position, target_sets, target_reps_low, target_reps_high,
 			    target_rir, target_weight, rationale, flags, alt_exercise_id)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7::numeric, $8, $9, $10)`,
-			sessionID, it.ExerciseID, i, it.TargetRepsLow, it.TargetRepsHigh,
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8::numeric, $9, $10, $11)`,
+			sessionID, it.ExerciseID, i, it.TargetSets, it.TargetRepsLow, it.TargetRepsHigh,
 			it.TargetRIR, tw, it.Rationale, it.Flags, it.AltExerciseID); err != nil {
 			return err
 		}
@@ -1368,7 +1368,7 @@ func (s *PostgresStore) SelectCommittedSessionOn(ctx context.Context, date strin
 	}
 
 	irows, err := s.pool.Query(ctx,
-		`SELECT pi.id, pi.session_id, pi.exercise_id, pi.position,
+		`SELECT pi.id, pi.session_id, pi.exercise_id, pi.position, pi.target_sets,
 		        pi.target_reps_low, pi.target_reps_high, pi.target_rir,
 		        pi.target_weight::text, pi.rationale, pi.flags, pi.alt_exercise_id,
 		        e.name, e.color, COALESCE(ae.name, '')
@@ -1384,7 +1384,7 @@ func (s *PostgresStore) SelectCommittedSessionOn(ctx context.Context, date strin
 	for irows.Next() {
 		var it models.PrescribedItem
 		var tw *string
-		if err := irows.Scan(&it.ID, &it.SessionID, &it.ExerciseID, &it.Position,
+		if err := irows.Scan(&it.ID, &it.SessionID, &it.ExerciseID, &it.Position, &it.TargetSets,
 			&it.TargetRepsLow, &it.TargetRepsHigh, &it.TargetRIR,
 			&tw, &it.Rationale, &it.Flags, &it.AltExerciseID,
 			&it.ExerciseName, &it.Color, &it.AltExerciseName); err != nil {

@@ -263,6 +263,7 @@ type PrescribedItem struct {
 	SessionID       int              `json:"SessionID"`
 	ExerciseID      int              `json:"ExerciseID"`
 	Position        int              `json:"Position"`
+	TargetSets      int              `json:"TargetSets"`
 	TargetRepsLow   int              `json:"TargetRepsLow"`
 	TargetRepsHigh  int              `json:"TargetRepsHigh"`
 	TargetRIR       *int             `json:"TargetRIR,omitempty"`
