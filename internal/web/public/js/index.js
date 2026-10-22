@@ -442,7 +442,27 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
         });
     }
 
-    container.appendChild(entry);
+    // Keep sets of the same exercise contiguous: insert this row immediately
+    // after the last existing row for the same name, rather than always at the
+    // bottom. Appending to the bottom is what interleaves a day — add Bench,
+    // Incline, then a 2nd Bench from the picker and the 2nd Bench lands below
+    // Incline. Grouped insertion keeps the live log (and, via the whole-day
+    // rewrite save, the persisted position) in the same order setFormContent
+    // renders in. Falls back to append for a new exercise or an empty log,
+    // which preserves first-appearance order. refreshSetBadges() below re-wraps
+    // from document order, so inserting into a group wrapper is fine.
+    var anchor = null;
+    var existingNames = container.querySelectorAll('.workout-entry input[data-exname]');
+    for (var ei = 0; ei < existingNames.length; ei++) {
+        if (existingNames[ei].getAttribute('data-exname') === safeName) {
+            anchor = existingNames[ei].closest('.workout-entry');
+        }
+    }
+    if (anchor) {
+        anchor.parentNode.insertBefore(entry, anchor.nextSibling);
+    } else {
+        container.appendChild(entry);
+    }
     // Voltra sets get their per-set LOAD control and row-click arming. No-op
     // for every other exercise.
     if (typeof voltraDecorate === 'function') {
@@ -893,19 +913,51 @@ function setFormContent(sets, date) {
     });
 
     if (sets) {
+        var daySets = [];
         for (var i = 0; i < sets.length; i++) {
-            if (sets[i].Date == date) {
-                // fromPicker=false: loading saved data, no auto-fill override
-                addExercise(sets[i].Name, sets[i].Weight, sets[i].Reps, sets[i].WorkoutColor, false, sets[i].Note, {
-                    id:          sets[i].ID,
-                    source:      sets[i].Source,
-                    pending:     sets[i].Pending,
-                    confidence:  sets[i].Confidence,
-                    addedWeight: sets[i].AddedWeight,
-                });
-            }
+            if (sets[i].Date == date) daySets.push(sets[i]);
+        }
+        // Render grouped by exercise, in set order — never in raw
+        // position/insertion order. The stored order is whatever order rows
+        // happened to be written (append-to-bottom adds, the whole-day
+        // rewrite save, or live sidecar detections), which interleaves a day's
+        // exercises (Bench 1, Incline 1, Bench 2, …). groupSetsByExercise
+        // makes the render deterministic and independent of that.
+        daySets = groupSetsByExercise(daySets);
+        for (var j = 0; j < daySets.length; j++) {
+            var s = daySets[j];
+            // fromPicker=false: loading saved data, no auto-fill override
+            addExercise(s.Name, s.Weight, s.Reps, s.WorkoutColor, false, s.Note, {
+                id:          s.ID,
+                source:      s.Source,
+                pending:     s.Pending,
+                confidence:  s.Confidence,
+                addedWeight: s.AddedWeight,
+            });
         }
     }
+}
+
+// groupSetsByExercise returns the day's sets reordered so every set of one
+// exercise is contiguous, preserving (a) the order exercises first appear and
+// (b) each exercise's own set order. This is a stable group-by-name: a day
+// whose rows are already grouped is returned unchanged, and a day that was
+// deliberately reordered keeps its per-exercise sequence. Keyed through a Map
+// so a free-text exercise name (including "__proto__") can't collide with
+// Object.prototype. Pure — returns a new array, leaves window._allSets (and so
+// the auto-fill "k-th set" lookup, which reads stored order) untouched.
+function groupSetsByExercise(sets) {
+    var buckets = new Map(); // name -> [sets]; Map iterates in first-seen order
+    (sets || []).forEach(function(s) {
+        var key = s.Name;
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key).push(s);
+    });
+    var out = [];
+    buckets.forEach(function(arr) {
+        arr.forEach(function(s) { out.push(s); });
+    });
+    return out;
 }
 
 // findEntryByServerId returns the DOM entry for a given server-side set id.
