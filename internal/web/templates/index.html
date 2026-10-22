@@ -136,7 +136,7 @@
              loads the cursor (next-up) session into the log; the split caret
              opens a picker to jump to a different day in the rotation. */}}
         {{ if .Queue }}
-        <div class="btn-group">
+        <div class="btn-group" id="queueScaffoldGroup">
           <button class="btn btn-sm btn-primary px-3" type="button"
             onclick="loadQueueSession(window._activeSessionID)"
             title="Load the next queued workout into the log">
@@ -328,6 +328,14 @@
     return window._queue.Sessions.find(function(s) { return s.ID === id; });
   }
   function loadQueueSession(id) {
+    // A completed day is frozen on what was performed — scaffolding the
+    // next-up session onto it would re-inject the plan the freeze exists to
+    // keep off that day. Guard the single scaffold entry point (the button and
+    // every picker item both route through here) in addition to disabling the
+    // controls in renderPlanForDate, so neither path can write a frozen day.
+    var dateEl = document.getElementById('formDate');
+    var viewed = (dateEl && dateEl.value) ? dateEl.value : (window.today || '');
+    if (completionForDate(viewed)) return;
     var s = queueSessionById(id);
     if (!s || !s.Items) return;
     window._activeSessionID = id;
@@ -370,10 +378,25 @@
   // control. This is what stops a just-completed day from re-rendering onto the
   // next muscle group: completing binds the day here, so it resolves to the
   // frozen header, while next-up stays reachable only on a later date.
+  // setScaffoldDisabled toggles the "Arnold's Routine" button and its day-picker
+  // caret. Disabled on a completed (frozen) day so the next-up session can't be
+  // scaffolded onto it; a disabled dropdown-toggle also can't open the picker.
+  function setScaffoldDisabled(disabled) {
+    var grp = document.getElementById('queueScaffoldGroup');
+    if (!grp) return;
+    grp.querySelectorAll('button').forEach(function(b) {
+      b.disabled = disabled;
+      b.classList.toggle('disabled', disabled);
+      b.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+      b.title = disabled ? 'This day is complete — editing is allowed, scaffolding is not'
+                         : 'Load the next queued workout into the log';
+    });
+  }
   function renderPlanForDate(date) {
     var el = document.getElementById('planHeader');
     if (!el) return; // freestyle page: no plan header element
     var comp = completionForDate(date);
+    setScaffoldDisabled(!!comp);
     if (comp) {
       el.innerHTML =
         '<div class="panel-header d-flex align-items-center justify-content-between">' +
