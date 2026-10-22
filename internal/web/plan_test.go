@@ -19,12 +19,14 @@ import (
 
 // webPlanMock records feedback inserts and serves a canned committed session.
 type webPlanMock struct {
-	inserted    []models.SessionFeedback
-	committed   models.PrescribedSession
-	committedOK bool
-	advancedID  int
-	advanceNext int
-	advanceOK   bool
+	inserted      []models.SessionFeedback
+	committed     models.PrescribedSession
+	committedOK   bool
+	advancedID    int
+	advanceNext   int
+	advanceOK     bool
+	completedDate string
+	completions   []models.SessionCompletion
 }
 
 func (m *webPlanMock) SelectPrograms(context.Context) ([]models.Program, error) { return nil, nil }
@@ -54,6 +56,14 @@ func (m *webPlanMock) SelectCommittedSessionOn(context.Context, string) (models.
 func (m *webPlanMock) AdvanceCursor(_ context.Context, id int) (int, bool, error) {
 	m.advancedID = id
 	return m.advanceNext, m.advanceOK, nil
+}
+func (m *webPlanMock) CompleteSession(_ context.Context, date string, id int) (int, bool, error) {
+	m.completedDate = date
+	m.advancedID = id
+	return m.advanceNext, m.advanceOK, nil
+}
+func (m *webPlanMock) SelectSessionCompletions(context.Context) ([]models.SessionCompletion, error) {
+	return m.completions, nil
 }
 
 var _ store.PlanStore = (*webPlanMock)(nil)

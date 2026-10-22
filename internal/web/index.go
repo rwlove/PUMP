@@ -78,6 +78,9 @@ func indexHandler(c *gin.Context) {
 	// the button + picker + plan header alongside the always-present routine
 	// picker; nil is a freestyle state. Soft-degrades to nil on any error.
 	guiData.Queue = currentQueue(c, "indexHandler")
+	// Day→completed-session bindings: a completed day renders frozen on what
+	// was performed instead of re-resolving to the cursor's next-up session.
+	guiData.Completions = currentCompletions(c, "indexHandler")
 
 	c.HTML(http.StatusOK, "index.html", guiData)
 }

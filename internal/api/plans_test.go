@@ -53,6 +53,12 @@ func (m *mockPlanStore) SelectCommittedSessionOn(_ context.Context, date string)
 func (m *mockPlanStore) AdvanceCursor(context.Context, int) (int, bool, error) {
 	return 0, true, nil
 }
+func (m *mockPlanStore) CompleteSession(context.Context, string, int) (int, bool, error) {
+	return 0, true, nil
+}
+func (m *mockPlanStore) SelectSessionCompletions(context.Context) ([]models.SessionCompletion, error) {
+	return nil, nil
+}
 
 var _ store.PlanStore = (*mockPlanStore)(nil)
 

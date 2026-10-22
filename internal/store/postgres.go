@@ -1438,3 +1438,96 @@ func (s *PostgresStore) AdvanceCursor(ctx context.Context, completedSessionID in
 	}
 	return next, true, nil
 }
+
+// CompleteSession records the completion of sessionID on date and advances the
+// program cursor to the next committed position, in one transaction. The
+// completion binding is what freezes the day: SelectSessionCompletions reads it
+// back, and the workout page then renders that day on what was performed rather
+// than the advanced cursor's next-up session. The label is snapshotted so the
+// frozen day stays named even if the session is later re-authored. ok=false
+// (no row written, cursor untouched) when no committed session has that id.
+func (s *PostgresStore) CompleteSession(ctx context.Context, date string, sessionID int) (int, bool, error) {
+	slog.Debug("db: CompleteSession", slog.String("date", date), slog.Int("session_id", sessionID))
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, false, err
+	}
+	defer tx.Rollback(ctx)
+
+	var programID, pos int
+	var label string
+	err = tx.QueryRow(ctx,
+		`SELECT program_id, position, label FROM prescribed_sessions
+		 WHERE id = $1 AND status = 'committed'`, sessionID).Scan(&programID, &pos, &label)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+
+	// Next committed position after this one, wrapping to the lowest committed
+	// position when the completed session is last (same rule as AdvanceCursor).
+	var next int
+	err = tx.QueryRow(ctx,
+		`SELECT COALESCE(
+		          (SELECT min(position) FROM prescribed_sessions
+		             WHERE program_id = $1 AND status = 'committed' AND position > $2),
+		          (SELECT min(position) FROM prescribed_sessions
+		             WHERE program_id = $1 AND status = 'committed'))`,
+		programID, pos).Scan(&next)
+	if err != nil {
+		return 0, false, err
+	}
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE programs SET cursor_position = $1 WHERE id = $2`, next, programID); err != nil {
+		return 0, false, err
+	}
+
+	// Bind the day to the completed session. One completion per day; a
+	// re-complete overwrites (latest wins), mirroring session_feedback.
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO prescribed_session_completions (date, session_id, program_id, label)
+		 VALUES ($1::date, $2, $3, $4)
+		 ON CONFLICT (date) DO UPDATE
+		   SET session_id = EXCLUDED.session_id,
+		       program_id = EXCLUDED.program_id,
+		       label      = EXCLUDED.label,
+		       completed_at = NOW()`,
+		date, sessionID, programID, label); err != nil {
+		return 0, false, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, false, err
+	}
+	return next, true, nil
+}
+
+// SelectSessionCompletions returns every day→completed-session binding,
+// oldest-first. One row per day; session_id is NULL when the completed session
+// was later removed (the label snapshot still names the day's muscle group).
+func (s *PostgresStore) SelectSessionCompletions(ctx context.Context) ([]models.SessionCompletion, error) {
+	slog.Debug("db: SelectSessionCompletions")
+	rows, err := s.pool.Query(ctx,
+		`SELECT date::text, session_id, label
+		 FROM prescribed_session_completions
+		 ORDER BY date ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.SessionCompletion
+	for rows.Next() {
+		var sc models.SessionCompletion
+		var sid *int
+		if err := rows.Scan(&sc.Date, &sid, &sc.Label); err != nil {
+			return nil, err
+		}
+		sc.SessionID = sid
+		out = append(out, sc)
+	}
+	return out, rows.Err()
+}

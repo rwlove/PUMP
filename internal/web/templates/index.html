@@ -136,7 +136,7 @@
              loads the cursor (next-up) session into the log; the split caret
              opens a picker to jump to a different day in the rotation. */}}
         {{ if .Queue }}
-        <div class="btn-group">
+        <div class="btn-group" id="queueScaffoldGroup">
           <button class="btn btn-sm btn-primary px-3" type="button"
             onclick="loadQueueSession(window._activeSessionID)"
             title="Load the next queued workout into the log">
@@ -276,6 +276,10 @@
   // the log like a routine. _activeSessionID is the session those act on — the
   // cursor (next-up) by default, or the last day picked.
   window._queue = {{ .Queue }};
+  // Day→completed-session bindings. A date present here is frozen: its plan
+  // header shows the completed session as done, and the cursor's next-up
+  // session is NOT rendered onto it (it surfaces only on later days).
+  window._completions = {{ .Completions }};
   window._activeSessionID = (window._queue && window._queue.Current) ? window._queue.Current.ID : 0;
   // Body-weight history (oldest-first), used to pre-fill bodyweight exercises
   // with the most recent reading on or before the viewed day (Feature 6).
@@ -324,6 +328,14 @@
     return window._queue.Sessions.find(function(s) { return s.ID === id; });
   }
   function loadQueueSession(id) {
+    // A completed day is frozen on what was performed — scaffolding the
+    // next-up session onto it would re-inject the plan the freeze exists to
+    // keep off that day. Guard the single scaffold entry point (the button and
+    // every picker item both route through here) in addition to disabling the
+    // controls in renderPlanForDate, so neither path can write a frozen day.
+    var dateEl = document.getElementById('formDate');
+    var viewed = (dateEl && dateEl.value) ? dateEl.value : (window.today || '');
+    if (completionForDate(viewed)) return;
     var s = queueSessionById(id);
     if (!s || !s.Items) return;
     window._activeSessionID = id;
@@ -341,9 +353,62 @@
   }
   function markCompleteQueue() {
     if (!window._queue || !window._activeSessionID) return;
-    var body = new URLSearchParams(); body.set('session_id', window._activeSessionID);
+    var dateEl = document.getElementById('formDate');
+    var date = (dateEl && dateEl.value) ? dateEl.value : (window.today || '');
+    var body = new URLSearchParams();
+    body.set('session_id', window._activeSessionID);
+    // Send the day being completed so the server freezes THIS date on the
+    // completed session (and advances the cursor in the same transaction). The
+    // reload restores this date from sessionStorage, where it now resolves to
+    // the frozen "Completed" header instead of the advanced next-up session.
+    if (date) body.set('date', date);
     fetch('/plan/advance/', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
       .then(function(r) { if (r.ok) location.reload(); });
+  }
+  // completionForDate returns the completion binding for a day, or null.
+  function completionForDate(date) {
+    var cs = window._completions || [];
+    for (var i = 0; i < cs.length; i++) { if (cs[i].Date === date) return cs[i]; }
+    return null;
+  }
+  // renderPlanForDate resolves the plan header for the viewed date — the one
+  // place that decides what a date shows. A completed date freezes on the
+  // session that was marked done (performed sets render in the log below); an
+  // uncompleted date shows the cursor's next-up session with the Mark-complete
+  // control. This is what stops a just-completed day from re-rendering onto the
+  // next muscle group: completing binds the day here, so it resolves to the
+  // frozen header, while next-up stays reachable only on a later date.
+  // setScaffoldDisabled toggles the "Arnold's Routine" button and its day-picker
+  // caret. Disabled on a completed (frozen) day so the next-up session can't be
+  // scaffolded onto it; a disabled dropdown-toggle also can't open the picker.
+  function setScaffoldDisabled(disabled) {
+    var grp = document.getElementById('queueScaffoldGroup');
+    if (!grp) return;
+    grp.querySelectorAll('button').forEach(function(b) {
+      b.disabled = disabled;
+      b.classList.toggle('disabled', disabled);
+      b.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+      b.title = disabled ? 'This day is complete — editing is allowed, scaffolding is not'
+                         : 'Load the next queued workout into the log';
+    });
+  }
+  function renderPlanForDate(date) {
+    var el = document.getElementById('planHeader');
+    if (!el) return; // freestyle page: no plan header element
+    var comp = completionForDate(date);
+    setScaffoldDisabled(!!comp);
+    if (comp) {
+      el.innerHTML =
+        '<div class="panel-header d-flex align-items-center justify-content-between">' +
+        '<span class="panel-title"><i class="bi bi-check2-circle me-2"></i>Completed' +
+        (comp.Label ? ' · ' + qEsc(comp.Label) : '') + '</span>' +
+        '<span class="badge rounded-pill text-bg-success">Done</span></div>' +
+        '<p class="small text-body-secondary mb-0">Logged below — this day is complete. The next session shows on a later day.</p>';
+      return;
+    }
+    if (!window._queue) { el.innerHTML = ''; return; }
+    window._activeSessionID = window._queue.Current ? window._queue.Current.ID : 0;
+    renderQueueHeader(window._activeSessionID);
   }
   function renderQueueMenu() {
     var menu = document.getElementById('queueMenu');
@@ -415,7 +480,10 @@
     });
   }
   renderRoutineMenu();
-  if (window._queue) { renderQueueMenu(); renderQueueHeader(window._activeSessionID); }
+  if (window._queue) { renderQueueMenu(); }
+  // Initial header paint respects the restored date: a completed day freezes,
+  // otherwise next-up. setFormContent re-runs this on every later navigation.
+  renderPlanForDate(window.today);
 
   // Open the first exercise group on load so the picker shows exercises
   // immediately instead of a large empty panel. Purely presentational —
