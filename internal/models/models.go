@@ -354,6 +354,18 @@ func BuildQueuePlan(programs []Program) (*QueuePlan, bool) {
 	}, true
 }
 
+// SessionCompletion binds a calendar day to the prescribed session marked
+// complete on it. It is what freezes a completed day: a day that has a
+// completion renders that session as done (from the snapshotted Label), rather
+// than the program cursor's next-up session — which then surfaces only on
+// later, not-yet-completed days. One row per day; SessionID is nil when the
+// completed session was later removed (the Label snapshot still names it).
+type SessionCompletion struct {
+	Date      string `json:"Date"`                // YYYY-MM-DD
+	SessionID *int   `json:"SessionID,omitempty"` // nil if the session was later removed
+	Label     string `json:"Label"`               // snapshot of the completed session's label
+}
+
 // HealthRecord is one wearable health datum ingested from Android Health
 // Connect via the HC Webhook bridge. It is deliberately generic so new
 // Health Connect types ingest without a schema change: scalar readings land
@@ -445,6 +457,10 @@ type GuiData struct {
 	// label. Non-nil adds the button + picker + plan header alongside the
 	// always-present "Start routine" picker; nil is a freestyle state.
 	Queue *QueuePlan
+	// Completions are the day→completed-session bindings. The workout page
+	// uses them to freeze a completed day on what was performed instead of
+	// re-resolving it to the cursor's next-up session.
+	Completions []SessionCompletion
 	// ExerciseMuscles maps exercise id → its focus muscles, for the
 	// muscle-level Muscle Balance view. JSON-encoded to the stats page.
 	ExerciseMuscles map[int][]FocusMuscle

@@ -426,6 +426,29 @@ ALTER TABLE prescribed_sessions ALTER COLUMN date DROP NOT NULL;
 ALTER TABLE programs ADD COLUMN IF NOT EXISTS cursor_position INTEGER NOT NULL DEFAULT 1;
 `,
 	},
+	{
+		Version:     23,
+		Description: "bind a completed calendar day to the session completed that day (freeze-on-complete)",
+		SQL: `
+-- Completing a queued session advances the program cursor (v22). On its own
+-- that makes EVERY date resolve to the cursor's next-up session — including the
+-- day just completed, which then shows the next muscle group. This table binds
+-- a calendar day to the session marked complete on it, so a completed day
+-- renders frozen on what was performed while the cursor's next-up session
+-- surfaces only on later, not-yet-completed days. One completion per day (PUMP
+-- logs one session per day, mirroring session_feedback); re-completing upserts.
+-- label is snapshotted so the frozen day stays meaningful even if the session
+-- is later re-authored or removed (session_id then goes NULL, label remains).
+CREATE TABLE IF NOT EXISTS prescribed_session_completions (
+    date         DATE        PRIMARY KEY,
+    session_id   INTEGER     REFERENCES prescribed_sessions(id) ON DELETE SET NULL,
+    program_id   INTEGER     NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
+    label        TEXT        NOT NULL DEFAULT '',
+    completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS prescribed_session_completions_program_idx ON prescribed_session_completions (program_id, date);
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any

@@ -170,4 +170,17 @@ type PlanStore interface {
 	// committed session has that id. This is how finishing a queued session
 	// advances the rotation.
 	AdvanceCursor(ctx context.Context, completedSessionID int) (int, bool, error)
+	// CompleteSession records that sessionID was completed on date (one
+	// completion per day; a re-complete upserts) and advances the program
+	// cursor to the next committed position — both in one transaction. It
+	// returns the new cursor position; ok=false means no committed session has
+	// that id. This is the athlete's "mark complete": it freezes the day (via
+	// the completion binding) and advances the rotation together, so the
+	// completed day stays on what was performed while next-up surfaces only on
+	// later days.
+	CompleteSession(ctx context.Context, date string, sessionID int) (next int, ok bool, err error)
+	// SelectSessionCompletions returns every day→completed-session binding,
+	// oldest-first. The workout page ships these so a completed day renders
+	// frozen rather than re-resolving to the cursor's next-up session.
+	SelectSessionCompletions(ctx context.Context) ([]models.SessionCompletion, error)
 }

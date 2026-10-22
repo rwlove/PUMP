@@ -62,6 +62,23 @@ func currentQueue(c *gin.Context, who string) *models.QueuePlan {
 	return qp
 }
 
+// currentCompletions loads the day→completed-session bindings the workout page
+// uses to freeze a completed day on what was performed. Soft-degrades to nil on
+// any error (or no plan store) — freezing is an enrichment, never a reason to
+// fail the page; without it a completed day just falls back to the next-up
+// header, the pre-freeze behavior.
+func currentCompletions(c *gin.Context, who string) []models.SessionCompletion {
+	if planStore == nil {
+		return nil
+	}
+	cs, err := planStore.SelectSessionCompletions(c.Request.Context())
+	if err != nil {
+		slog.Warn(who+": SelectSessionCompletions failed; freeze disabled", slog.Any("error", err))
+		return nil
+	}
+	return cs
+}
+
 // feedbackHandler persists the athlete's post-session feedback from the
 // same-origin workout-page form. Two independent values, each keyed to its own
 // date so they land as separate rows (readers merge by date, latest wins):
@@ -134,11 +151,17 @@ func feedbackHandler(c *gin.Context) {
 	c.Redirect(http.StatusFound, ref)
 }
 
-// advanceHandler moves the training queue to the next session after the one the
-// athlete just completed. Same-origin and unkeyed (like /feedback/ and /set/):
-// this is the browser/athlete path, not the coach-authoring API. It expects a
-// session_id form field (the completed session) and returns JSON
-// {"next_position": N} so the page can reload onto the new cursor.
+// advanceHandler marks the session the athlete just completed as done and
+// advances the training queue to the next one. Same-origin and unkeyed (like
+// /feedback/ and /set/): this is the browser/athlete path, not the
+// coach-authoring API. It expects a session_id form field (the completed
+// session) and an optional date (the calendar day being completed, YYYY-MM-DD).
+//
+// With a date, it records the completion for that day AND advances the cursor
+// in one transaction (CompleteSession): the day freezes on what was performed
+// and the next-up session surfaces only on later days. Without a date it falls
+// back to a bare cursor advance (AdvanceCursor) — the pre-freeze behavior — so
+// an older client still works. Returns {"next_position": N}.
 func advanceHandler(c *gin.Context) {
 	if planStore == nil {
 		c.Status(http.StatusServiceUnavailable)
@@ -149,11 +172,24 @@ func advanceHandler(c *gin.Context) {
 		c.Status(http.StatusBadRequest)
 		return
 	}
-	next, ok, err := planStore.AdvanceCursor(c.Request.Context(), id)
-	if err != nil {
-		slog.Error("advanceHandler: AdvanceCursor failed", slog.Int("session_id", id), slog.Any("error", err))
-		c.Status(http.StatusInternalServerError)
-		return
+
+	var next int
+	var ok bool
+	if date := strings.TrimSpace(c.PostForm("date")); date != "" {
+		next, ok, err = planStore.CompleteSession(c.Request.Context(), date, id)
+		if err != nil {
+			slog.Error("advanceHandler: CompleteSession failed",
+				slog.Int("session_id", id), slog.String("date", date), slog.Any("error", err))
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+	} else {
+		next, ok, err = planStore.AdvanceCursor(c.Request.Context(), id)
+		if err != nil {
+			slog.Error("advanceHandler: AdvanceCursor failed", slog.Int("session_id", id), slog.Any("error", err))
+			c.Status(http.StatusInternalServerError)
+			return
+		}
 	}
 	if !ok {
 		c.Status(http.StatusNotFound)

@@ -336,6 +336,73 @@ func TestQueue_AdvanceCursorWraps(t *testing.T) {
 	}
 }
 
+// CompleteSession both advances the cursor (like AdvanceCursor) and binds the
+// completed day to the session, so a completed date reads back as frozen
+// (SelectSessionCompletions) while the cursor moves on. Re-completing the same
+// day upserts rather than duplicating.
+func TestCompleteSession_FreezesDayAndAdvances(t *testing.T) {
+	s := testStore(t)
+	cleanPlanTables(t, s)
+	ctx := context.Background()
+
+	exID := mustInsertEx(t, s, "Barbell Squats", "Legs", "#123")
+	progID, err := s.InsertProgram(ctx, models.Program{Name: "Q", StartDate: "2026-10-20"})
+	if err != nil {
+		t.Fatalf("InsertProgram: %v", err)
+	}
+	var ids []int
+	for _, label := range []string{"Chest", "Back", "Legs"} {
+		id, err := s.InsertPrescribedSession(ctx, models.PrescribedSession{
+			ProgramID: progID, Label: label, Status: "committed",
+		})
+		if err != nil {
+			t.Fatalf("InsertPrescribedSession(%s): %v", label, err)
+		}
+		ids = append(ids, id)
+	}
+	if err := s.ReplacePrescribedItems(ctx, ids[0], []models.PrescribedItem{
+		{ExerciseID: exID, TargetSets: 2, TargetRepsLow: 8, TargetRepsHigh: 10},
+	}); err != nil {
+		t.Fatalf("ReplacePrescribedItems: %v", err)
+	}
+
+	// Complete Chest (position 1) on a day → cursor advances to position 2.
+	next, ok, err := s.CompleteSession(ctx, "2026-10-22", ids[0])
+	if err != nil || !ok || next != 2 {
+		t.Fatalf("CompleteSession: next=%d ok=%v err=%v, want 2/true", next, ok, err)
+	}
+
+	// The day reads back as frozen on the completed session, with its label.
+	cs, err := s.SelectSessionCompletions(ctx)
+	if err != nil || len(cs) != 1 {
+		t.Fatalf("SelectSessionCompletions: n=%d err=%v, want 1", len(cs), err)
+	}
+	if cs[0].Date != "2026-10-22" || cs[0].Label != "Chest" ||
+		cs[0].SessionID == nil || *cs[0].SessionID != ids[0] {
+		t.Fatalf("completion = %+v, want date 2026-10-22 / label Chest / session %d", cs[0], ids[0])
+	}
+
+	// The cursor moved on: next-up is Back.
+	progs, _ := s.SelectPrograms(ctx)
+	if qp, qok := models.BuildQueuePlan(progs); !qok || qp.Current.Label != "Back" {
+		t.Fatalf("queue current = %+v (ok=%v), want Back", qp, qok)
+	}
+
+	// Re-completing the same day with a different session upserts (one row).
+	if _, ok, err := s.CompleteSession(ctx, "2026-10-22", ids[1]); err != nil || !ok {
+		t.Fatalf("re-complete: ok=%v err=%v", ok, err)
+	}
+	cs2, _ := s.SelectSessionCompletions(ctx)
+	if len(cs2) != 1 || cs2[0].Label != "Back" {
+		t.Fatalf("re-complete should upsert to one Back row, got %+v", cs2)
+	}
+
+	// Unknown session → ok=false, nothing written.
+	if _, ok, _ := s.CompleteSession(ctx, "2026-10-23", 999999); ok {
+		t.Fatal("complete unknown session should be ok=false")
+	}
+}
+
 // A session inserted without a date stores NULL and round-trips as an empty
 // Date string (queue sessions are position-based, not dated).
 func TestQueue_NullableDateRoundTrips(t *testing.T) {

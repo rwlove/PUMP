@@ -912,6 +912,12 @@ function setFormContent(sets, date) {
         it.classList.toggle('is-selected', it.getAttribute('data-date') === date);
     });
 
+    // Re-resolve the plan header for this date: a completed day freezes on the
+    // session that was marked done; an uncompleted day shows the cursor's
+    // next-up session. Defined in the page's inline queue script; guarded so a
+    // freestyle page (no plan header) is a no-op.
+    if (typeof renderPlanForDate === 'function') renderPlanForDate(date);
+
     if (sets) {
         var daySets = [];
         for (var i = 0; i < sets.length; i++) {
