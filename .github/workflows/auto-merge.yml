@@ -1,0 +1,135 @@
+---
+name: Auto-merge green PRs
+
+# Merges a pull request automatically once every check that ran for its head
+# commit is green.
+#
+# WHY SELF-CONTAINED (no branch protection, no native auto-merge): the
+# path-filtered test workflows — "go tests" (**.go), "cv tests" (cv/**),
+# "voltra tests" (voltra/**) — only run when their paths change. A required-
+# status-check gate would therefore deadlock on any PR that doesn't touch
+# those paths (the check never reports, native auto-merge waits forever).
+# This job instead waits on whatever checks actually exist for the SHA and
+# merges when none are pending and none failed.
+#
+# WHY workflow_run, not check_suite: it is the same pattern release.yml and
+# autofix.yml already use here, and the GitHub Actions app suppresses
+# check_suite triggers in ways workflow_run is not subject to. "CodeQL
+# Advanced" runs on every PR to main with no path filter, so this workflow is
+# guaranteed to fire for every PR at least once — when CodeQL completes.
+#
+# A workflow_run-triggered run is NOT itself a PR check, so it never appears
+# in the check set it evaluates — no self-deadlock.
+
+"on":
+  workflow_run:
+    workflows:
+      - "go tests"
+      - "cv tests"
+      - "voltra tests"
+      - "CodeQL Advanced"
+    types: [completed]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# Serialise completions for the same PR branch so two finishing checks can't
+# race into two merge attempts. cancel-in-progress is false: let each run
+# finish and re-evaluate rather than dropping one.
+concurrency:
+  group: automerge-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  automerge:
+    # Only PR-triggered runs have a PR to merge. push/schedule runs of CodeQL
+    # on main have no associated pull request.
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Merge when green
+        run: |
+          set -euo pipefail
+
+          # Resolve the open PR for this run's source branch.
+          PR=$(gh pr list --repo "$GITHUB_REPOSITORY" \
+                 --head "$HEAD_BRANCH" --state open \
+                 --json number,isDraft,headRefOid --jq '.[0]')
+          if [ -z "$PR" ] || [ "$PR" = "null" ]; then
+            echo "No open PR for branch ${HEAD_BRANCH} — nothing to merge."
+            exit 0
+          fi
+
+          NUM=$(jq -r '.number'     <<<"$PR")
+          DRAFT=$(jq -r '.isDraft'  <<<"$PR")
+          PR_HEAD=$(jq -r '.headRefOid' <<<"$PR")
+
+          if [ "$DRAFT" = "true" ]; then
+            echo "PR #${NUM} is a draft — skipping."
+            exit 0
+          fi
+
+          # If the PR advanced past the SHA this run was for, our view is
+          # stale; the run the newer commit triggers will handle it.
+          if [ "$PR_HEAD" != "$HEAD_SHA" ]; then
+            echo "PR #${NUM} head ${PR_HEAD} != run ${HEAD_SHA} — stale."
+            exit 0
+          fi
+
+          # Count checks by bucket.
+          # Buckets: pass, fail, cancel, pending, skipping.
+          evaluate() {
+            local json total pending fail
+            json=$(gh pr checks "$NUM" --repo "$GITHUB_REPOSITORY" \
+                     --json bucket 2>/dev/null || echo '[]')
+            total=$(jq 'length' <<<"$json")
+            pending=$(jq '[.[] | select(.bucket=="pending")] | length' \
+                        <<<"$json")
+            fail=$(jq '[.[] | select(.bucket=="fail" or .bucket=="cancel")]
+                        | length' <<<"$json")
+            echo "${total} ${pending} ${fail}"
+          }
+
+          read -r TOTAL PENDING FAIL < <(evaluate)
+          echo "checks: total=${TOTAL} pending=${PENDING} fail=${FAIL}"
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "No checks reported yet — a later run re-evaluates."
+            exit 0
+          fi
+          if [ "$FAIL" -ne 0 ]; then
+            echo "PR #${NUM} has failing/cancelled checks — not merging."
+            exit 0
+          fi
+          if [ "$PENDING" -ne 0 ]; then
+            echo "Checks still pending — a later run re-evaluates."
+            exit 0
+          fi
+
+          # Settle: a check that had not registered yet when the last known
+          # one completed can't trick us into an early merge.
+          sleep 15
+          read -r TOTAL2 PENDING2 FAIL2 < <(evaluate)
+          echo "recheck: total=${TOTAL2} pending=${PENDING2} fail=${FAIL2}"
+          if [ "$FAIL2" -ne 0 ] || [ "$PENDING2" -ne 0 ]; then
+            echo "State changed on recheck — deferring to a later run."
+            exit 0
+          fi
+
+          # Refuse a PR that isn't cleanly mergeable (conflicts).
+          MERGEABLE=$(gh pr view "$NUM" --repo "$GITHUB_REPOSITORY" \
+                        --json mergeable --jq '.mergeable')
+          if [ "$MERGEABLE" = "CONFLICTING" ]; then
+            echo "PR #${NUM} has conflicts — not merging."
+            exit 0
+          fi
+
+          echo "All ${TOTAL2} checks green — squash-merging PR #${NUM}."
+          gh pr merge "$NUM" --repo "$GITHUB_REPOSITORY" \
+            --squash --delete-branch
