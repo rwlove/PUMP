@@ -49,6 +49,9 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # To re-fire cv-base-publish via workflow_dispatch after a merge (see
+      # the merge step) — a GITHUB_TOKEN merge doesn't trigger it on its own.
+      actions: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
@@ -131,5 +134,20 @@ jobs:
           fi
 
           echo "All ${TOTAL2} checks green — squash-merging PR #${NUM}."
+          # Capture changed paths before the merge for the cv-base check below.
+          FILES=$(gh pr view "$NUM" --repo "$GITHUB_REPOSITORY" \
+                    --json files --jq '.files[].path')
           gh pr merge "$NUM" --repo "$GITHUB_REPOSITORY" \
             --squash --delete-branch
+
+          # A GITHUB_TOKEN merge does NOT fire push-on-main workflows, so
+          # cv-base-publish (push: cv/Containerfile.base, cv/pyproject.toml)
+          # would miss an auto-merged base-image change — leaving pump-cv
+          # builds on a stale base. Re-fire it via its own workflow_dispatch
+          # when those paths changed, so every pump build still happens.
+          if printf '%s\n' "$FILES" | grep -qE \
+               '^cv/(Containerfile\.base|pyproject\.toml)$'; then
+            echo "cv-base source changed — dispatching cv-base-publish."
+            gh workflow run cv-base-publish.yml \
+              --repo "$GITHUB_REPOSITORY" --ref main
+          fi
