@@ -1,25 +1,33 @@
 ---
 name: Monthly release
 
-# On the first of each month, cut the next patch pump-v* release if there are
-# unreleased server changes, then let the existing publish -> release ->
-# home-ops chain ship it.
+# On the first of each month, cut the next patch release for EACH pump tag
+# line that has source changes since its last tag, then let the existing
+# publish -> release -> home-ops chain ship each one. All three lines are
+# handled independently and identically:
+#
+#   line    tag glob             source paths
+#   server  pump-v[0-9]*         cmd/ internal/ go.mod go.sum Containerfile
+#   cv      pump-cv-v[0-9]*      cv/
+#   voltra  pump-voltra-v[0-9]*  voltra/
+#
+# Each line's source-path set mirrors what its publish workflow uses to decide
+# rebuild-vs-retag, so a line with no source changes in a given month cuts
+# nothing (no spurious retag). Release notes are scoped to that line's paths.
 #
 # WHY A DEPLOY KEY, not GITHUB_TOKEN: a tag pushed with the automatic
-# GITHUB_TOKEN does NOT trigger other workflows, so container-publish (which
-# triggers on `push: tags: pump-v[0-9]*`) would never fire and nothing would
-# build or release. The checkout below authenticates with a write deploy key
-# (secret TAG_PUSH_KEY), so the tag push is seen as a normal push and fires
-# the chain.
-#
-# GATE: only cuts a release when server source (cmd/ internal/ go.mod go.sum
-# Containerfile) changed since the last pump-v* tag — the same path set
-# container-publish uses to decide rebuild-vs-retag. A month with only
-# cv/voltra/docs changes produces no spurious server retag.
+# GITHUB_TOKEN does NOT trigger other workflows, so the publish workflows
+# (which trigger on `push: tags`) would never fire. The checkout authenticates
+# with the write deploy key (secret TAG_PUSH_KEY) so each tag push is seen as
+# a normal push and fires the chain.
 #
 # NOTE: this BYPASSES the manual pre-tag ritual in AGENTS.md (screenshot
 # regen, README audit, dead-code sweep). Notes are auto-generated from commit
 # subjects rather than the hand-written annotated-tag changelog.
+#
+# cv-base (ghcr pump-cv-base) is NOT a tag line — it auto-builds on push to
+# main when cv/Containerfile.base or cv/pyproject.toml change — so it is not
+# handled here.
 
 "on":
   schedule:
@@ -45,48 +53,70 @@ jobs:
           fetch-depth: 0
           ssh-key: ${{ secrets.TAG_PUSH_KEY }}
 
-      - name: Cut monthly release
+      - name: Cut monthly releases
         run: |
           set -euo pipefail
           git fetch --tags --force --quiet
 
-          LAST=$(git tag -l 'pump-v[0-9]*' --sort=-version:refname | head -1)
-          if [ -z "$LAST" ]; then
-            echo "::error::No existing pump-v* tag to base a bump on."
-            exit 1
-          fi
-          echo "Last server tag: ${LAST}"
-
-          CHANGED=$(git rev-list "${LAST}..HEAD" --count -- \
-            cmd/ internal/ go.mod go.sum Containerfile)
-          if [ "$CHANGED" -eq 0 ]; then
-            echo "No server source changes since ${LAST} — nothing to do."
-            exit 0
-          fi
-          echo "${CHANGED} server-source commit(s) since ${LAST}."
-
-          # Bump patch: pump-vMAJOR.MINOR.PATCH -> PATCH+1
-          VER="${LAST#pump-v}"
-          MAJOR="${VER%%.*}"
-          REST="${VER#*.}"
-          MINOR="${REST%%.*}"
-          PATCH="${REST#*.}"
-          NEWTAG="pump-v${MAJOR}.${MINOR}.$((PATCH + 1))"
-          if git rev-parse -q --verify "refs/tags/${NEWTAG}" >/dev/null; then
-            echo "::error::${NEWTAG} already exists."
-            exit 1
-          fi
-          echo "New tag: ${NEWTAG}"
-
-          NOTES=$(git log "${LAST}..HEAD" --no-merges \
-            --pretty=format:'- %s (%h)')
-          SUBJECT="Automated monthly release ${NEWTAG}"
-
           git config user.name  "pump-release-bot"
           git config user.email "pump-release-bot@users.noreply.github.com"
-          git tag -a "${NEWTAG}" -m "${SUBJECT}" -m "${NOTES}"
-          git push origin "${NEWTAG}"
 
-          echo "Pushed ${NEWTAG}. container-publish builds the image;"
-          echo "release.yml creates the GitHub Release; the home-ops"
-          echo "webhook then opens the HelmRelease digest-bump PR."
+          TAGS=()
+
+          # cut <name> <tag-glob> <strip-prefix> <path>...
+          cut() {
+            local name="$1" glob="$2" strip="$3"
+            shift 3
+            local paths=("$@")
+            local last changed ver major rest minor patch newtag notes subj
+
+            last=$(git tag -l "$glob" --sort=-version:refname | head -1)
+            if [ -z "$last" ]; then
+              echo "[$name] no tag matching ${glob} — skipping."
+              return 0
+            fi
+
+            changed=$(git rev-list "${last}..HEAD" --count -- "${paths[@]}")
+            if [ "$changed" -eq 0 ]; then
+              echo "[$name] no source changes since ${last} — nothing."
+              return 0
+            fi
+
+            ver="${last#"$strip"}"
+            major="${ver%%.*}"
+            rest="${ver#*.}"
+            minor="${rest%%.*}"
+            patch="${rest#*.}"
+            newtag="${strip}${major}.${minor}.$((patch + 1))"
+            if git rev-parse -q --verify "refs/tags/${newtag}" >/dev/null
+            then
+              echo "::error::[$name] ${newtag} already exists."
+              return 1
+            fi
+
+            notes=$(git log "${last}..HEAD" --no-merges \
+              --pretty=format:'- %s (%h)' -- "${paths[@]}")
+            subj="Automated monthly release ${newtag}"
+            git tag -a "${newtag}" -m "${subj}" -m "${notes}"
+            TAGS+=("$newtag")
+            echo "[$name] tagged ${newtag} (+${changed} since ${last})"
+          }
+
+          cut server "pump-v[0-9]*" "pump-v" \
+            cmd/ internal/ go.mod go.sum Containerfile
+          cut cv "pump-cv-v[0-9]*" "pump-cv-v" cv/
+          cut voltra "pump-voltra-v[0-9]*" "pump-voltra-v" voltra/
+
+          if [ "${#TAGS[@]}" -eq 0 ]; then
+            echo "No line had source changes — nothing released this month."
+            exit 0
+          fi
+
+          # Push each tag; each push fires its publish workflow, which fires
+          # release.yml (the GitHub Release), which fires the home-ops webhook
+          # that opens the HelmRelease digest-bump PR.
+          for t in "${TAGS[@]}"; do
+            echo "Pushing ${t}..."
+            git push origin "$t"
+          done
+          echo "Pushed: ${TAGS[*]}"
