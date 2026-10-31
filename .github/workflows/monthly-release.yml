@@ -1,0 +1,92 @@
+---
+name: Monthly release
+
+# On the first of each month, cut the next patch pump-v* release if there are
+# unreleased server changes, then let the existing publish -> release ->
+# home-ops chain ship it.
+#
+# WHY A DEPLOY KEY, not GITHUB_TOKEN: a tag pushed with the automatic
+# GITHUB_TOKEN does NOT trigger other workflows, so container-publish (which
+# triggers on `push: tags: pump-v[0-9]*`) would never fire and nothing would
+# build or release. The checkout below authenticates with a write deploy key
+# (secret TAG_PUSH_KEY), so the tag push is seen as a normal push and fires
+# the chain.
+#
+# GATE: only cuts a release when server source (cmd/ internal/ go.mod go.sum
+# Containerfile) changed since the last pump-v* tag — the same path set
+# container-publish uses to decide rebuild-vs-retag. A month with only
+# cv/voltra/docs changes produces no spurious server retag.
+#
+# NOTE: this BYPASSES the manual pre-tag ritual in AGENTS.md (screenshot
+# regen, README audit, dead-code sweep). Notes are auto-generated from commit
+# subjects rather than the hand-written annotated-tag changelog.
+
+"on":
+  schedule:
+    # 06:07 UTC on the 1st (~1-2 AM Eastern). Off-peak minute: GitHub delays
+    # or drops top-of-hour scheduled runs under load.
+    - cron: "7 6 1 * *"
+  workflow_dispatch: {}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # The deploy key does the push; no GITHUB_TOKEN repo write is needed.
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout (deploy key)
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ssh-key: ${{ secrets.TAG_PUSH_KEY }}
+
+      - name: Cut monthly release
+        run: |
+          set -euo pipefail
+          git fetch --tags --force --quiet
+
+          LAST=$(git tag -l 'pump-v[0-9]*' --sort=-version:refname | head -1)
+          if [ -z "$LAST" ]; then
+            echo "::error::No existing pump-v* tag to base a bump on."
+            exit 1
+          fi
+          echo "Last server tag: ${LAST}"
+
+          CHANGED=$(git rev-list "${LAST}..HEAD" --count -- \
+            cmd/ internal/ go.mod go.sum Containerfile)
+          if [ "$CHANGED" -eq 0 ]; then
+            echo "No server source changes since ${LAST} — nothing to do."
+            exit 0
+          fi
+          echo "${CHANGED} server-source commit(s) since ${LAST}."
+
+          # Bump patch: pump-vMAJOR.MINOR.PATCH -> PATCH+1
+          VER="${LAST#pump-v}"
+          MAJOR="${VER%%.*}"
+          REST="${VER#*.}"
+          MINOR="${REST%%.*}"
+          PATCH="${REST#*.}"
+          NEWTAG="pump-v${MAJOR}.${MINOR}.$((PATCH + 1))"
+          if git rev-parse -q --verify "refs/tags/${NEWTAG}" >/dev/null; then
+            echo "::error::${NEWTAG} already exists."
+            exit 1
+          fi
+          echo "New tag: ${NEWTAG}"
+
+          NOTES=$(git log "${LAST}..HEAD" --no-merges \
+            --pretty=format:'- %s (%h)')
+          SUBJECT="Automated monthly release ${NEWTAG}"
+
+          git config user.name  "pump-release-bot"
+          git config user.email "pump-release-bot@users.noreply.github.com"
+          git tag -a "${NEWTAG}" -m "${SUBJECT}" -m "${NOTES}"
+          git push origin "${NEWTAG}"
+
+          echo "Pushed ${NEWTAG}. container-publish builds the image;"
+          echo "release.yml creates the GitHub Release; the home-ops"
+          echo "webhook then opens the HelmRelease digest-bump PR."
