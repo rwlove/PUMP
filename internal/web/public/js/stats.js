@@ -310,6 +310,9 @@ function updateVolumeChart(sets, exercises, period, exerciseName) {
     const exObj = exMap[exerciseName] || {};
     const isBodyweight = !!exObj.Bodyweight;
     const isLegs = ((exObj.Group || '').toLowerCase()).includes('leg');
+    // Unilateral: the logged weight/reps are one side's as-performed values;
+    // both sides did that work, so total volume credits it twice.
+    const isUnilateral = !!exObj.Unilateral;
 
     // Group by date, preserving set order within each day.
     const setsByDate = {};   // date → [{weight, reps, vol, bodyWeightUsed}, ...]
@@ -328,7 +331,7 @@ function updateVolumeChart(sets, exercises, period, exerciseName) {
             if (bw !== null) { w = bw; bodyWeightUsed = true; }
         }
         const r   = parseInt(s.Reps, 10);
-        const vol = (!isNaN(w) && !isNaN(r)) ? w * r : 0;
+        const vol = (!isNaN(w) && !isNaN(r)) ? w * r * (isUnilateral ? 2 : 1) : 0;
         if (!setsByDate[s.Date]) setsByDate[s.Date] = [];
         setsByDate[s.Date].push({ weight: w, reps: r, vol, bodyWeightUsed });
     });
@@ -717,7 +720,9 @@ function updateBalanceTab(allSets, exercises, period) {
         if (!ex) return;
         const w = parseFloat(s.Weight);
         const r = parseInt(s.Reps, 10);
-        const vol = (!isNaN(w) && w > 0 && !isNaN(r) && r > 0) ? w * r : 0;
+        // Unilateral exercises log one side's weight/reps; both sides did
+        // that work, so aggregate volume credits it twice.
+        const vol = (!isNaN(w) && w > 0 && !isNaN(r) && r > 0) ? w * r * (ex.Unilateral ? 2 : 1) : 0;
         if (byMuscle) {
             const muscles = window._exerciseMuscles[String(ex.ID)] || [];
             muscles.forEach(m => {

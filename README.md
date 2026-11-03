@@ -72,6 +72,38 @@ trainer") on the exercise configuration page, not a guess from the name.
 Disabled by default — set `VOLTRA_AUTOLOG=true` on PUMP and `VOLTRA_ENABLED=true`
 on the sidecar. See [`voltra/README.md`](voltra/README.md).
 
+### Exercise catalog: unilateral loading, movement-pattern caution, and attachment variants
+
+Two per-exercise flags on the exercise configuration page's underlying model
+(no dedicated form fields yet — set via the catalog API or direct DB access
+until a UI lands):
+
+- **Unilateral** marks an exercise performed one side at a time, where the
+  logged weight and rep count are the as-performed values for a *single*
+  side — there is no left/right split in the data model, just one weight and
+  one rep count per set, exactly like any other exercise. Because both sides
+  did that work, every stat that aggregates load — the Muscle Balance tab's
+  "volume" metric and the Weight Moved chart — doubles a unilateral
+  exercise's per-set volume. The Epley e1RM-based Personal Records and
+  Progressive Overload tabs are unaffected, since a 1RM estimate reflects one
+  side's peak force, not combined load.
+- **Caution class** is a free-text tag that groups exercises sharing a
+  movement-pattern caution (e.g. two different named exercises that load a
+  joint the same way under load), independent of exercise name or
+  attachment/grip variant. It exists because a purely name- or ID-based
+  caution can be worked around by logging a mechanically-equivalent exercise
+  under a different catalog entry — tagging the *pattern* instead of a
+  specific exercise ID closes that gap. It's advisory metadata only (not
+  enforced anywhere in the app yet); there is no fixed enum, so new values
+  don't require a migration.
+
+**Attachment/grip variants** (e.g. the same cable station with a wide bar vs.
+a rope vs. a narrow handle) use no special schema at all — the existing
+convention is simply a separate catalog row per variant, named descriptively
+(e.g. "Cable Row (Wide Grip)"). This keeps each variant's own load history,
+Personal Records, and Progressive Overload trend independent, the same way
+the catalog already separates e.g. flat and incline bench press.
+
 ### Health dashboard & wearable metrics
 
 The **Health** page (`/health/`) is a one-page, whole-body view that pulls from every source PUMP tracks — body weight, strength training, and wearable metrics — as summary tiles (latest value, trend delta, sparkline) that deep-link into the matching Stats tab.

@@ -72,6 +72,19 @@ type Exercise struct {
 	// most recent body-weight reading and offers an optional added-weight
 	// field for holding dumbbells / a weight belt.
 	Bodyweight bool `db:"BODYWEIGHT"`
+	// Unilateral marks an exercise performed one side at a time. The logged
+	// weight/reps stay the as-performed per-side values (one weight, one rep
+	// count -- no L/R split); aggregate-load stats (Muscle Balance's "volume"
+	// metric, the Weight Moved chart) double a unilateral exercise's per-set
+	// volume to credit both sides. e1RM-based stats (Personal Records,
+	// Progressive Overload) are unaffected.
+	Unilateral bool `db:"UNILATERAL"`
+	// CautionClass optionally groups this exercise with every other exercise
+	// sharing the same value -- a movement-pattern tag (e.g. exercises that
+	// load a joint the same way under load) independent of exercise name or
+	// attachment/grip variant. Empty string means no caution class. Free
+	// text by design; known values are documented in the README.
+	CautionClass string `db:"CAUTION_CLASS"`
 }
 
 // ExerciseRecency is the last-performed signal used to order the exercise
