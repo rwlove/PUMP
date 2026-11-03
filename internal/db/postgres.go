@@ -449,6 +449,32 @@ CREATE TABLE IF NOT EXISTS prescribed_session_completions (
 CREATE INDEX IF NOT EXISTS prescribed_session_completions_program_idx ON prescribed_session_completions (program_id, date);
 `,
 	},
+	{
+		Version:     24,
+		Description: "exercise metadata: unilateral (one-side-at-a-time load) and caution_class (movement-pattern tag)",
+		SQL: `
+-- Unilateral marks an exercise performed one side at a time where the logged
+-- weight/reps are the as-performed PER-SIDE values (one weight, one rep count
+-- -- no L/R split rows). Stats that compute aggregate load (Muscle Balance's
+-- "volume" metric, the Weight Moved chart) double a unilateral exercise's
+-- per-set volume, since both sides did that work; the Epley e1RM-based
+-- Personal Records / Progressive Overload tabs are unaffected -- a 1RM
+-- estimate is about one side's peak force, not combined load. Same pattern as
+-- the existing voltra/bodyweight flags: a flag rather than a name heuristic.
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS unilateral BOOLEAN NOT NULL DEFAULT false;
+
+-- caution_class optionally tags an exercise as sharing a movement-pattern
+-- caution with every other exercise carrying the same value (e.g. exercises
+-- that load a joint the same way under load), independent of exercise name
+-- or attachment/grip variant. This exists because a purely name/ID-based
+-- caution can be worked around by logging a mechanically-equivalent exercise
+-- under a different name -- tagging the PATTERN closes that gap. Empty
+-- string = no caution class. Free text by design (not a DB-level enum) so a
+-- new pattern can be tagged without a migration; known values are documented
+-- in the README, not enforced here.
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS caution_class TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any

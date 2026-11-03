@@ -71,7 +71,7 @@ func (s *PostgresStore) Pool() *pgxpool.Pool {
 func (s *PostgresStore) SelectEx(ctx context.Context) ([]models.Exercise, error) {
 	slog.Debug("db: SelectEx")
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, gr, place, name, descr, image, color, weight::text, reps, voltra, focus, bodyweight
+		`SELECT id, gr, place, name, descr, image, color, weight::text, reps, voltra, focus, bodyweight, unilateral, caution_class
 		 FROM exercises ORDER BY id ASC`)
 	if err != nil {
 		return nil, err
@@ -84,7 +84,7 @@ func (s *PostgresStore) SelectEx(ctx context.Context) ([]models.Exercise, error)
 		var weightStr string
 		if err := rows.Scan(&ex.ID, &ex.Group, &ex.Place, &ex.Name, &ex.Descr,
 			&ex.Image, &ex.Color, &weightStr, &ex.Reps, &ex.Voltra,
-			&ex.Focus, &ex.Bodyweight); err != nil {
+			&ex.Focus, &ex.Bodyweight, &ex.Unilateral, &ex.CautionClass); err != nil {
 			return nil, err
 		}
 		ex.Weight, _ = decimal.NewFromString(weightStr)
@@ -98,10 +98,11 @@ func (s *PostgresStore) InsertEx(ctx context.Context, ex models.Exercise) (int, 
 	slog.Debug("db: InsertEx", slog.String("name", ex.Name), slog.String("group", ex.Group))
 	var id int
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO exercises (gr, place, name, descr, image, color, weight, reps, voltra, focus, bodyweight)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+		`INSERT INTO exercises (gr, place, name, descr, image, color, weight, reps, voltra, focus, bodyweight, unilateral, caution_class)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
 		ex.Group, ex.Place, ex.Name, ex.Descr, ex.Image, ex.Color,
-		ex.Weight.String(), ex.Reps, ex.Voltra, ex.Focus, ex.Bodyweight).Scan(&id)
+		ex.Weight.String(), ex.Reps, ex.Voltra, ex.Focus, ex.Bodyweight,
+		ex.Unilateral, ex.CautionClass).Scan(&id)
 	if err != nil {
 		slog.Debug("db: InsertEx failed", slog.Any("error", err))
 	}
@@ -199,9 +200,11 @@ func (s *PostgresStore) UpdateEx(ctx context.Context, ex models.Exercise) (bool,
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op once committed
 
 	var prevName, prevColor string
+	var prevUnilateral bool
+	var prevCautionClass string
 	err = tx.QueryRow(ctx,
-		"SELECT name, color FROM exercises WHERE id = $1 FOR UPDATE", ex.ID).
-		Scan(&prevName, &prevColor)
+		"SELECT name, color, unilateral, caution_class FROM exercises WHERE id = $1 FOR UPDATE", ex.ID).
+		Scan(&prevName, &prevColor, &prevUnilateral, &prevCautionClass)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
@@ -217,13 +220,25 @@ func (s *PostgresStore) UpdateEx(ctx context.Context, ex models.Exercise) (bool,
 		ex.Color = prevColor
 	}
 
+	// Unilateral and CautionClass have no form field on the exercise edit page
+	// yet (deliberately deferred -- see README), so the HTML-form handler
+	// always binds them to Go zero values (false, ""). Unlike Color, there is
+	// no caller signal at all to tell "the form doesn't carry this field" apart
+	// from "explicitly clear it" -- so until a UI exists, every UpdateEx call
+	// unconditionally preserves the previous value rather than silently
+	// wiping a caution tag or unilateral flag on an unrelated edit (e.g.
+	// renaming the exercise). Set these two via direct DB/API access instead.
+	ex.Unilateral = prevUnilateral
+	ex.CautionClass = prevCautionClass
+
 	if _, err := tx.Exec(ctx,
 		`UPDATE exercises SET gr = $1, place = $2, name = $3, descr = $4,
 		        image = $5, color = $6, weight = $7, reps = $8, voltra = $9,
-		        focus = $10, bodyweight = $11
-		 WHERE id = $12`,
+		        focus = $10, bodyweight = $11, unilateral = $12, caution_class = $13
+		 WHERE id = $14`,
 		ex.Group, ex.Place, ex.Name, ex.Descr, ex.Image, ex.Color,
-		ex.Weight.String(), ex.Reps, ex.Voltra, ex.Focus, ex.Bodyweight, ex.ID); err != nil {
+		ex.Weight.String(), ex.Reps, ex.Voltra, ex.Focus, ex.Bodyweight,
+		ex.Unilateral, ex.CautionClass, ex.ID); err != nil {
 		slog.Debug("db: UpdateEx failed", slog.Int("id", ex.ID), slog.Any("error", err))
 		return false, err
 	}
