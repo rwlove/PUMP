@@ -64,7 +64,7 @@ jobs:
           # Resolve the open PR for this run's source branch.
           PR=$(gh pr list --repo "$GITHUB_REPOSITORY" \
                  --head "$HEAD_BRANCH" --state open \
-                 --json number,isDraft,headRefOid --jq '.[0]')
+                 --json number,isDraft,headRefOid,author --jq '.[0]')
           if [ -z "$PR" ] || [ "$PR" = "null" ]; then
             echo "No open PR for branch ${HEAD_BRANCH} — nothing to merge."
             exit 0
@@ -73,11 +73,26 @@ jobs:
           NUM=$(jq -r '.number'     <<<"$PR")
           DRAFT=$(jq -r '.isDraft'  <<<"$PR")
           PR_HEAD=$(jq -r '.headRefOid' <<<"$PR")
+          AUTHOR=$(jq -r '.author.login' <<<"$PR")
 
           if [ "$DRAFT" = "true" ]; then
             echo "PR #${NUM} is a draft — skipping."
             exit 0
           fi
+
+          # Gate: auto-merge only dependency-bot PRs. Human- and
+          # agent-authored PRs (including Claude's via @claude) wait
+          # for Rob's review + merge. Renovate authors dep PRs as
+          # "app/lovenet-renovate-operator".
+          case "$AUTHOR" in
+            app/lovenet-renovate-operator | 'renovate[bot]' | 'dependabot[bot]')
+              ;;
+            *)
+              echo "PR #${NUM} author '${AUTHOR}' is not a dep bot;" \
+                   "leaving for human review."
+              exit 0
+              ;;
+          esac
 
           # If the PR advanced past the SHA this run was for, our view is
           # stale; the run the newer commit triggers will handle it.
