@@ -325,6 +325,23 @@
   // set afterwards, and a provisional (NULL) load falls back to the exercise's
   // own default like a routine.
   function qEsc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+  // rationaleHtml renders a PLAN item's rationale. The field is authored as
+  // newline-separated plain-text lines — one reminder per line, with no leading
+  // bullet marker — so rendering it in a single element (the old behaviour) ran
+  // the reminders together on one line. Split on \n, trim, drop blank lines,
+  // HTML-escape each line via qEsc (element text content, so tag injection is
+  // neutralised), and stack them as <li>s in a <ul>. A one-line rationale
+  // renders as a single bullet, so existing one-liners degrade gracefully.
+  // Display-only: how rationale is stored and authored is unchanged.
+  function rationaleHtml(s) {
+    var lines = String(s == null ? '' : s).split('\n')
+      .map(function(x) { return x.trim(); })
+      .filter(function(x) { return x.length; });
+    if (!lines.length) return '';
+    return '<ul class="plan-rationale small text-body-tertiary">' +
+      lines.map(function(l) { return '<li>' + qEsc(l) + '</li>'; }).join('') +
+      '</ul>';
+  }
   function queueSessionById(id) {
     if (!window._queue || !window._queue.Sessions) return null;
     return window._queue.Sessions.find(function(s) { return s.ID === id; });
@@ -460,7 +477,7 @@
       h += '<div class="flex-grow-1"><div class="d-flex flex-wrap align-items-baseline gap-2">';
       h += '<span class="fw-semibold">' + qEsc(it.ExerciseName) + '</span>';
       h += '<span class="text-body-secondary small">' + reps + rir + wt + '</span></div>';
-      if (it.Rationale) h += '<div class="small text-body-tertiary">' + qEsc(it.Rationale) + '</div>';
+      if (it.Rationale) h += rationaleHtml(it.Rationale);
       if (it.AltExerciseName) h += '<div class="small text-body-tertiary">or ' + qEsc(it.AltExerciseName) + '</div>';
       (it.Flags ? String(it.Flags).split(',') : []).forEach(function(f) { f = f.trim(); if (f) h += '<span class="badge rounded-pill text-bg-secondary me-1 mt-1">' + qEsc(f) + '</span>'; });
       h += '</div></li>';

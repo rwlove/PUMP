@@ -325,10 +325,15 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
     // Carve-outs that must keep persisting immediately (no prefill gating):
     //  - meta.id  — a row already on the server (reload, CV/Voltra over SSE).
     //  - meta.pending — a CV/Voltra detection; it has its own ✓/✗ model below.
-    //  - Voltra-flagged exercises — arming the motor needs a server set id, so
-    //    the row has to exist before the athlete can LOAD it.
-    var isVoltra = (typeof voltraFlagged === 'function') && voltraFlagged(name);
-    var isUncommitted = !!window._autoLog && !meta.id && !meta.pending && !isVoltra;
+    //
+    // Voltra-flagged scaffold rows are NOT carved out any more: a Voltra set the
+    // athlete never performs must not linger as a phantom placeholder either. It
+    // stays an uncommitted prefill and is written on its first real Voltra action
+    // — arm (row tap) or LOAD — which is where voltra.js creates the row just
+    // before arming the motor. Arming the motor still needs a server set id; that
+    // id is now minted at first intent instead of at scaffold time. See
+    // voltraEnsurePersisted in voltra.js.
+    var isUncommitted = !!window._autoLog && !meta.id && !meta.pending;
     if (isUncommitted) {
         entry.dataset.prefill = 'true';
         entry.classList.add('entry-uncommitted');
@@ -548,9 +553,10 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
             // un-overwritten placeholder can't survive as a fabricated set.
             // Deliberately no markDirty / scheduleAutosave here.
         } else {
-            // Legacy bulk mode, or a Voltra row that must be armable at once:
-            // mark dirty so the autosave persists it (whole-day /set/ in bulk
-            // mode, per-set POST in autolog mode).
+            // Legacy bulk mode only. Autolog prefill rows — Voltra included —
+            // take the branch above and stay unwritten until the user acts on
+            // them, so the only rows left here are bulk-mode ones: mark dirty so
+            // the whole-day /set/ autosave persists the day from the DOM.
             markDirty(entry);
             scheduleAutosave();
         }

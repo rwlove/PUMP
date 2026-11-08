@@ -174,12 +174,35 @@ function voltraWeight(entry) {
     return el ? el.value : '';
 }
 
+// voltraEnsurePersisted resolves once `entry` has a server set id. A Voltra
+// scaffold row is now an uncommitted PREFILL row — the #192 touched-only
+// guarantee extends to Voltra, so nothing is written at scaffold time. The
+// first real Voltra action (arm or LOAD) is what persists the row, via the same
+// POST /api/sets the manual ✓ uses, so the set lands at position = MAX+1 (true
+// lift order) and a never-acted-on scaffold row never reaches the DB. A row that
+// already carries an id — reloaded/SSE, or already committed here — resolves
+// immediately with nothing to write.
+function voltraEnsurePersisted(entry) {
+    if (voltraSetId(entry)) return Promise.resolve();
+    if (entry && entry.dataset.prefill === 'true' &&
+        typeof commitUncommittedEntry === 'function') {
+        return commitUncommittedEntry(entry);
+    }
+    return Promise.resolve();
+}
+
 function voltraArm(entry) {
     var sid = voltraSetId(entry);
     if (!sid) {
-        // The row has not been saved yet, so there is nothing to attribute a
-        // set to. Autosave is fast; the next click will work.
-        voltraFlash(entry, 'saving…');
+        // Uncommitted prefill Voltra row: no server set id yet. Arming it IS the
+        // athlete's first intent to do this set, so persist it now (not at
+        // scaffold) and arm the freshly-created row. A commit already in flight
+        // leaves the id unset this tick — fall back to the old "saving…" nudge,
+        // and the next tap arms it.
+        voltraEnsurePersisted(entry).then(function() {
+            if (voltraSetId(entry)) voltraArm(entry);
+            else voltraFlash(entry, 'saving…');
+        });
         return;
     }
     fetch('/api/voltra/arm', {
@@ -193,7 +216,16 @@ function voltraArm(entry) {
 
 function voltraToggleLoad(entry) {
     var sid = voltraSetId(entry);
-    if (!sid) { voltraFlash(entry, 'saving…'); return; }
+    if (!sid) {
+        // Same as voltraArm: an uncommitted prefill Voltra row is persisted on
+        // first LOAD (a strong statement of intent to perform the set), then this
+        // runs again with the new id. In-flight commit → "saving…"; next tap works.
+        voltraEnsurePersisted(entry).then(function() {
+            if (voltraSetId(entry)) voltraToggleLoad(entry);
+            else voltraFlash(entry, 'saving…');
+        });
+        return;
+    }
 
     // Toggle on the *request*, not on confirmed engagement. A load that keeps
     // failing never sets Loaded, so keying off Loaded left the button stuck on
