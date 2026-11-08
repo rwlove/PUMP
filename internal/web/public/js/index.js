@@ -319,17 +319,12 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
                    value="${escapeHtml(addedVal)}" min="0" step="any" placeholder="0">
            </div>`
         : `<input type="hidden" name="added_weight" value="">`;
-    // Drag handle for reordering (Feature 5). touch-action:none (CSS) lets a
-    // touch drag work without the page scrolling.
-    var dragHandle = `<button type="button" class="entry-drag-handle" title="Drag to reorder" aria-label="Drag to reorder"><i class="bi bi-grip-vertical"></i></button>`;
-
     entry.dataset.bodyweight = isBodyweight ? 'true' : 'false';
 
     entry.innerHTML = `
         <div class="entry-main">
             <div class="entry-body">
                 <div class="entry-header">
-                    ${dragHandle}
                     <input type="hidden" name="name" value="${safeName}" data-exname="${safeName}">
                     ${sourceBadge}
                     <span class="entry-name" title="${safeName}">${safeName}</span>
@@ -387,10 +382,6 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
             scheduleAutosave();
         });
     });
-
-    // Drag handle → pointer-based reorder (works with mouse and touch).
-    var dragBtn = entry.querySelector('.entry-drag-handle');
-    if (dragBtn) dragBtn.addEventListener('pointerdown', onDragHandlePointerDown);
 
     // Mic dictation
     if (micSupported) {
@@ -500,50 +491,62 @@ function removeEntry(entry, viaApi) {
     if (!viaApi) scheduleAutosave();
 }
 
-// ── Drag-and-drop reorder of workout entries (Feature 5) ─────────────────────
-// Pointer-based so it works with both mouse and touch (the gym kiosk/phone).
-// Entries live inside per-name .workout-entry-group wrappers; we move the
-// dragged entry within the DOM live, then refreshSetBadges() re-wraps the whole
-// list from document order after the drop, so intermediate wrapper membership
-// doesn't matter.
+// ── Drag-and-drop reorder of exercises (Feature 5) ───────────────────────────
+// The drag unit is the whole exercise, not a single set: each .workout-entry-
+// group (one contiguous run of the same exercise) carries a single grip in its
+// left gutter, and dragging it moves the entire group — every set of that
+// exercise — as one block. Drops land at exercise boundaries only, so a day's
+// exercises reorder without ever interleaving sets. Pointer-based so it works
+// with both mouse and touch (the gym kiosk/phone).
+//
+// The grip lives on the group, which refreshSetBadges() tears down and rebuilds
+// each pass; bindGroupDragHandle() (called from there) wires a fresh handle
+// every time. During a drag we move the live group element directly among its
+// container siblings; on drop, refreshSetBadges() re-wraps from document order
+// (so group membership is normalised) and persistOrder() saves the new order.
 var _drag = null;
 
-function onDragHandlePointerDown(e) {
-    var handle = e.currentTarget;
-    var entry = handle.closest('.workout-entry');
-    if (!entry) return;
-    e.preventDefault();
-    _drag = { entry: entry, handle: handle };
-    entry.classList.add('dragging');
-    try { handle.setPointerCapture(e.pointerId); } catch (_) {}
-    handle.addEventListener('pointermove', onDragPointerMove);
-    handle.addEventListener('pointerup', onDragPointerUp);
-    handle.addEventListener('pointercancel', onDragPointerUp);
+function bindGroupDragHandle(handle) {
+    handle.addEventListener('pointerdown', onGroupDragPointerDown);
 }
 
-function onDragPointerMove(e) {
+function onGroupDragPointerDown(e) {
+    var handle = e.currentTarget;
+    var group = handle.closest('.workout-entry-group');
+    if (!group) return;
+    e.preventDefault();
+    _drag = { group: group, handle: handle };
+    group.classList.add('dragging');
+    try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+    handle.addEventListener('pointermove', onGroupDragPointerMove);
+    handle.addEventListener('pointerup', onGroupDragPointerUp);
+    handle.addEventListener('pointercancel', onGroupDragPointerUp);
+}
+
+function onGroupDragPointerMove(e) {
     if (!_drag) return;
     var container = document.getElementById('todayEx');
     if (!container) return;
     var el = document.elementFromPoint(e.clientX, e.clientY);
-    var over = el ? el.closest('.workout-entry') : null;
-    if (!over || over === _drag.entry || !container.contains(over)) return;
-    // Insert before or after `over` based on the pointer vs its midpoint.
+    var over = el ? el.closest('.workout-entry-group') : null;
+    if (!over || over === _drag.group || !container.contains(over)) return;
+    // Insert the dragged group before or after `over` based on the pointer vs
+    // its vertical midpoint.
     var rect = over.getBoundingClientRect();
     var after = e.clientY > rect.top + rect.height / 2;
-    over.parentNode.insertBefore(_drag.entry, after ? over.nextSibling : over);
+    over.parentNode.insertBefore(_drag.group, after ? over.nextSibling : over);
 }
 
-function onDragPointerUp(e) {
+function onGroupDragPointerUp(e) {
     if (!_drag) return;
     var handle = _drag.handle;
-    _drag.entry.classList.remove('dragging');
+    _drag.group.classList.remove('dragging');
     try { handle.releasePointerCapture(e.pointerId); } catch (_) {}
-    handle.removeEventListener('pointermove', onDragPointerMove);
-    handle.removeEventListener('pointerup', onDragPointerUp);
-    handle.removeEventListener('pointercancel', onDragPointerUp);
+    handle.removeEventListener('pointermove', onGroupDragPointerMove);
+    handle.removeEventListener('pointerup', onGroupDragPointerUp);
+    handle.removeEventListener('pointercancel', onGroupDragPointerUp);
     _drag = null;
-    // Re-wrap contiguous same-name runs / renumber, then persist the new order.
+    // Re-wrap / renumber from the new document order, then persist it.
     refreshSetBadges();
     persistOrder();
 }
@@ -871,6 +874,16 @@ function refreshSetBadges() {
         group.className = 'workout-entry-group';
         group.style.setProperty('--exercise-color',
             first.dataset.exerciseColor || '#6c757d');
+        // One drag grip per exercise, in the group's left gutter. Dragging it
+        // reorders the whole exercise block (all its sets). Rebuilt each pass.
+        var grip = document.createElement('button');
+        grip.type = 'button';
+        grip.className = 'group-drag-handle';
+        grip.title = 'Drag to reorder exercise';
+        grip.setAttribute('aria-label', 'Drag to reorder exercise');
+        grip.innerHTML = '<i class="bi bi-grip-vertical"></i>';
+        bindGroupDragHandle(grip);
+        group.appendChild(grip);
         container.insertBefore(group, first);
         for (var k = i; k < j; k++) group.appendChild(flat[k]);
         i = j;
