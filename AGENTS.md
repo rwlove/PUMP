@@ -81,6 +81,7 @@ Take fresh screenshots of every page and tab at 1280×900 using the running prev
 - `screenshot-workout.png` — main workout page (`/`)
 - `screenshot-health.png` — Overall Health dashboard (`/health/`)
 - `screenshot-config.png` — Settings page (`/config/`)
+- `screenshot-library.png` — Exercise Library page (`/library/`)
 - `screenshot-stats-overview.png` — Stats › Exercise Distribution tab (`/stats/`)
 - `screenshot-stats-activity.png` — Stats › Weight Moved tab (click `#tab-activity-btn`)
 - `screenshot-stats-weight.png` — Stats › Body Weight tab (click `#tab-weight-btn`)
@@ -93,6 +94,7 @@ Take fresh screenshots of every page and tab at 1280×900 using the running prev
 - `screenshot-stats-hr.png` — Stats › Heart Rate tab (click `#tab-hr-btn`)
 - `screenshot-stats-sleep.png` — Stats › Sleep tab (click `#tab-sleep-btn`)
 - `screenshot-stats-cardio.png` — Stats › Cardio tab (click `#tab-cardio-btn`)
+- `screenshot-stats-grip.png` — Stats › Grip & Hang tab (click `#tab-grip-btn`)
 
 Shoot against a clean restore of the production dump — never against a database that test writes have touched. If a tab is added or removed, update this list and the README table to match.
 
