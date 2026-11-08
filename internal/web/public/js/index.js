@@ -138,6 +138,31 @@ function markDirty(entry) {
     if (entry) entry.dataset.dirty = 'true';
 }
 
+// markTouched records that the user has entered or edited a value on this row
+// (or otherwise signalled intent to log it). It is the signal the safety nets
+// key on: a touched-but-unconfirmed prefill row is flush-committed on
+// advance-day and after 30 min idle; a pristine, never-touched prefill row is
+// NEVER auto-committed. Keeping these distinct is the whole point of the fix —
+// it's what stops scaffolded placeholders becoming phantom logged sets.
+function markTouched(entry) {
+    if (entry) entry.dataset.touched = 'true';
+}
+
+// onEntryEdited handles a committed edit (a blur/change, a cleared note, a
+// dictated note). It always marks the row touched. It persists immediately only
+// for rows that already live server-side (a committed set or a CV/Voltra
+// pending row carrying a server id) or in legacy bulk mode, where the whole-day
+// /set/ save rewrites the day from the DOM. An uncommitted PREFILL row in
+// autolog mode stays client-only until the user taps ✓ or a safety net
+// flush-commits it — editing it must not silently persist a placeholder.
+function onEntryEdited(entry) {
+    markTouched(entry);
+    if (entry.dataset.setId || !window._autoLog) {
+        markDirty(entry);
+        scheduleAutosave();
+    }
+}
+
 // Return the weight/reps from the setPosition-th (1-indexed) occurrence of
 // `name` on the most recent past date it was performed before `currentDate`.
 // Falls back to the last occurrence on that date if setPosition exceeds the count.
@@ -291,22 +316,63 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
         ? `<i class="bi bi-camera-video entry-source-badge" title="Detected by CV"></i>`
         : '';
 
-    var actionButtons = meta.pending
-        ? `<button type="button" class="entry-confirm-btn" title="Confirm set" aria-label="Confirm set">
+    // A manual row that hasn't been written yet is an UNCOMMITTED PREFILL: it
+    // shows the prior/prescribed reps/weight as a non-persisted hint and is
+    // written to the DB only when the user taps ✓ (or a safety net flush-commits
+    // it after they've touched it). This is autolog-mode behaviour only — bulk
+    // mode persists the whole day from the DOM, so there is no per-set ✓ there.
+    //
+    // Carve-outs that must keep persisting immediately (no prefill gating):
+    //  - meta.id  — a row already on the server (reload, CV/Voltra over SSE).
+    //  - meta.pending — a CV/Voltra detection; it has its own ✓/✗ model below.
+    //  - Voltra-flagged exercises — arming the motor needs a server set id, so
+    //    the row has to exist before the athlete can LOAD it.
+    var isVoltra = (typeof voltraFlagged === 'function') && voltraFlagged(name);
+    var isUncommitted = !!window._autoLog && !meta.id && !meta.pending && !isVoltra;
+    if (isUncommitted) {
+        entry.dataset.prefill = 'true';
+        entry.classList.add('entry-uncommitted');
+    }
+
+    var confirmBtnHtml =
+        `<button type="button" class="entry-confirm-btn" title="Confirm set" aria-label="Confirm set">
                <i class="bi bi-check-lg"></i>
-           </button>
-           <button type="button" class="entry-reject-btn" title="Reject — delete this set" aria-label="Reject and delete this set">
+           </button>`;
+    var rejectBtnHtml =
+        `<button type="button" class="entry-reject-btn" title="Reject — delete this set" aria-label="Reject and delete this set">
                <i class="bi bi-x-lg"></i>
-           </button>`
-        : `<button type="button" class="entry-del-btn" title="Remove" aria-label="Remove set">
+           </button>`;
+    var delBtnHtml =
+        `<button type="button" class="entry-del-btn" title="Remove" aria-label="Remove set">
                <i class="bi bi-x-lg"></i>
            </button>`;
 
-    var pendingBanner = meta.pending
-        ? `<div class="entry-pending-banner">
+    var actionButtons;
+    if (meta.pending) {
+        // CV/Voltra detection: confirm commits (clears pending), reject deletes.
+        actionButtons = confirmBtnHtml + rejectBtnHtml;
+    } else if (isUncommitted) {
+        // Manual prefill: ✓ writes the set (accept-as-prescribed or edited),
+        // × just drops the un-persisted row from the log.
+        actionButtons = confirmBtnHtml + delBtnHtml;
+    } else {
+        actionButtons = delBtnHtml;
+    }
+
+    var pendingBanner;
+    if (meta.pending) {
+        pendingBanner = `<div class="entry-pending-banner">
                Pending — ${typeof meta.confidence === 'number' ? Math.round(meta.confidence * 100) + '% confidence' : 'low confidence'}. Edit values then confirm.
-           </div>`
-        : '';
+           </div>`;
+    } else if (isUncommitted) {
+        // A non-persisted prefill hint: the fields show the prior/prescribed
+        // values, but nothing is logged until the user commits with ✓.
+        pendingBanner = `<div class="entry-prefill-banner">
+               Prefilled — edit if needed, then tap ✓ to log this set.
+           </div>`;
+    } else {
+        pendingBanner = '';
+    }
 
     // Bodyweight rows label the base field "BW" and add a "+ lbs" added-weight
     // field; ordinary rows carry an empty hidden added_weight so the bulk-save
@@ -375,12 +441,13 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
         });
     }
 
-    // Wire up weight/reps/added inputs → autosave (and mark dirty for per-set save)
+    // Wire up weight/reps/added inputs. The first keystroke marks the row
+    // touched (so a safety net can flush-commit an un-confirmed prefill the user
+    // started filling in) but does NOT persist. A committed change (blur) runs
+    // onEntryEdited, which persists only for server-backed or bulk-mode rows.
     entry.querySelectorAll('.entry-num').forEach(function(inp) {
-        inp.addEventListener('change', function() {
-            markDirty(entry);
-            scheduleAutosave();
-        });
+        inp.addEventListener('input', function() { markTouched(entry); });
+        inp.addEventListener('change', function() { onEntryEdited(entry); });
     });
 
     // Mic dictation
@@ -395,8 +462,7 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
     entry.querySelector('.entry-note-clear').addEventListener('click', function() {
         noteInput.value = '';
         renderNote(entry, '');
-        markDirty(entry);
-        scheduleAutosave();
+        onEntryEdited(entry);
     });
 
     // Delete entry — locally always; in per-set mode, and if the row has a
@@ -473,8 +539,21 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
     // save the user never asked for. A row that arrived with a server id is
     // already persisted and has nothing to write back.
     if (!meta.id) {
-        markDirty(entry);
-        scheduleAutosave();
+        if (isUncommitted) {
+            // Uncommitted PREFILL hint (autolog mode): the row shows the
+            // prior/prescribed values but is written NOTHING until the user taps
+            // ✓ (or a safety net flush-commits it after they've touched it).
+            // This is the fix — scaffolded placeholders no longer persist in
+            // prescribed-plan order before a single lift happens, and an
+            // un-overwritten placeholder can't survive as a fabricated set.
+            // Deliberately no markDirty / scheduleAutosave here.
+        } else {
+            // Legacy bulk mode, or a Voltra row that must be armable at once:
+            // mark dirty so the autosave persists it (whole-day /set/ in bulk
+            // mode, per-set POST in autolog mode).
+            markDirty(entry);
+            scheduleAutosave();
+        }
     }
 }
 
@@ -597,7 +676,14 @@ function refreshWeekStreak() {
 // Server clears `pending` and applies any edits in one shot.
 function confirmEntry(entry) {
     var sid = entry.dataset.setId;
-    if (!sid) return;
+    if (!sid) {
+        // A manual PREFILL row: nothing is on the server yet. ✓ writes it now.
+        // The server assigns position = MAX(position)+1 for the day, so the set
+        // lands in true confirm/lift order — not frozen in prescribed-plan
+        // order the way a scaffold-time write was.
+        commitUncommittedEntry(entry);
+        return;
+    }
     var body = entryToSet(entry);
     var confirmBody = {
         Name: body.Name,
@@ -652,6 +738,85 @@ function clearPendingState(entry) {
     if (confirmBtn) confirmBtn.remove();
     if (rejectBtn) rejectBtn.remove();
 }
+
+// ── Prefill commit + safety nets ─────────────────────────────────────────────
+// A manual prefill row is client-only until committed. commitUncommittedEntry
+// writes it with POST /api/sets (server assigns position = MAX+1 for the day,
+// i.e. true lift order), then turns it into an ordinary committed row.
+function commitUncommittedEntry(entry) {
+    if (!entry || entry.dataset.setId) return Promise.resolve();
+    // A create already in flight has no id yet; starting a second would POST the
+    // same row twice. Leave it; the in-flight one wins.
+    if (entry.dataset.saving === 'true') return Promise.resolve();
+    entry.dataset.saving = 'true';
+    var body = entryToSet(entry);
+    saveStatus('saving', 'Saving…');
+    return fetch('/api/sets', {
+        method: 'POST',
+        headers: writeHeaders(),
+        body: JSON.stringify(body),
+    }).then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+    }).then(function(out) {
+        entry.dataset.setId = out.id;
+        entry.dataset.dirty = 'false';
+        markEntryCommitted(entry);
+        saveStatus('saved', 'Saved');
+    }).catch(function() {
+        saveStatus('error', 'Error saving');
+    }).finally(function() {
+        entry.dataset.saving = 'false';
+    });
+}
+
+// markEntryCommitted turns a just-written prefill row into an ordinary one:
+// drop the hint banner and the ✓, clear the prefill/touched flags. The ×
+// delete button rendered alongside ✓ stays — now that the row has a server id
+// it deletes via the API like any committed row.
+function markEntryCommitted(entry) {
+    entry.dataset.prefill = 'false';
+    entry.dataset.touched = 'false';
+    entry.classList.remove('entry-uncommitted');
+    var banner = entry.querySelector('.entry-prefill-banner');
+    if (banner) banner.remove();
+    var confirmBtn = entry.querySelector('.entry-confirm-btn');
+    if (confirmBtn) confirmBtn.remove();
+}
+
+// flushTouchedUncommitted commits every prefill row the user has TOUCHED but
+// not yet confirmed. It is the shared body of both safety nets. It deliberately
+// skips pristine, never-touched prefill rows: those are pure placeholders and
+// must never become phantom logged sets. Returns a Promise.
+function flushTouchedUncommitted() {
+    var rows = document.querySelectorAll(
+        '#todayEx .workout-entry[data-prefill="true"][data-touched="true"]');
+    var ps = [];
+    rows.forEach(function(entry) {
+        if (entry.dataset.setId) return; // already committed
+        ps.push(commitUncommittedEntry(entry));
+    });
+    return ps.length ? Promise.all(ps) : Promise.resolve();
+}
+
+// Safety net B — 30-minute inactivity. An idle timer, reset on any user
+// activity, flush-commits touched-but-unconfirmed prefill rows so a set the
+// athlete entered but forgot to ✓ isn't lost when they wander off. No-op
+// outside autolog mode (uncommitted prefill rows only exist there).
+var _idleFlushTimer = null;
+var IDLE_FLUSH_MS = 30 * 60 * 1000;
+function resetIdleFlushTimer() {
+    if (!window._autoLog) return;
+    clearTimeout(_idleFlushTimer);
+    _idleFlushTimer = setTimeout(function() {
+        flushTouchedUncommitted();
+    }, IDLE_FLUSH_MS);
+}
+(function wireIdleFlush() {
+    ['pointerdown', 'keydown', 'touchstart', 'input'].forEach(function(evt) {
+        document.addEventListener(evt, resetIdleFlushTimer, { passive: true });
+    });
+})();
 
 // renderNote shows or hides the note row based on whether text is present.
 function renderNote(entry, text) {
@@ -1076,6 +1241,14 @@ function showDayLoading(date) {
 // in-window days render instantly from memory.
 function navigateToDate(date) {
     if (!date) date = todayStr();
+    // Leaving the current day drops its un-persisted prefill rows, so first
+    // flush-commit any the athlete TOUCHED but didn't ✓ — otherwise entered
+    // reps/weight would be lost on a day change (the pre-fix flow autosaved
+    // them on edit). Pristine, never-touched placeholders are left to vanish,
+    // as intended. flushTouchedUncommitted reads the field values synchronously
+    // into its POST bodies before the DOM below is cleared, so fire-and-forget
+    // is safe. Guarded to autolog mode, where uncommitted rows exist.
+    if (window._autoLog) flushTouchedUncommitted();
     var cutoff = window._displayCutoff;
     // String compare on YYYY-MM-DD — same reason as elsewhere, avoids the
     // UTC-parse day shift. No cutoff (shouldn't happen) → treat as in-window.
