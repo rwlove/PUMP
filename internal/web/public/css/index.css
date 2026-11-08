@@ -588,6 +588,29 @@
   background: var(--bs-danger);
 }
 
+/* Uncommitted PREFILL rows (autolog mode): the reps/weight shown are a
+   non-persisted hint from last time, not logged data. Render them as a
+   deliberately unfinished "ghost" — dimmed, dashed left edge — so an
+   un-confirmed set reads as not-yet-logged at a glance, and tapping ✓ (which
+   drops .entry-uncommitted) visibly commits it. */
+.workout-entry.entry-uncommitted .entry-name,
+.workout-entry.entry-uncommitted .entry-num {
+  opacity: 0.72;
+}
+.workout-entry-group:has(.workout-entry.entry-uncommitted) {
+  border-style: dashed;
+}
+
+.entry-prefill-banner {
+  font-size: 0.75rem;
+  color: var(--bs-secondary-color);
+  background: var(--bs-secondary-bg);
+  border-left: 3px solid var(--bs-border-color);
+  padding: 4px 8px;
+  border-radius: 6px;
+  margin-top: 2px;
+}
+
 .entry-mic-btn,
 .entry-prior-note-btn {
   line-height: 1;

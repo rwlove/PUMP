@@ -19,6 +19,18 @@ func statsHandler(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// Unconfirmed (pending) sets — a CV detection still awaiting the athlete's
+	// ✓ — are not yet real performed data, so they must not inflate volume, PRs,
+	// muscle balance, or any other stat. They reappear the moment they're
+	// confirmed. Manual prefill rows never reach here: they aren't written until
+	// the user commits them, so filtering on pending is the only case left.
+	confirmed := make([]models.Set, 0, len(sets))
+	for _, s := range sets {
+		if !s.Pending {
+			confirmed = append(confirmed, s)
+		}
+	}
+	sets = confirmed
 	weights, ok := selectWeightsOr500(c, "statsHandler")
 	if !ok {
 		return

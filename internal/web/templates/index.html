@@ -297,6 +297,8 @@
   setFormDate(window._allSets);
   if (window._autoLog) {
     openSetsStream();
+    // Arm the 30-minute inactivity safety net (resets on user activity).
+    if (typeof resetIdleFlushTimer === 'function') resetIdleFlushTimer();
   }
   // Voltra per-set load controls. Inert unless an exercise carries the Voltra
   // flag, so this costs nothing on a barbell day.
@@ -362,8 +364,20 @@
     // reload restores this date from sessionStorage, where it now resolves to
     // the frozen "Completed" header instead of the advanced next-up session.
     if (date) body.set('date', date);
-    fetch('/plan/advance/', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
-      .then(function(r) { if (r.ok) location.reload(); });
+    // Safety net A: before advancing to the next session, flush-commit any
+    // prefill rows the athlete touched but didn't ✓ — otherwise the page reload
+    // after advancing would discard them. Pristine, never-touched placeholders
+    // are left behind on purpose (flushTouchedUncommitted skips them). Advance
+    // regardless of the flush outcome so a save hiccup can't strand the queue.
+    var advance = function() {
+      fetch('/plan/advance/', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
+        .then(function(r) { if (r.ok) location.reload(); });
+    };
+    if (typeof flushTouchedUncommitted === 'function') {
+      flushTouchedUncommitted().then(advance, advance);
+    } else {
+      advance();
+    }
   }
   // completionForDate returns the completion binding for a day, or null.
   function completionForDate(date) {
