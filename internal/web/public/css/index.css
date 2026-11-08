@@ -611,6 +611,18 @@
   margin-top: 2px;
 }
 
+/* Per-exercise PLAN rationale (plan header). The field is authored one reminder
+   per line (newline-separated); each line renders as a compact bullet. Keeps the
+   tertiary small type the single-line version used — only the list spacing is
+   tamed. Display-only; see rationaleHtml in index.html. */
+.plan-rationale {
+  margin: 0.15rem 0 0;
+  padding-left: 1.1rem;
+}
+.plan-rationale li {
+  margin: 0;
+}
+
 .entry-mic-btn,
 .entry-prior-note-btn {
   line-height: 1;
