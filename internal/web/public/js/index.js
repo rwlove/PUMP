@@ -146,6 +146,12 @@ function markDirty(entry) {
 // it's what stops scaffolded placeholders becoming phantom logged sets.
 function markTouched(entry) {
     if (entry) entry.dataset.touched = 'true';
+    // Mirror the edited value so an un-confirmed prefill's typed weight/reps/note
+    // survives a reload too (see persistUncommittedPrefills). Only for a prefill
+    // row with no server id — committed rows persist through the API already.
+    if (window._autoLog && entry && entry.dataset.prefill === 'true' && !entry.dataset.setId) {
+        persistUncommittedPrefills();
+    }
 }
 
 // onEntryEdited handles a committed edit (a blur/change, a cleared note, a
@@ -561,6 +567,15 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
             scheduleAutosave();
         }
     }
+
+    // Keep the reload-survival mirror in sync: a user-initiated prefill row
+    // (picker tap, or a routine/plan scaffold) must be recoverable if the page
+    // reloads before it is confirmed. Only fromPicker adds mirror here — the
+    // render and restore passes (fromPicker=false) deliberately leave the store
+    // alone so they can't clobber it before restoreUncommittedPrefills runs.
+    if (fromPicker && isUncommitted) persistUncommittedPrefills();
+
+    return entry;
 }
 
 // removeEntry pulls an entry out of the DOM. When viaApi is true and the
@@ -574,6 +589,9 @@ function removeEntry(entry, viaApi) {
     refreshSetBadges();
     refreshWeekStreak();
     if (!viaApi) scheduleAutosave();
+    // A deleted prefill must drop out of the reload-survival mirror too, or it
+    // would reappear on the next render.
+    persistUncommittedPrefills();
 }
 
 // ── Drag-and-drop reorder of exercises (Feature 5) ───────────────────────────
@@ -788,6 +806,108 @@ function markEntryCommitted(entry) {
     if (banner) banner.remove();
     var confirmBtn = entry.querySelector('.entry-confirm-btn');
     if (confirmBtn) confirmBtn.remove();
+    // The row is now server-backed, so it leaves the uncommitted-prefill mirror.
+    persistUncommittedPrefills();
+}
+
+// ── Uncommitted prefill persistence (survive reloads) ────────────────────────
+// Picker-added rows and scaffolded routine/plan rows live only in the DOM until
+// the user taps ✓ — addExercise never writes them to the server (the #192 "no
+// phantom placeholder sets" guarantee). But any reload re-runs setFormContent,
+// which clears #todayEx and re-renders ONLY saved sets: a Mark-complete reload,
+// a day change, or the phone merely reloading a backgrounded tab therefore
+// silently dropped every un-confirmed row — including exercises the athlete had
+// already added and meant to log. To stop that data loss we mirror the day's
+// uncommitted prefill rows into sessionStorage keyed by date and restore them
+// after each render. Nothing is ever written to the DB until ✓, so this adds no
+// phantom-set risk. All reads/writes are wrapped so a private-mode or disabled
+// sessionStorage degrades to the old behaviour instead of throwing.
+var PREFILL_STORE_PREFIX = 'pumpPrefills:';
+function prefillStoreKey(date) { return PREFILL_STORE_PREFIX + (date || ''); }
+
+function readStoredPrefills(date) {
+    try {
+        var raw = window.sessionStorage.getItem(prefillStoreKey(date));
+        var list = raw ? JSON.parse(raw) : [];
+        return Array.isArray(list) ? list : [];
+    } catch (_) { return []; }
+}
+
+function writeStoredPrefills(date, list) {
+    try {
+        if (!list || !list.length) window.sessionStorage.removeItem(prefillStoreKey(date));
+        else window.sessionStorage.setItem(prefillStoreKey(date), JSON.stringify(list));
+    } catch (_) {}
+}
+
+// persistUncommittedPrefills snapshots every still-uncommitted prefill row in
+// #todayEx into the store for the viewed day, reading live field values so an
+// edited-but-unconfirmed weight/reps/note is preserved. Called on add, edit
+// (markTouched), commit (markEntryCommitted) and delete (removeEntry) so the
+// store always matches what is on screen. No-op outside autolog mode, where
+// uncommitted prefill rows don't exist.
+function persistUncommittedPrefills() {
+    if (!window._autoLog || !today) return;
+    var list = [];
+    document.querySelectorAll('#todayEx .workout-entry[data-prefill="true"]').forEach(function(entry) {
+        if (entry.dataset.setId) return; // already written to the server
+        var nameInp   = entry.querySelector('input[name="name"]');
+        var weightInp = entry.querySelector('input[name="weight"]');
+        var repsInp   = entry.querySelector('input[name="reps"]');
+        var addedInp  = entry.querySelector('input[name="added_weight"]');
+        var noteInp   = entry.querySelector('.entry-note-input');
+        if (!nameInp || !nameInp.value) return;
+        list.push({
+            name:        nameInp.value,
+            weight:      weightInp ? weightInp.value : '',
+            reps:        repsInp ? repsInp.value : '',
+            addedWeight: (addedInp && addedInp.value !== '') ? addedInp.value : undefined,
+            color:       entry.dataset.exerciseColor || '',
+            note:        noteInp ? noteInp.value : '',
+            touched:     entry.dataset.touched === 'true',
+        });
+    });
+    writeStoredPrefills(today, list);
+}
+
+// restoreUncommittedPrefills re-adds the stored prefill rows for `date` after
+// setFormContent has rendered that day's saved sets. fromPicker is false so the
+// stored weight/reps are used verbatim (no auto-fill override) and the add does
+// not re-persist. A stored row that matches a saved set already on screen (same
+// name+weight+reps) is skipped — that is a flush-committed row re-rendered from
+// the server, not a second set to recreate — then the store is re-snapshotted
+// so those committed rows drop out of it.
+function restoreUncommittedPrefills(date) {
+    if (!window._autoLog) return;
+    var list = readStoredPrefills(date);
+    if (!list.length) return;
+    list.forEach(function(p) {
+        if (!p || !p.name) return;
+        if (committedRowMatches(p)) return;
+        var el = addExercise(p.name, p.weight, p.reps, p.color, /*fromPicker*/ false, p.note,
+            { addedWeight: p.addedWeight });
+        if (p.touched && el) el.dataset.touched = 'true';
+    });
+    persistUncommittedPrefills();
+}
+
+// committedRowMatches reports whether a saved (server-id) row identical to the
+// stored prefill is already rendered — used to skip restoring a prefill that
+// was flush-committed just before the reload.
+function committedRowMatches(p) {
+    var rows = document.querySelectorAll('#todayEx .workout-entry[data-set-id]');
+    for (var i = 0; i < rows.length; i++) {
+        var n = rows[i].querySelector('input[name="name"]');
+        var w = rows[i].querySelector('input[name="weight"]');
+        var r = rows[i].querySelector('input[name="reps"]');
+        if (n && w && r &&
+            n.value === p.name &&
+            String(w.value) === String(p.weight || '') &&
+            String(r.value) === String(p.reps || '')) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // flushTouchedUncommitted commits every prefill row the user has TOUCHED but
@@ -1126,6 +1246,12 @@ function setFormContent(sets, date) {
             });
         }
     }
+
+    // Re-add any uncommitted prefill rows (picker/scaffold adds, and edited-but-
+    // unconfirmed rows) mirrored for this day, so a reload — Mark-complete, day
+    // change, or a backgrounded phone tab reloading — no longer silently drops
+    // exercises the athlete added but hadn't yet confirmed.
+    restoreUncommittedPrefills(date);
 }
 
 // groupSetsByExercise returns the day's sets reordered so every set of one
