@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/gin-gonic/gin v1.12.0
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/shopspring/decimal v1.6.0
 )
 
