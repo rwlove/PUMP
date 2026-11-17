@@ -1,102 +1,112 @@
 {
-  $schema: "https://docs.renovatebot.com/renovate-schema.json",
-
-  // Renovate runs against this repo from the self-hosted renovate-operator in
-  // home-ops (kubernetes/apps/renovate/renovate-operator/jobs/pump.yaml). It
-  // needs the Renovate GitHub App to be installed on this repository; without
-  // that, autodiscover never sees it.
-  //
-  // The point of this config is mostly the github-actions manager: every
-  // `uses:` is pinned to a 40-character commit SHA with a `# vX.Y.Z` comment,
-  // and Renovate is what keeps those pins from going stale. A pin nobody
-  // updates is just an old version with extra steps.
-
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: [
-    "config:recommended",
-    ":dependencyDashboard",
-    ":semanticCommits",
-    ":timezone(America/New_York)",
-    "helpers:pinGitHubActionDigests",
+    'config:recommended',
+    ':dependencyDashboard',
+    ':semanticCommits',
+    ':timezone(America/New_York)',
+    'helpers:pinGitHubActionDigests',
   ],
-
-  dependencyDashboardTitle: "Renovate Dashboard 🤖",
-  commitMessageTopic: "{{depName}}",
-  commitMessageExtra: "( {{currentVersion}} → {{newVersion}} )",
-
-  // The three release lines are tagged by hand after a deliberate pre-tag
-  // ritual (screenshots, README audit, cruft sweep — see AGENTS.md), so
-  // nothing here should ever push straight to main.
+  dependencyDashboard: {
+    title: 'Renovate Dashboard 🤖',
+  },
+  commitMessageTopic: '{{depName}}',
+  commitMessageExtra: '( {{currentVersion}} → {{newVersion}} )',
   prConcurrentLimit: 5,
   prHourlyLimit: 2,
-
   packageRules: [
     {
-      description: "GitHub Actions — the reason this config exists. Group them so pin refreshes arrive as one reviewable PR rather than fifteen.",
-      matchManagers: ["github-actions"],
-      groupName: "github actions",
-      semanticCommitType: "ci",
-      semanticCommitScope: "deps",
-      // Digest updates within a major line are the routine case and safe to
-      // batch; a major bump gets its own PR because it can change inputs.
+      description: 'GitHub Actions — the reason this config exists. Group them so pin refreshes arrive as one reviewable PR rather than fifteen.',
+      matchManagers: [
+        'github-actions',
+      ],
+      groupName: 'github actions',
+      semanticCommitType: 'ci',
+      semanticCommitScope: 'deps',
       separateMajorMinor: true,
     },
     {
-      description: "Go modules.",
-      matchManagers: ["gomod"],
-      groupName: "go modules",
-      semanticCommitType: "fix",
-      semanticCommitScope: "deps",
+      description: 'Go modules.',
+      matchManagers: [
+        'gomod',
+      ],
+      groupName: 'go modules',
+      semanticCommitType: 'fix',
+      semanticCommitScope: 'deps',
     },
     {
-      description: "Python deps for both sidecars.",
-      matchManagers: ["pep621", "pip_requirements"],
-      groupName: "python deps",
-      semanticCommitType: "fix",
-      semanticCommitScope: "deps",
+      description: 'Python deps for both sidecars.',
+      matchManagers: [
+        'pep621',
+        'pip_requirements',
+      ],
+      groupName: 'python deps',
+      semanticCommitType: 'fix',
+      semanticCommitScope: 'deps',
     },
     {
-      description: "Base images.",
-      matchManagers: ["dockerfile"],
-      groupName: "base images",
-      semanticCommitType: "fix",
-      semanticCommitScope: "deps",
+      description: 'Base images.',
+      matchManagers: [
+        'dockerfile',
+      ],
+      groupName: 'base images',
+      semanticCommitType: 'fix',
+      semanticCommitScope: 'deps',
     },
     {
-      description: "The Go base image mirrors the `go` directive in go.mod and must not move on its own. golang:alpine had already drifted a full minor ahead, so release binaries were built by a compiler nobody chose and differed from what `go test` used locally. Bump go.mod first, then this to match — Renovate cannot see that coupling.",
-      matchManagers: ["dockerfile"],
-      matchDepNames: ["golang", "docker.io/library/golang"],
+      description: 'The Go base image mirrors the `go` directive in go.mod and must not move on its own. golang:alpine had already drifted a full minor ahead, so release binaries were built by a compiler nobody chose and differed from what `go test` used locally. Bump go.mod first, then this to match — Renovate cannot see that coupling.',
+      matchManagers: [
+        'dockerfile',
+      ],
+      matchDepNames: [
+        'golang',
+        'docker.io/library/golang',
+      ],
       enabled: false,
     },
     {
       description: "The python base for pump-voltra must not move on its own. The 3.14 -> 3.15 bump (#158) broke the image build: the ESPHome BLE stack's transitive dep `lru-dict` has no cp315 wheel and can't compile against 3.15 in -slim. The image only builds on a release tag, so the break was invisible to PR CI until the next tag. Re-enable (and bump voltra/Containerfile) only once lru-dict ships cp315 wheels.",
-      matchManagers: ["dockerfile"],
-      matchDepNames: ["python", "docker.io/library/python"],
+      matchManagers: [
+        'dockerfile',
+      ],
+      matchDepNames: [
+        'python',
+        'docker.io/library/python',
+      ],
       enabled: false,
     },
     {
       description: "setup-python's python-version mirrors the interpreter in the runtime image — 3.12 from the nvidia pytorch base for pump-cv, python:3.12-slim for pump-voltra. Letting it track latest is precisely the bug that was just fixed: CI passing on an interpreter production never runs. Change the base image first, then this.",
-      matchManagers: ["github-actions"],
-      matchDepNames: ["python"],
+      matchManagers: [
+        'github-actions',
+      ],
+      matchDepNames: [
+        'python',
+      ],
       enabled: false,
     },
     {
-      description: "The CUDA/PyTorch base is ~10 GB and a bump changes the CUDA runtime, the Python version and the torch API at once. Worth doing, never worth batching — keep it out of the grouped base-images PR so it gets reviewed on its own.",
-      matchManagers: ["dockerfile"],
-      matchDepNames: ["nvcr.io/nvidia/pytorch"],
+      description: 'The CUDA/PyTorch base is ~10 GB and a bump changes the CUDA runtime, the Python version and the torch API at once. Worth doing, never worth batching — keep it out of the grouped base-images PR so it gets reviewed on its own.',
+      matchManagers: [
+        'dockerfile',
+      ],
+      matchDepNames: [
+        'nvcr.io/nvidia/pytorch',
+      ],
       groupName: null,
-      semanticCommitType: "fix",
-      semanticCommitScope: "deps",
+      semanticCommitType: 'fix',
+      semanticCommitScope: 'deps',
       prPriority: -5,
     },
   ],
-
-  // Security fixes bypass the groups above and the hourly limit, so they are
-  // never queued behind a routine dependency bump.
   vulnerabilityAlerts: {
     enabled: true,
-    labels: ["security"],
-    schedule: ["at any time"],
+    labels: [
+      'security',
+    ],
+    schedule: [
+      'at any time',
+    ],
   },
-
   osvVulnerabilityAlerts: true,
 }
