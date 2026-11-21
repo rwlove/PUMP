@@ -86,6 +86,19 @@
       enabled: false,
     },
     {
+      description: 'The go-test Postgres service image mirrors the major of the production CNPG cluster (postgres-pump in home-ops, PostgreSQL 17). CI had already drifted a major ahead (18), and #216 tried 19 — which then failed because postgres:19-alpine had no amd64 image. Same lesson as setup-python: upgrade postgres-pump first, then bump this by hand. Minor and digest updates within the major still flow.',
+      matchManagers: [
+        'github-actions',
+      ],
+      matchDepNames: [
+        'postgres',
+      ],
+      matchUpdateTypes: [
+        'major',
+      ],
+      enabled: false,
+    },
+    {
       description: 'The CUDA/PyTorch base is ~10 GB and a bump changes the CUDA runtime, the Python version and the torch API at once. Worth doing, never worth batching — keep it out of the grouped base-images PR so it gets reviewed on its own.',
       matchManagers: [
         'dockerfile',
