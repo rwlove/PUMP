@@ -607,48 +607,119 @@ function removeEntry(entry, viaApi) {
 // every time. During a drag we move the live group element directly among its
 // container siblings; on drop, refreshSetBadges() re-wraps from document order
 // (so group membership is normalised) and persistOrder() saves the new order.
+//
+// Move/up listeners live on the document, not the grip, and the grip does NOT
+// take pointer capture: moving the group re-parents the grip, and a DOM move
+// silently releases capture, after which the grip never saw another
+// pointermove or the pointerup — the first reorder step killed the drag, so
+// nothing moved and nothing saved. Near the top/bottom edge of the scroll
+// viewport the list auto-scrolls (touch-action:none on the grip stops the
+// finger from panning the page), so an exercise can be dragged past the
+// visible area.
 var _drag = null;
+var DRAG_EDGE_PX = 80;    // auto-scroll zone at the top/bottom of the viewport
+var DRAG_MAX_STEP = 20;   // px per animation frame at the very edge
 
 function bindGroupDragHandle(handle) {
     handle.addEventListener('pointerdown', onGroupDragPointerDown);
 }
 
 function onGroupDragPointerDown(e) {
+    if (_drag || e.button > 0) return;
     var handle = e.currentTarget;
     var group = handle.closest('.workout-entry-group');
     if (!group) return;
     e.preventDefault();
-    _drag = { group: group, handle: handle };
+    _drag = {
+        group: group,
+        pointerId: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        startNext: group.nextSibling,
+        scroller: dragScrollParent(group),
+        raf: 0,
+    };
     group.classList.add('dragging');
-    try { handle.setPointerCapture(e.pointerId); } catch (_) {}
-    handle.addEventListener('pointermove', onGroupDragPointerMove);
-    handle.addEventListener('pointerup', onGroupDragPointerUp);
-    handle.addEventListener('pointercancel', onGroupDragPointerUp);
+    document.body.classList.add('drag-active');
+    document.addEventListener('pointermove', onGroupDragPointerMove);
+    document.addEventListener('pointerup', onGroupDragPointerUp);
+    document.addEventListener('pointercancel', onGroupDragPointerUp);
+    _drag.raf = requestAnimationFrame(dragAutoScrollTick);
 }
 
 function onGroupDragPointerMove(e) {
-    if (!_drag) return;
+    if (!_drag || e.pointerId !== _drag.pointerId) return;
+    e.preventDefault();
+    _drag.x = e.clientX;
+    _drag.y = e.clientY;
+    placeDraggedGroup();
+}
+
+// placeDraggedGroup moves the dragged group before or after whichever group is
+// under the pointer, based on the pointer vs that group's vertical midpoint.
+// A no-op placement is skipped so the DOM isn't churned on every move.
+function placeDraggedGroup() {
     var container = document.getElementById('todayEx');
     if (!container) return;
-    var el = document.elementFromPoint(e.clientX, e.clientY);
+    var el = document.elementFromPoint(_drag.x, _drag.y);
     var over = el ? el.closest('.workout-entry-group') : null;
     if (!over || over === _drag.group || !container.contains(over)) return;
-    // Insert the dragged group before or after `over` based on the pointer vs
-    // its vertical midpoint.
     var rect = over.getBoundingClientRect();
-    var after = e.clientY > rect.top + rect.height / 2;
-    over.parentNode.insertBefore(_drag.group, after ? over.nextSibling : over);
+    var ref = _drag.y > rect.top + rect.height / 2 ? over.nextSibling : over;
+    if (ref === _drag.group || ref === _drag.group.nextSibling) return;
+    over.parentNode.insertBefore(_drag.group, ref);
+}
+
+// dragAutoScrollTick scrolls the list while the pointer sits in the edge zone,
+// faster the closer it is to the edge, and re-places the group since the
+// content moved under a stationary pointer.
+function dragAutoScrollTick() {
+    if (!_drag) return;
+    var sc = _drag.scroller;
+    var top = 0, bottom = window.innerHeight;
+    if (sc !== document.scrollingElement) {
+        var r = sc.getBoundingClientRect();
+        top = Math.max(top, r.top);
+        bottom = Math.min(bottom, r.bottom);
+    }
+    var dy = 0;
+    if (_drag.y < top + DRAG_EDGE_PX) {
+        dy = -Math.ceil(DRAG_MAX_STEP * Math.min(1, (top + DRAG_EDGE_PX - _drag.y) / DRAG_EDGE_PX));
+    } else if (_drag.y > bottom - DRAG_EDGE_PX) {
+        dy = Math.ceil(DRAG_MAX_STEP * Math.min(1, (_drag.y - (bottom - DRAG_EDGE_PX)) / DRAG_EDGE_PX));
+    }
+    if (dy) {
+        // 'instant': Bootstrap puts scroll-behavior:smooth on :root, which
+        // would turn each per-frame step into a restarted smooth animation.
+        var before = sc.scrollTop;
+        sc.scrollBy({ top: dy, behavior: 'instant' });
+        if (sc.scrollTop !== before) placeDraggedGroup();
+    }
+    _drag.raf = requestAnimationFrame(dragAutoScrollTick);
+}
+
+// dragScrollParent returns the nearest vertically scrollable ancestor, falling
+// back to the page itself.
+function dragScrollParent(el) {
+    for (var n = el.parentElement; n && n !== document.body; n = n.parentElement) {
+        var oy = getComputedStyle(n).overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight) return n;
+    }
+    return document.scrollingElement || document.documentElement;
 }
 
 function onGroupDragPointerUp(e) {
-    if (!_drag) return;
-    var handle = _drag.handle;
-    _drag.group.classList.remove('dragging');
-    try { handle.releasePointerCapture(e.pointerId); } catch (_) {}
-    handle.removeEventListener('pointermove', onGroupDragPointerMove);
-    handle.removeEventListener('pointerup', onGroupDragPointerUp);
-    handle.removeEventListener('pointercancel', onGroupDragPointerUp);
+    if (!_drag || e.pointerId !== _drag.pointerId) return;
+    var group = _drag.group;
+    var moved = group.nextSibling !== _drag.startNext;
+    cancelAnimationFrame(_drag.raf);
+    group.classList.remove('dragging');
+    document.body.classList.remove('drag-active');
+    document.removeEventListener('pointermove', onGroupDragPointerMove);
+    document.removeEventListener('pointerup', onGroupDragPointerUp);
+    document.removeEventListener('pointercancel', onGroupDragPointerUp);
     _drag = null;
+    if (!moved) return;
     // Re-wrap / renumber from the new document order, then persist it.
     refreshSetBadges();
     persistOrder();
