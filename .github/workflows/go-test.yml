@@ -45,7 +45,12 @@ jobs:
 
     services:
       postgres:
-        image: postgres:18-alpine
+        # Pinned to the major production runs: CNPG cluster postgres-pump in
+        # home-ops is on PostgreSQL 17. Testing against a newer major than
+        # prod is CI passing on a server production never runs. Bump this
+        # only after postgres-pump itself is upgraded (Renovate majors are
+        # disabled for it in .github/renovate.json5).
+        image: postgres:17-alpine
         env:
           POSTGRES_PASSWORD: pumptest
           POSTGRES_DB: pumptest
