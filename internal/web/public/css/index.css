@@ -452,6 +452,9 @@
   opacity: 0.6;
   box-shadow: var(--elev-2);
 }
+/* No text selection while a drag is in flight (the pointer sweeps across the
+   other exercises' labels). */
+body.drag-active { user-select: none; -webkit-user-select: none; cursor: grabbing; }
 
 .entry-main {
   display: flex;
