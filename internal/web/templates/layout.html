@@ -27,14 +27,18 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="/fs/public/favicon.png?v=5">
     {{ if eq .Config.NodePath "" }}
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
-    <!-- Bootstrap (cosmo theme) -->
-    <link href="https://cdn.jsdelivr.net/npm/aceberg-bootswatch-fork@v5.3.3-2/dist/cosmo/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+    <!-- Vendored copies embedded in the binary (internal/web/public/vendor/,
+         see its README) so page views never reach a third-party CDN. -->
+    <!-- Bootstrap Icons 1.11.3 -->
+    <link rel="stylesheet" href="/fs/public/vendor/bootstrap-icons/bootstrap-icons.css">
+    <!-- Source Sans Pro (the cosmo theme's font, normally a Google Fonts @import) -->
+    <link rel="stylesheet" href="/fs/public/vendor/source-sans-pro/source-sans-pro.css">
+    <!-- Bootstrap 5.3.3 (cosmo theme, aceberg-bootswatch-fork 5.3.3-2) -->
+    <link href="/fs/public/vendor/bootswatch-cosmo/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap JS 5.3.3 -->
+    <script src="/fs/public/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+    <!-- Chart.js 4.4.1 -->
+    <script src="/fs/public/vendor/chart.js/chart.umd.js"></script>
     {{ else }}
     <link rel="stylesheet" href="{{ .Config.NodePath }}/node_modules/bootstrap-icons/font/bootstrap-icons.css">
     <link href="{{ .Config.NodePath }}/node_modules/bootswatch/dist/cosmo/bootstrap.min.css" rel="stylesheet">

@@ -56,6 +56,20 @@ This will load YOLOv8-Pose, process the video, and POST any detected
 sets to PUMP. Without a CUDA GPU it runs CPU-only and is slow but
 functional.
 
+### Network egress
+
+pump-cv makes no third-party calls at runtime:
+
+- The image sets `YOLO_OFFLINE=true`, and `pose/yolo.py` also sets the
+  ultralytics `sync` setting to false before loading the model. Together
+  they stop ultralytics' Google Analytics events and its public-DNS
+  connectivity probe.
+- The weights file (`pose.model`, default `yolov8m-pose.pt`, resolved
+  against the working directory) must already exist locally. If it is
+  missing, pump-cv exits with an error instead of letting ultralytics
+  download it from GitHub. To bootstrap a fresh cache, run once with
+  `PUMP_CV_ALLOW_MODEL_DOWNLOAD=1`, or copy the file into place.
+
 ## Running with mock pose source (no model, no video)
 
 Set `pose.backend: mock` in the config. The mock generates a synthetic

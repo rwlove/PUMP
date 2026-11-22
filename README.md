@@ -147,7 +147,7 @@ All configuration is via environment variables. No config file is required.
 | `PUBLIC_URL` | Externally-reachable PUMP base URL; used to build deep-links in notifications | `""` |
 | `PUMP_CV_URL` | Where to forward reference-clip uploads (e.g. `http://pump-cv:8080`); empty disables the in-browser recorder | `""` |
 | `PUMP_CLIPS_DIR` | Local directory of per-set clip mp4s written by `pump-cv` (shared volume), served at `/clips/`; empty disables clip serving | `""` |
-| `NODE_PATH` | Path to local `node_modules` directory; empty = use CDN for Bootstrap/Chart.js | `""` |
+| `NODE_PATH` | Path to local `node_modules` directory; empty = use the copies of Bootstrap/Chart.js embedded in the binary | `""` |
 | `TREADMILL_MQTT_ENABLED` | Enable treadmill cardio auto-capture: subscribe to the smart-plug wattage feed `zwave-js-ui` publishes to MQTT, detect each workout, and log it as a cardio session (no Home Assistant in the path). | `false` |
 | `TREADMILL_MQTT_BROKER` | MQTT broker URL, e.g. `tcp://emqx-headless.home.svc.cluster.local:1883` | `""` |
 | `TREADMILL_MQTT_USERNAME` | MQTT broker username | `""` |

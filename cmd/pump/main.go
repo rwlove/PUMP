@@ -32,7 +32,7 @@ import (
 //	                   value. Enables off-cluster ingest (e.g. an ESPHome BLE-scale device
 //	                   reaching pump-api via an oauth2-bypassing internal Route scoped to
 //	                   /api/weight only). Unset preserves the in-cluster no-auth posture.
-//	NODE_PATH          path to local node_modules            (default: "", use CDN)
+//	NODE_PATH          path to local node_modules            (default: "", use embedded copies)
 //	CVAUTOLOG          accept set writes from pump-cv        (default: false; toggleable in UI)
 //	PUSHOVER_USER_KEY  Pushover user key for notifications   (env-only, not in UI)
 //	PUSHOVER_APP_TOKEN Pushover app token for notifications  (env-only, not in UI)

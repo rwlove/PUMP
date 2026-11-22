@@ -27,6 +27,13 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 ENV PUMP_CV_CONFIG=/app/configs/default.yaml
 
+# Keep ultralytics off the network: no Google Analytics events on predict()
+# (ultralytics/utils/events.py) and no connectivity probes to public DNS
+# hosts at import. Weight downloads are NOT gated by this — pump_cv refuses
+# missing weights itself (see pose/yolo.py resolve_local_weights).
+# "true" rather than "1": ultralytics <8.4 only honours the literal "true".
+ENV YOLO_OFFLINE=true
+
 ARG VERSION=dev
 ARG REVISION=unknown
 LABEL org.opencontainers.image.title="pump-cv" \
