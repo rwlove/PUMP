@@ -9,6 +9,7 @@ GPU/no-GPU split happens entirely behind it.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -19,6 +20,34 @@ from .. import log
 from .types import FrameAndPoses, Keypoint, Pose
 
 logger = log.get(__name__)
+
+
+# Opt-in escape hatch for bootstrapping a fresh cache: allow ultralytics to
+# fetch missing weights from its GitHub release assets. Off by default so a
+# lost weights file fails loudly instead of silently reaching a third party.
+ALLOW_DOWNLOAD_ENV = "PUMP_CV_ALLOW_MODEL_DOWNLOAD"
+
+
+def resolve_local_weights(model: str) -> str:
+    """Return `model` if it names a weights file that exists locally.
+
+    ultralytics treats a bare name it cannot find (e.g. "yolov8m-pose.pt")
+    as a release asset and downloads it from GitHub; YOLO_OFFLINE does not
+    gate that path. Refuse instead, unless PUMP_CV_ALLOW_MODEL_DOWNLOAD is
+    set. Relative paths resolve against the working directory, as
+    ultralytics itself resolves them.
+    """
+    if Path(model).is_file():
+        return model
+    if os.getenv(ALLOW_DOWNLOAD_ENV, "").strip().lower() in ("1", "true", "yes", "on"):
+        logger.warning("yolo: weights missing locally, download allowed",
+                       model=model, env=ALLOW_DOWNLOAD_ENV)
+        return model
+    raise FileNotFoundError(
+        f"YOLO weights not found locally: {model!r} (cwd={os.getcwd()}). "
+        f"Place the file there or set pose.model to an existing path; "
+        f"set {ALLOW_DOWNLOAD_ENV}=1 to let ultralytics download it."
+    )
 
 
 def _is_cuda_error(e: Exception) -> bool:
@@ -157,8 +186,13 @@ class YOLOPoseSource:
     def _ensure_model(self) -> None:
         if self._model is None:
             from ultralytics import YOLO
+            from ultralytics.utils import SETTINGS
 
-            self._model = YOLO(self._model_name)
+            # Backstop for the image's YOLO_OFFLINE=1: ultralytics otherwise
+            # sends a Google Analytics event on every predict() call.
+            SETTINGS.update({"sync": False})
+
+            self._model = YOLO(resolve_local_weights(self._model_name))
             # YOLO autodetects device on .predict; we set it per call.
             logger.info("yolo: model loaded", model=self._model_name, device=self._device)
 
