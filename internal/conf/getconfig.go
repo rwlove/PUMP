@@ -113,6 +113,12 @@ func WeightOutOfRange(w decimal.Decimal) bool {
 	return w.LessThan(weightMinLbs) || w.GreaterThan(weightMaxLbs)
 }
 
+// WeightBounds returns the inclusive plausibility band WeightOutOfRange
+// enforces, for user-facing rejection messages.
+func WeightBounds() (min, max decimal.Decimal) {
+	return weightMinLbs, weightMaxLbs
+}
+
 // GetFromEnv reads all configuration from environment variables only.
 // No config file is required.
 func GetFromEnv() models.Conf {

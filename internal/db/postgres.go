@@ -475,6 +475,28 @@ ALTER TABLE exercises ADD COLUMN IF NOT EXISTS unilateral BOOLEAN NOT NULL DEFAU
 ALTER TABLE exercises ADD COLUMN IF NOT EXISTS caution_class TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		Version:     25,
+		Description: "weight: collapse identical same-day readings and enforce uniqueness on (date, weight)",
+		SQL: `
+-- InsertW's NOT EXISTS dedup never matched a scale reading: the firmware posts
+-- an unrounded float (kg x 2.20462, e.g. 255.8000071), the column stores it
+-- rounded to NUMERIC(10,2) (255.80), and the check compared the raw value
+-- against the rounded one. Every burst re-send of one weigh-in inserted again
+-- (up to six identical rows per weigh-in). Collapse the existing copies, keeping the
+-- earliest row (lowest id) of each identical pair -- the copies carry no
+-- information beyond a sub-second recorded_at difference. A genuinely
+-- different weight on the same day is a distinct (date, weight) and is kept.
+DELETE FROM weight w
+USING weight k
+WHERE w.date = k.date AND w.weight = k.weight AND w.id > k.id;
+
+-- The unique index compares the stored (rounded) values, so it catches those
+-- re-sends, and it is atomic under concurrent posts where a pre-check is not.
+-- InsertW now uses ON CONFLICT (date, weight) DO NOTHING.
+CREATE UNIQUE INDEX IF NOT EXISTS weight_date_weight_uniq ON weight (date, weight);
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any

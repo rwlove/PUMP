@@ -285,32 +285,67 @@ func TestDeleteW_KeepsOtherDistinctReadingSameDay(t *testing.T) {
 	}
 }
 
-// The duplicate-suppression behaviour DeleteW exists for must still hold:
-// identical same-day rows all disappear together.
-func TestDeleteW_RemovesIdenticalSameDayDuplicates(t *testing.T) {
+// Migration v25 collapses the identical same-day rows the racy pre-v25 dedup
+// let through, keeping the earliest, and leaves distinct readings alone. The
+// history is recreated by dropping the index, seeding, and re-running v25.
+func TestMigrationV25_CollapsesDuplicateWeights(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 
-	// Pre-dedup rows, inserted directly to simulate history.
-	for i := 0; i < 3; i++ {
+	if _, err := s.Pool().Exec(ctx, "DROP INDEX weight_date_weight_uniq"); err != nil {
+		t.Fatalf("drop index: %v", err)
+	}
+	for _, w := range []string{"272.4", "272.40", "272.4", "270.8"} {
 		if _, err := s.Pool().Exec(ctx,
-			"INSERT INTO weight (date, recorded_at, weight) VALUES ('2026-08-01', NOW(), 272.4)"); err != nil {
+			"INSERT INTO weight (date, recorded_at, weight) VALUES ('2026-08-01', NOW(), $1::numeric)", w); err != nil {
 			t.Fatalf("seed: %v", err)
 		}
 	}
-	var id int
-	if err := s.Pool().QueryRow(ctx, "SELECT id FROM weight LIMIT 1").Scan(&id); err != nil {
+	var firstID int
+	if err := s.Pool().QueryRow(ctx,
+		"SELECT min(id) FROM weight WHERE weight = 272.4").Scan(&firstID); err != nil {
 		t.Fatalf("lookup: %v", err)
 	}
-	if err := s.DeleteW(ctx, id); err != nil {
-		t.Fatalf("DeleteW: %v", err)
+
+	var v25 string
+	for _, m := range db.Migrations() {
+		if m.Version == 25 {
+			v25 = m.SQL
+		}
 	}
-	var n int
-	if err := s.Pool().QueryRow(ctx, "SELECT count(*) FROM weight").Scan(&n); err != nil {
-		t.Fatalf("count: %v", err)
+	if _, err := s.Pool().Exec(ctx, v25); err != nil {
+		t.Fatalf("re-run v25: %v", err)
 	}
-	if n != 0 {
-		t.Errorf("%d duplicate rows survived; the deleted entry would reappear in the log", n)
+
+	rows, err := s.Pool().Query(ctx, "SELECT id, weight::text FROM weight ORDER BY weight DESC")
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	defer rows.Close()
+	var got []string
+	var keptID int
+	for rows.Next() {
+		var id int
+		var w string
+		if err := rows.Scan(&id, &w); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		got = append(got, w)
+		if len(got) == 1 {
+			keptID = id
+		}
+	}
+	if len(got) != 2 {
+		t.Fatalf("rows after v25 = %v, want one 272.4 and one 270.8", got)
+	}
+	if keptID != firstID {
+		t.Errorf("kept id %d, want the earliest copy %d", keptID, firstID)
+	}
+
+	// The index is back, so the schema itself now refuses a copy.
+	if _, err := s.Pool().Exec(ctx,
+		"INSERT INTO weight (date, recorded_at, weight) VALUES ('2026-08-01', NOW(), 272.4)"); err == nil {
+		t.Error("duplicate (date, weight) insert succeeded after v25; unique index missing")
 	}
 }
 
@@ -339,5 +374,63 @@ func TestMigrations_AreIdempotent(t *testing.T) {
 	}
 	if want := len(db.Migrations()); n != want {
 		t.Errorf("schema_version has %d rows, want %d", n, want)
+	}
+}
+
+// The scale burst-posts one reading several times within a second, and those
+// requests arrive concurrently. A check-then-insert dedup lets every one of
+// them through; the (date, weight) unique index must collapse them to one row.
+func TestInsertW_ConcurrentBurstStoresOneRow(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	d, _ := decimal.NewFromString("255.3")
+
+	const burst = 8
+	errs := make(chan error, burst)
+	start := make(chan struct{})
+	for i := 0; i < burst; i++ {
+		go func() {
+			<-start
+			errs <- s.InsertW(ctx, models.BodyWeight{Date: "2026-10-14", Weight: d})
+		}()
+	}
+	close(start)
+	for i := 0; i < burst; i++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("InsertW: %v", err)
+		}
+	}
+
+	var n int
+	if err := s.Pool().QueryRow(ctx,
+		"SELECT count(*) FROM weight WHERE date = '2026-10-14'").Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("rows after a concurrent burst = %d, want 1", n)
+	}
+}
+
+// The regression that actually shipped duplicates: the scale posts an
+// unrounded float (kg x 2.20462) that the NUMERIC(10,2) column rounds, so a
+// dedup comparing the raw value never matched. Sequential re-sends of the same
+// reading -- including ones whose float noise differs below the cent -- must
+// still land as one row.
+func TestInsertW_UnroundedScaleResendsStoreOneRow(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	for _, raw := range []string{"255.8000071", "255.8000071", "255.79999542"} {
+		d, _ := decimal.NewFromString(raw)
+		if err := s.InsertW(ctx, models.BodyWeight{Date: "2026-11-04", Weight: d}); err != nil {
+			t.Fatalf("InsertW %s: %v", raw, err)
+		}
+	}
+	var n int
+	if err := s.Pool().QueryRow(ctx,
+		"SELECT count(*) FROM weight WHERE date = '2026-11-04'").Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("rows after three re-sends of one reading = %d, want 1", n)
 	}
 }
