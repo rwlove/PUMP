@@ -497,6 +497,19 @@ WHERE w.date = k.date AND w.weight = k.weight AND w.id > k.id;
 CREATE UNIQUE INDEX IF NOT EXISTS weight_date_weight_uniq ON weight (date, weight);
 `,
 	},
+	{
+		Version:     26,
+		Description: "weight: grant SELECT to pg_monitor for the weigh-in freshness metric",
+		SQL: `
+-- The CNPG metrics exporter (cnpg_metrics_exporter, a pg_monitor member) runs a
+-- custom query that exports MAX(weight.date) as
+-- cnpg_pump_weight_last_reading_timestamp_seconds, which backs the cluster's
+-- stale-weigh-in alert. pg_monitor has no read on application tables, so the
+-- query failed with "permission denied for table weight" and the metric was
+-- never exported. Read-only, this one table; GRANT is idempotent.
+GRANT SELECT ON weight TO pg_monitor;
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any
