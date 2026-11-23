@@ -950,26 +950,28 @@ func (s *PostgresStore) InsertW(ctx context.Context, w models.BodyWeight) error 
 	if w.RecordedAt != "" {
 		recordedAt = w.RecordedAt
 	}
-	// Dedup identical same-day readings. The bt-scale gateway burst-posts the
+	// Dedup identical same-day readings. The scale gateway burst-posts the
 	// same value several times as the reading settles/re-sends, which would
 	// otherwise pile up duplicate rows (the reason DeleteW deletes by date).
 	// A genuinely different value on the same day still inserts, so multiple
 	// distinct weigh-ins per day remain supported (latest recorded_at wins for
-	// display). NUMERIC comparison ignores decimal-string formatting, so
-	// "272.2" and "272.20" are treated as equal.
+	// display). The value is rounded to the column's NUMERIC(10,2) before the
+	// comparison: the scale posts unrounded floats (kg x 2.20462), and the old
+	// NOT EXISTS check compared those against the rounded stored values, so it
+	// never matched and every re-send inserted a copy. The unique index on
+	// (date, weight) (migration v25) also makes the dedup atomic under
+	// concurrent posts.
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO weight (date, recorded_at, weight)
-		 SELECT $1::date, COALESCE($2::timestamptz, NOW()), $3::numeric
-		 WHERE NOT EXISTS (
-		     SELECT 1 FROM weight WHERE date = $1::date AND weight = $3::numeric
-		 )`,
+		 VALUES ($1::date, COALESCE($2::timestamptz, NOW()), $3::numeric(10,2))
+		 ON CONFLICT (date, weight) DO NOTHING`,
 		w.Date, recordedAt, w.Weight.String())
 	return err
 }
 
 // DeleteW removes the body-weight entry the log shows for the given reading's
 // day. The log is day-oriented — SelectW returns one row per date via
-// DISTINCT ON — but a single day can hold several raw rows: the bt-scale
+// DISTINCT ON — but a single day can hold several raw rows: the scale
 // gateway burst-posts the same reading several times as it settles. Deleting
 // only the targeted id would leave those duplicates behind, so SelectW would
 // surface the next one and the value would appear unchanged ("delete didn't

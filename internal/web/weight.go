@@ -1,6 +1,7 @@
 package web
 
 import (
+	"html"
 	"log/slog"
 	"net/http"
 
@@ -16,7 +17,8 @@ func addWeightHandler(c *gin.Context) {
 	w.Date = c.PostForm("date")
 	var ok bool
 	if w.Weight, ok = formDecimal(c.PostForm("weight")); !ok {
-		c.Status(http.StatusBadRequest)
+		weightRejected(c, http.StatusBadRequest,
+			"“"+c.PostForm("weight")+"” is not a number.")
 		return
 	}
 
@@ -27,7 +29,13 @@ func addWeightHandler(c *gin.Context) {
 	if conf.WeightOutOfRange(w.Weight) {
 		slog.Warn("addWeightHandler: rejected out-of-range weight",
 			slog.String("date", w.Date), slog.String("weight", w.Weight.String()))
-		c.Status(http.StatusUnprocessableEntity)
+		lo, hi := conf.WeightBounds()
+		msg := "The weight field was empty."
+		if !w.Weight.IsZero() {
+			msg = w.Weight.String() + " lb is outside the accepted range."
+		}
+		weightRejected(c, http.StatusUnprocessableEntity,
+			msg+" Enter a weight between "+lo.String()+" and "+hi.String()+" lb.")
 		return
 	}
 
@@ -42,6 +50,26 @@ func addWeightHandler(c *gin.Context) {
 		ref = "/stats/"
 	}
 	c.Redirect(http.StatusFound, ref)
+}
+
+// weightRejected answers a rejected manual weigh-in with a readable page
+// instead of a bare status code. The form is a plain HTML POST, so a bodyless
+// 4xx renders as a blank white screen on a phone with no hint of what went
+// wrong or that nothing was saved.
+func weightRejected(c *gin.Context, status int, msg string) {
+	back := c.Request.Referer()
+	if back == "" {
+		back = "/"
+	}
+	c.Data(status, "text/html; charset=utf-8", []byte(
+		`<!doctype html><html><head><meta charset="utf-8">`+
+			`<meta name="viewport" content="width=device-width,initial-scale=1">`+
+			`<title>Weight not saved</title></head>`+
+			`<body style="font-family:system-ui,sans-serif;padding:1.5rem;background:#1a1a1a;color:#eee">`+
+			`<h1 style="font-size:1.25rem">Weight not saved</h1>`+
+			`<p>`+html.EscapeString(msg)+`</p>`+
+			`<p><a style="color:#6cb4ff" href="`+html.EscapeString(back)+`">Go back</a></p>`+
+			`</body></html>`))
 }
 
 func deleteWeightHandler(c *gin.Context) {
