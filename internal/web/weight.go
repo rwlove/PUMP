@@ -39,11 +39,20 @@ func addWeightHandler(c *gin.Context) {
 		return
 	}
 
-	if err := dataStore.InsertW(c.Request.Context(), w); err != nil {
+	w.Source = "web"
+	w.UserAgent = c.Request.UserAgent()
+	w.ClientIP = c.ClientIP()
+	w.RawWeight = c.PostForm("weight")
+	res, err := dataStore.InsertW(c.Request.Context(), w)
+	if err != nil {
 		slog.Error("addWeightHandler: InsertW failed", slog.Any("error", err))
 		c.Status(http.StatusInternalServerError)
 		return
 	}
+	slog.Info("body weight logged (web form)",
+		slog.Int("id", res.ID), slog.Bool("inserted", res.Inserted),
+		slog.String("date", w.Date), slog.String("weight", w.Weight.String()),
+		slog.String("ua", w.UserAgent), slog.String("ip", w.ClientIP))
 
 	ref := c.Request.Referer()
 	if ref == "" {

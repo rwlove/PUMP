@@ -261,7 +261,7 @@ func TestDeleteW_KeepsOtherDistinctReadingSameDay(t *testing.T) {
 
 	for _, w := range []string{"272.4", "270.8"} {
 		d, _ := decimal.NewFromString(w)
-		if err := s.InsertW(ctx, models.BodyWeight{Date: "2026-08-01", Weight: d}); err != nil {
+		if _, err := s.InsertW(ctx, models.BodyWeight{Date: "2026-08-01", Weight: d}); err != nil {
 			t.Fatalf("InsertW %s: %v", w, err)
 		}
 	}
@@ -386,19 +386,40 @@ func TestInsertW_ConcurrentBurstStoresOneRow(t *testing.T) {
 	d, _ := decimal.NewFromString("255.3")
 
 	const burst = 8
-	errs := make(chan error, burst)
+	type result struct {
+		res models.WeightInsert
+		err error
+	}
+	results := make(chan result, burst)
 	start := make(chan struct{})
 	for i := 0; i < burst; i++ {
 		go func() {
 			<-start
-			errs <- s.InsertW(ctx, models.BodyWeight{Date: "2026-10-14", Weight: d})
+			res, err := s.InsertW(ctx, models.BodyWeight{Date: "2026-10-14", Weight: d})
+			results <- result{res, err}
 		}()
 	}
 	close(start)
+	inserted := 0
 	for i := 0; i < burst; i++ {
-		if err := <-errs; err != nil {
-			t.Fatalf("InsertW: %v", err)
+		r := <-results
+		if r.err != nil {
+			t.Fatalf("InsertW: %v", r.err)
 		}
+		if r.res.Inserted {
+			inserted++
+		}
+	}
+	if inserted != 1 {
+		t.Errorf("InsertW reported Inserted for %d of %d burst posts, want exactly 1", inserted, burst)
+	}
+	var count int
+	if err := s.Pool().QueryRow(ctx,
+		"SELECT receive_count FROM weight WHERE date = '2026-10-14'").Scan(&count); err != nil {
+		t.Fatalf("receive_count: %v", err)
+	}
+	if count != burst {
+		t.Errorf("receive_count after a %d-post burst = %d, want %d", burst, count, burst)
 	}
 
 	var n int
@@ -421,7 +442,7 @@ func TestInsertW_UnroundedScaleResendsStoreOneRow(t *testing.T) {
 	ctx := context.Background()
 	for _, raw := range []string{"255.8000071", "255.8000071", "255.79999542"} {
 		d, _ := decimal.NewFromString(raw)
-		if err := s.InsertW(ctx, models.BodyWeight{Date: "2026-11-04", Weight: d}); err != nil {
+		if _, err := s.InsertW(ctx, models.BodyWeight{Date: "2026-11-04", Weight: d}); err != nil {
 			t.Fatalf("InsertW %s: %v", raw, err)
 		}
 	}
@@ -433,4 +454,79 @@ func TestInsertW_UnroundedScaleResendsStoreOneRow(t *testing.T) {
 	if n != 1 {
 		t.Errorf("rows after three re-sends of one reading = %d, want 1", n)
 	}
+}
+
+// Each stored reading records the request that produced it, so a weigh-in can
+// be traced to a device. A re-send merges into the first post's row: it bumps
+// the count and last_received_at but keeps the first post's provenance.
+func TestInsertW_RecordsProvenanceAndCountsResends(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	d, _ := decimal.NewFromString("256.8000043")
+	first := models.BodyWeight{
+		Date: "2026-11-24", RecordedAt: "2026-11-24T14:45:31-05:00", Weight: d,
+		Source: "api", UserAgent: "scale-gateway-test",
+		ClientIP: "192.0.2.59", RawWeight: d.String(),
+	}
+	res, err := s.InsertW(ctx, first)
+	if err != nil {
+		t.Fatalf("InsertW first: %v", err)
+	}
+	if !res.Inserted || res.ReceiveCount != 1 || res.ID == 0 {
+		t.Fatalf("first post = %+v, want Inserted, count 1, non-zero id", res)
+	}
+	resend := first
+	resend.UserAgent = "some-other-sender"
+	res2, err := s.InsertW(ctx, resend)
+	if err != nil {
+		t.Fatalf("InsertW resend: %v", err)
+	}
+	if res2.Inserted || res2.ID != res.ID || res2.ReceiveCount != 2 {
+		t.Fatalf("re-send = %+v, want merged into id %d with count 2", res2, res.ID)
+	}
+
+	ws, err := s.SelectW(ctx)
+	if err != nil {
+		t.Fatalf("SelectW: %v", err)
+	}
+	var got models.BodyWeight
+	for _, w := range ws {
+		if w.Date == "2026-11-24" {
+			got = w
+		}
+	}
+	if got.Source != "api" || got.UserAgent != "scale-gateway-test" ||
+		got.ClientIP != "192.0.2.59" || got.RawWeight != "256.8000043" {
+		t.Errorf("provenance = %+v, want the first post's source/ua/ip/raw", got)
+	}
+	if got.ReceivedAt == "" || got.LastReceivedAt == "" || got.ReceiveCount != 2 {
+		t.Errorf("receive fields = received %q last %q count %d, want both set and count 2",
+			got.ReceivedAt, got.LastReceivedAt, got.ReceiveCount)
+	}
+}
+
+// Rows from before migration v27 have no provenance. They must read back as
+// unknown (empty / zero), not be stamped with the migration's time or a count.
+func TestSelectW_PreV27RowsReadAsUnknownProvenance(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	if _, err := s.Pool().Exec(ctx, `INSERT INTO weight (date, recorded_at, weight, received_at, receive_count)
+		VALUES ('2026-10-26', '2026-10-26T04:13:42-04:00', 256.8, NULL, NULL)`); err != nil {
+		t.Fatalf("seed legacy row: %v", err)
+	}
+	ws, err := s.SelectW(ctx)
+	if err != nil {
+		t.Fatalf("SelectW: %v", err)
+	}
+	for _, w := range ws {
+		if w.Date != "2026-10-26" {
+			continue
+		}
+		if w.Source != "" || w.UserAgent != "" || w.ClientIP != "" || w.RawWeight != "" ||
+			w.ReceivedAt != "" || w.LastReceivedAt != "" || w.ReceiveCount != 0 {
+			t.Errorf("legacy row provenance = %+v, want all empty/zero", w)
+		}
+		return
+	}
+	t.Fatal("legacy row not returned by SelectW")
 }

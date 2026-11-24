@@ -95,8 +95,10 @@ func (f *fakeStore) DeleteSet(context.Context, int) (string, error) { return "",
 func (f *fakeStore) SelectW(context.Context) ([]models.BodyWeight, error) {
 	return nil, nil
 }
-func (f *fakeStore) InsertW(context.Context, models.BodyWeight) error { return nil }
-func (f *fakeStore) DeleteW(context.Context, int) error               { return nil }
+func (f *fakeStore) InsertW(context.Context, models.BodyWeight) (models.WeightInsert, error) {
+	return models.WeightInsert{}, nil
+}
+func (f *fakeStore) DeleteW(context.Context, int) error { return nil }
 
 var _ store.Store = (*fakeStore)(nil)
 

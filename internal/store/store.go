@@ -49,7 +49,9 @@ type Store interface {
 	DeleteSet(ctx context.Context, id int) (string, error)
 
 	SelectW(ctx context.Context) ([]models.BodyWeight, error)
-	InsertW(ctx context.Context, w models.BodyWeight) error
+	// InsertW stores a reading, merging an identical same-day re-send into
+	// the existing row (bumping its receive count) instead of adding a copy.
+	InsertW(ctx context.Context, w models.BodyWeight) (models.WeightInsert, error)
 	DeleteW(ctx context.Context, id int) error
 
 	// GetAppConfig returns the persisted UI-editable settings. ok=false

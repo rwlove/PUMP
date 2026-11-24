@@ -510,6 +510,32 @@ CREATE UNIQUE INDEX IF NOT EXISTS weight_date_weight_uniq ON weight (date, weigh
 GRANT SELECT ON weight TO pg_monitor;
 `,
 	},
+	{
+		Version:     27,
+		Description: "weight: ingest provenance (source, user agent, client ip, raw value, receive times/count)",
+		SQL: `
+-- Debuggability for the off-cluster scale ingest. Until now a stored weight
+-- carried no trace of who sent it: when the scale moved from one ESPHome
+-- device to another, the only way to attribute a reading was to reason from
+-- the firewall. These columns record the request that produced each row.
+--
+-- Added without defaults first so every pre-v27 row stays NULL (= unknown)
+-- rather than being stamped with this migration's time or a fake count; the
+-- defaults are then set for new rows only.
+ALTER TABLE weight ADD COLUMN IF NOT EXISTS source TEXT;
+ALTER TABLE weight ADD COLUMN IF NOT EXISTS user_agent TEXT;
+ALTER TABLE weight ADD COLUMN IF NOT EXISTS client_ip TEXT;
+-- The value exactly as posted, before NUMERIC(10,2) rounding.
+ALTER TABLE weight ADD COLUMN IF NOT EXISTS raw_weight TEXT;
+ALTER TABLE weight ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ;
+ALTER TABLE weight ALTER COLUMN received_at SET DEFAULT NOW();
+-- The scale re-sends each weigh-in several times; InsertW merges identical
+-- same-day re-sends into one row (v25) and now counts them here.
+ALTER TABLE weight ADD COLUMN IF NOT EXISTS last_received_at TIMESTAMPTZ;
+ALTER TABLE weight ADD COLUMN IF NOT EXISTS receive_count INTEGER;
+ALTER TABLE weight ALTER COLUMN receive_count SET DEFAULT 1;
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any
