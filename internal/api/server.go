@@ -610,12 +610,33 @@ func postWeight(c *gin.Context) {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "weight out of plausible range"})
 		return
 	}
-	if err := dataStore.InsertW(c.Request.Context(), w); err != nil {
-		slog.Error("postWeight: InsertW failed", slog.Any("error", err))
+	// Provenance is taken from the request, never from the JSON body.
+	w.Source = "api"
+	w.UserAgent = c.Request.UserAgent()
+	w.ClientIP = c.ClientIP()
+	w.RawWeight = w.Weight.String()
+	attrs := []any{
+		slog.String("date", w.Date),
+		slog.String("recorded_at", w.RecordedAt),
+		slog.String("weight", w.Weight.Round(2).StringFixed(2)),
+		slog.String("raw_weight", w.RawWeight),
+		slog.String("ua", w.UserAgent),
+		slog.String("ip", w.ClientIP),
+		slog.String("remote_addr", c.Request.RemoteAddr),
+		slog.String("xff", c.GetHeader("X-Forwarded-For")),
+	}
+	res, err := dataStore.InsertW(c.Request.Context(), w)
+	if err != nil {
+		slog.Error("postWeight: InsertW failed", append(attrs, slog.Any("error", err))...)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	slog.Info("body weight logged", slog.String("date", w.Date))
+	attrs = append(attrs, slog.Int("id", res.ID), slog.Int("receive_count", res.ReceiveCount))
+	if res.Inserted {
+		slog.Info("body weight logged", attrs...)
+	} else {
+		slog.Info("body weight re-send merged", attrs...)
+	}
 	c.Status(http.StatusCreated)
 }
 

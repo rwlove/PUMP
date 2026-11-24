@@ -918,7 +918,10 @@ func (s *PostgresStore) DeleteMeasurement(ctx context.Context, id int) error {
 func (s *PostgresStore) SelectW(ctx context.Context) ([]models.BodyWeight, error) {
 	slog.Debug("db: SelectW")
 	rows, err := s.pool.Query(ctx,
-		`SELECT DISTINCT ON (date) id, date::text, recorded_at::text, weight::text
+		`SELECT DISTINCT ON (date) id, date::text, recorded_at::text, weight::text,
+		        COALESCE(source, ''), COALESCE(user_agent, ''), COALESCE(client_ip, ''),
+		        COALESCE(raw_weight, ''), COALESCE(received_at::text, ''),
+		        COALESCE(last_received_at::text, ''), COALESCE(receive_count, 0)
 		 FROM weight
 		 ORDER BY date, recorded_at DESC`)
 	if err != nil {
@@ -930,7 +933,9 @@ func (s *PostgresStore) SelectW(ctx context.Context) ([]models.BodyWeight, error
 	for rows.Next() {
 		var w models.BodyWeight
 		var weightStr string
-		if err := rows.Scan(&w.ID, &w.Date, &w.RecordedAt, &weightStr); err != nil {
+		if err := rows.Scan(&w.ID, &w.Date, &w.RecordedAt, &weightStr,
+			&w.Source, &w.UserAgent, &w.ClientIP, &w.RawWeight,
+			&w.ReceivedAt, &w.LastReceivedAt, &w.ReceiveCount); err != nil {
 			return nil, err
 		}
 		w.Weight, _ = decimal.NewFromString(weightStr)
@@ -944,7 +949,7 @@ func (s *PostgresStore) SelectW(ctx context.Context) ([]models.BodyWeight, error
 // default (NOW()) is used — covers the manual web-form path where the
 // browser hasn't supplied a precise instant. Scale clients (ESPHome) send
 // the precise reading time.
-func (s *PostgresStore) InsertW(ctx context.Context, w models.BodyWeight) error {
+func (s *PostgresStore) InsertW(ctx context.Context, w models.BodyWeight) (models.WeightInsert, error) {
 	slog.Debug("db: InsertW", slog.String("date", w.Date), slog.String("recorded_at", w.RecordedAt), slog.String("weight", w.Weight.String()))
 	var recordedAt interface{}
 	if w.RecordedAt != "" {
@@ -961,12 +966,24 @@ func (s *PostgresStore) InsertW(ctx context.Context, w models.BodyWeight) error 
 	// never matched and every re-send inserted a copy. The unique index on
 	// (date, weight) (migration v25) also makes the dedup atomic under
 	// concurrent posts.
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO weight (date, recorded_at, weight)
-		 VALUES ($1::date, COALESCE($2::timestamptz, NOW()), $3::numeric(10,2))
-		 ON CONFLICT (date, weight) DO NOTHING`,
-		w.Date, recordedAt, w.Weight.String())
-	return err
+	//
+	// A re-send is merged rather than dropped: it bumps the row's receive
+	// count and last_received_at, so a burst is visible after the fact. The
+	// row keeps the first post's provenance. xmax = 0 is true only for a
+	// freshly inserted tuple, which is how the caller learns which case it was.
+	var res models.WeightInsert
+	err := s.pool.QueryRow(ctx,
+		`INSERT INTO weight (date, recorded_at, weight, source, user_agent, client_ip, raw_weight)
+		 VALUES ($1::date, COALESCE($2::timestamptz, NOW()), $3::numeric(10,2),
+		         NULLIF($4, ''), NULLIF($5, ''), NULLIF($6, ''), NULLIF($7, ''))
+		 ON CONFLICT (date, weight) DO UPDATE
+		   SET receive_count = COALESCE(weight.receive_count, 1) + 1,
+		       last_received_at = NOW()
+		 RETURNING id, (xmax = 0), COALESCE(receive_count, 1)`,
+		w.Date, recordedAt, w.Weight.String(),
+		w.Source, w.UserAgent, w.ClientIP, w.RawWeight).
+		Scan(&res.ID, &res.Inserted, &res.ReceiveCount)
+	return res, err
 }
 
 // DeleteW removes the body-weight entry the log shows for the given reading's

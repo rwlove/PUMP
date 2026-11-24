@@ -216,11 +216,42 @@ type AllExData struct {
 // was taken (ISO8601 with TZ). Date is the logical day the reading belongs
 // to and is what the UI groups/displays by — multiple readings can share a
 // date and the latest recorded_at wins for display.
+//
+// The remaining fields are ingest provenance, kept so a reading can be traced
+// back to the device and request that produced it (migration v27). They are
+// set server-side from the request, never trusted from a client's JSON body,
+// and are empty/zero on rows stored before v27.
 type BodyWeight struct {
 	ID         int             `db:"ID"`
 	Date       string          `db:"DATE"`
 	RecordedAt string          `db:"RECORDED_AT"`
 	Weight     decimal.Decimal `db:"WEIGHT"`
+
+	// Source is the write path: "api" (POST /api/weight) or "web" (the Log
+	// Weight form).
+	Source    string `db:"SOURCE"`
+	UserAgent string `db:"USER_AGENT"`
+	// ClientIP is gin's ClientIP() -- the X-Forwarded-For origin behind the
+	// Gateway, e.g. the scale device's own IoT-VLAN address.
+	ClientIP string `db:"CLIENT_IP"`
+	// RawWeight is the value exactly as posted, before NUMERIC(10,2) rounding;
+	// the scale firmware posts unrounded kg x 2.20462 floats.
+	RawWeight string `db:"RAW_WEIGHT"`
+	// ReceivedAt is when the server first stored the reading; LastReceivedAt is
+	// the most recent identical re-send merged into it, and ReceiveCount how
+	// many posts (the first plus re-sends) the row absorbed.
+	ReceivedAt     string `db:"RECEIVED_AT"`
+	LastReceivedAt string `db:"LAST_RECEIVED_AT"`
+	ReceiveCount   int    `db:"RECEIVE_COUNT"`
+}
+
+// WeightInsert reports what InsertW did with a reading: the id of the row it
+// landed in, whether that row is new (false = an identical same-day re-send
+// merged into an existing row), and the row's receive count afterwards.
+type WeightInsert struct {
+	ID           int
+	Inserted     bool
+	ReceiveCount int
 }
 
 // Measurement is one occasional standalone metric reading — grip strength (per

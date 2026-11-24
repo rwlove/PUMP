@@ -25,6 +25,9 @@ type gateStore struct {
 	// asked for, so a test can assert the ?date= value reached the store.
 	setsOn     []models.Set
 	setsOnDate string
+
+	// weights records InsertW calls for the weight-ingest tests.
+	weights []models.BodyWeight
 }
 
 func (g *gateStore) InsertSet(_ context.Context, set models.Set) (models.Set, error) {
@@ -54,8 +57,11 @@ func (g *gateStore) UpdateSet(context.Context, int, models.SetUpdate) (models.Se
 }
 func (g *gateStore) DeleteSet(context.Context, int) (string, error)       { return "", nil }
 func (g *gateStore) SelectW(context.Context) ([]models.BodyWeight, error) { return nil, nil }
-func (g *gateStore) InsertW(context.Context, models.BodyWeight) error     { return nil }
-func (g *gateStore) DeleteW(context.Context, int) error                   { return nil }
+func (g *gateStore) InsertW(_ context.Context, w models.BodyWeight) (models.WeightInsert, error) {
+	g.weights = append(g.weights, w)
+	return models.WeightInsert{ID: len(g.weights), Inserted: true, ReceiveCount: 1}, nil
+}
+func (g *gateStore) DeleteW(context.Context, int) error { return nil }
 func (g *gateStore) GetAppConfig(context.Context) (models.Conf, bool, error) {
 	return models.Conf{}, false, nil
 }
