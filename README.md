@@ -87,6 +87,14 @@ until a UI lands):
   exercise's per-set volume. The Epley e1RM-based Personal Records and
   Progressive Overload tabs are unaffected, since a 1RM estimate reflects one
   side's peak force, not combined load.
+
+  Exercises are **bilateral** (both sides together) by default
+  (`unilateral = false`). A unilateral exercise is one catalog row, never a
+  left/right pair, and its name starts with "Unilateral" so the flag is
+  visible wherever the name appears (e.g. "Unilateral Lat Pulldown (Neutral
+  Grip)"). Use only *unilateral* / *bilateral* for this. "Isolated",
+  "isolateral" and "isometric" mean other things (single-joint isolation work,
+  a brand of machine, a static hold).
 - **Caution class** is a free-text tag that groups exercises sharing a
   movement-pattern caution (e.g. two different named exercises that load a
   joint the same way under load), independent of exercise name or
