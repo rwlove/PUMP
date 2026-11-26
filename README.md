@@ -112,6 +112,10 @@ convention is simply a separate catalog row per variant, named descriptively
 Personal Records, and Progressive Overload trend independent, the same way
 the catalog already separates e.g. flat and incline bench press.
 
+Catalog renames, merges and deletions made directly on the live database
+(rather than through a migration) are recorded in
+[`docs/catalog-changes.md`](docs/catalog-changes.md).
+
 ### Health dashboard & wearable metrics
 
 The **Health** page (`/health/`) is a one-page, whole-body view that pulls from every source PUMP tracks — body weight, strength training, and wearable metrics — as summary tiles (latest value, trend delta, sparkline) that deep-link into the matching Stats tab.
