@@ -1432,7 +1432,7 @@ function showDayLoading(date) {
     if (btn) btn.textContent = formatFriendlyDate(date);
     var container = document.getElementById('todayEx');
     if (container) container.innerHTML =
-        '<div class="day-load-msg text-secondary p-3">Loading…</div>';
+        '<div class="day-load-msg text-body-secondary p-3">Loading…</div>';
     var empty = document.getElementById('emptyState');
     if (empty) empty.style.display = 'none';
 }

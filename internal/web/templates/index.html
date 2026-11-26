@@ -22,16 +22,16 @@
         <img src="{{ .Image }}" class="w-100 rounded-3 mb-3" style="max-height:200px;object-fit:cover;" alt="{{ .Name }}">
         {{ end }}
         {{ if .Descr }}
-        <p class="text-secondary small mb-3">{{ .Descr }}</p>
+        <p class="text-body-secondary small mb-3" style="white-space:pre-line;">{{ .Descr }}</p>
         {{ end }}
         <div class="d-flex gap-2">
           <div class="flex-fill text-center p-2 rounded-3 bg-body-secondary">
             <div class="fw-bold">{{ .Weight }}</div>
-            <div class="text-secondary" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;">Weight</div>
+            <div class="text-body-secondary" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;">Weight</div>
           </div>
           <div class="flex-fill text-center p-2 rounded-3 bg-body-secondary">
             <div class="fw-bold">{{ .Reps }}</div>
-            <div class="text-secondary" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;">Reps</div>
+            <div class="text-body-secondary" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;">Reps</div>
           </div>
         </div>
       </div>
