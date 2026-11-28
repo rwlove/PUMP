@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -47,6 +48,7 @@ func indexHandler(c *gin.Context) {
 	}
 
 	sortExsByRecency(exs, lastPerformed(c, "indexHandler"))
+	fillBlankGroups(exs)
 
 	// Limit sets sent to the main page to the configured display window.
 	cutoff := time.Now().AddDate(0, 0, -days).Format("2006-01-02")
@@ -103,6 +105,21 @@ func buildGroupList(exs []models.Exercise) []string {
 // catalog — created in Settings before any exercise uses it — is still offered
 // in the picker, which is what lets "select a group, then add an exercise"
 // work for a brand-new group.
+// UngroupedLabel is the picker chip for exercises saved without a group.
+const UngroupedLabel = "Ungrouped"
+
+// fillBlankGroups gives every exercise without a group the UngroupedLabel, so
+// it gets a chip in the picker. Every exercise must be reachable from the
+// picker under a selectable group; a blank group rendered as an empty chip
+// with nothing to tap.
+func fillBlankGroups(exs []models.Exercise) {
+	for i := range exs {
+		if strings.TrimSpace(exs[i].Group) == "" {
+			exs[i].Group = UngroupedLabel
+		}
+	}
+}
+
 func mergeGroupList(exs []models.Exercise, muscles []models.Muscle) []string {
 	seen := make(map[string]bool)
 	var groups []string

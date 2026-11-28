@@ -34,6 +34,23 @@ Any PR that adds, removes, or renames a table or column requires a patch
 version bump on the `pump-vX.Y.Z` tag line.
 
 
+### No hidden exercises (standing rule)
+
+Every exercise in the catalog must be reachable from the workout page's
+exercise picker, under a selectable group chip named for its **prime muscle
+group** (the `gr` column). There are no hidden or chip-less exercises:
+
+- When adding or editing an exercise (in the app or by a direct catalog edit),
+  set `gr` to the prime mover's group. A blank `gr` shows under an
+  "Ungrouped" chip as a fallback, which is a bug to fix in the data, not a
+  place to park exercises.
+- Don't add a feature that filters exercises out of the picker (by recency,
+  place, or anything else) without a visible way to reach them.
+- The picker filter searches every group and folds the catalog's mixed
+  spellings ("Dumbbell"/"Dumbell"). Keep it that way.
+- `TestEveryExerciseHasAPickerGroup` (`internal/web/picker_groups_test.go`)
+  guards this. Extend it rather than weaken it.
+
 ### Logo changes
 
 The logo lives in two canonical locations:

@@ -856,6 +856,11 @@ function commitUncommittedEntry(entry) {
     }).then(function(out) {
         entry.dataset.setId = out.id;
         entry.dataset.dirty = 'false';
+        // Hold the new set in the page's copy of the log too. A day change
+        // re-renders from window._allSets; without this a set confirmed (or
+        // flush-saved on the way out) earlier in the visit was missing from
+        // its day on return, or came back looking unconfirmed.
+        rememberSavedSet(Object.assign({}, body, { ID: out.id }));
         markEntryCommitted(entry);
         saveStatus('saved', 'Saved');
     }).catch(function() {
@@ -863,6 +868,15 @@ function commitUncommittedEntry(entry) {
     }).finally(function() {
         entry.dataset.saving = 'false';
     });
+}
+
+// rememberSavedSet adds or replaces a server-saved set in window._allSets.
+function rememberSavedSet(set) {
+    var all = window._allSets || (window._allSets = []);
+    for (var i = 0; i < all.length; i++) {
+        if (all[i].ID === set.ID) { all[i] = set; return; }
+    }
+    all.push(set);
 }
 
 // markEntryCommitted turns a just-written prefill row into an ordinary one:
@@ -936,6 +950,7 @@ function persistUncommittedPrefills() {
             color:       entry.dataset.exerciseColor || '',
             note:        noteInp ? noteInp.value : '',
             touched:     entry.dataset.touched === 'true',
+            flushing:    entry.dataset.flushing === 'true',
         });
     });
     writeStoredPrefills(today, list);
@@ -944,17 +959,22 @@ function persistUncommittedPrefills() {
 // restoreUncommittedPrefills re-adds the stored prefill rows for `date` after
 // setFormContent has rendered that day's saved sets. fromPicker is false so the
 // stored weight/reps are used verbatim (no auto-fill override) and the add does
-// not re-persist. A stored row that matches a saved set already on screen (same
-// name+weight+reps) is skipped — that is a flush-committed row re-rendered from
-// the server, not a second set to recreate — then the store is re-snapshotted
-// so those committed rows drop out of it.
+// not re-persist. Only a row that was mid flush-commit when the page went away
+// (stored with flushing:true) may be skipped, and only when a saved set with
+// the same name+weight+reps is on screen — that is the flush landing, re-
+// rendered from the server. Each saved set accounts for at most one such row.
+//
+// Matching on values alone used to drop real suggestions: a plan scaffolds
+// identical sets (3 × 18 lb × 12), so confirming set 1 made sets 2 and 3 look
+// "already saved" and both vanished on the next visit to the page.
 function restoreUncommittedPrefills(date) {
     if (!window._autoLog) return;
     var list = readStoredPrefills(date);
     if (!list.length) return;
+    var claimed = [];
     list.forEach(function(p) {
         if (!p || !p.name) return;
-        if (committedRowMatches(p)) return;
+        if (p.flushing && committedRowMatches(p, claimed)) return;
         var el = addExercise(p.name, p.weight, p.reps, p.color, /*fromPicker*/ false, p.note,
             { addedWeight: p.addedWeight });
         if (p.touched && el) el.dataset.touched = 'true';
@@ -963,11 +983,13 @@ function restoreUncommittedPrefills(date) {
 }
 
 // committedRowMatches reports whether a saved (server-id) row identical to the
-// stored prefill is already rendered — used to skip restoring a prefill that
-// was flush-committed just before the reload.
-function committedRowMatches(p) {
+// stored prefill is already rendered and not yet claimed by another stored
+// row — used to skip restoring a prefill that was flush-committed just before
+// the reload. A match is added to `claimed`.
+function committedRowMatches(p, claimed) {
     var rows = document.querySelectorAll('#todayEx .workout-entry[data-set-id]');
     for (var i = 0; i < rows.length; i++) {
+        if (claimed.indexOf(rows[i]) !== -1) continue;
         var n = rows[i].querySelector('input[name="name"]');
         var w = rows[i].querySelector('input[name="weight"]');
         var r = rows[i].querySelector('input[name="reps"]');
@@ -975,6 +997,7 @@ function committedRowMatches(p) {
             n.value === p.name &&
             String(w.value) === String(p.weight || '') &&
             String(r.value) === String(p.reps || '')) {
+            claimed.push(rows[i]);
             return true;
         }
     }
@@ -989,9 +1012,25 @@ function flushTouchedUncommitted() {
     var rows = document.querySelectorAll(
         '#todayEx .workout-entry[data-prefill="true"][data-touched="true"]');
     var ps = [];
+    var toCommit = [];
     rows.forEach(function(entry) {
         if (entry.dataset.setId) return; // already committed
-        ps.push(commitUncommittedEntry(entry));
+        // Recorded in the prefill store before the POST goes out: if the page
+        // is left before the response, the restore knows this row may already
+        // be on the server (see restoreUncommittedPrefills).
+        entry.dataset.flushing = 'true';
+        toCommit.push(entry);
+    });
+    if (toCommit.length) persistUncommittedPrefills();
+    toCommit.forEach(function(entry) {
+        ps.push(commitUncommittedEntry(entry).then(function() {
+            // A failed flush leaves the row uncommitted: it is an ordinary
+            // suggestion again, restored on reload like any other.
+            if (!entry.dataset.setId) {
+                entry.dataset.flushing = 'false';
+                persistUncommittedPrefills();
+            }
+        }));
     });
     return ps.length ? Promise.all(ps) : Promise.resolve();
 }
@@ -1422,6 +1461,32 @@ function openSetsStream() {
     });
 }
 
+// syncDayFromServer fetches `date`'s sets and, if they differ from what the
+// page holds, replaces the page's copy of that day and re-renders it (still
+// on that day). Uncommitted suggestions survive the re-render through the
+// prefill store. Failure is silent: the memory copy is already on screen.
+function syncDayFromServer(date) {
+    fetch('/api/sets?date=' + encodeURIComponent(date))
+        .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(function(daySets) {
+            daySets = daySets || [];
+            var sig = function(list) {
+                return list.filter(function(x) { return x.Date === date; })
+                    .map(function(x) { return [x.ID, x.Name, x.Weight, x.Reps, x.AddedWeight, x.Note, x.Pending].join('|'); })
+                    .sort().join('\n');
+            };
+            if (sig(daySets) === sig(window._allSets || [])) return;
+            var rest = (window._allSets || []).filter(function(x) { return x.Date !== date; });
+            window._allSets = rest.concat(daySets);
+            if (today !== date) return; // the athlete has moved on already
+            var ae = document.activeElement;
+            if (ae && ae.closest && ae.closest('#todayEx')) return; // don't redraw under someone mid-edit
+            setFormContent(window._allSets, date);
+            refreshWeekStreak();
+        })
+        .catch(function() {});
+}
+
 // showDayLoading reflects the target date immediately and shows a transient
 // note, so navigating to an older day doesn't flash as an empty "rest day"
 // while that day's sets are being fetched.
@@ -1457,6 +1522,10 @@ function navigateToDate(date) {
     // UTC-parse day shift. No cutoff (shouldn't happen) → treat as in-window.
     if (!cutoff || date >= cutoff) {
         setFormContent(window._allSets, date);
+        // In autolog mode sets are written one at a time (✓, edits, sidecars),
+        // so the page's copy of a day can trail the server. Draw from memory
+        // at once, then reconcile against the server's copy of the day.
+        if (window._autoLog) syncDayFromServer(date);
         return;
     }
     showDayLoading(date);
@@ -1581,14 +1650,33 @@ function renderWeekStreak(sets) {
         '</div></div>';
 }
 
+// normalizeExName folds the spellings and punctuation the catalog mixes, so a
+// search finds an exercise however it was typed: "dumbbell" and "dumbell" are
+// the same word, and "ez curl" matches "EZ-Curl".
+function normalizeExName(s) {
+    return String(s || '').toLowerCase()
+        .replace(/dumbbell/g, 'dumbell')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+}
+
+// filterExercises narrows the picker as the athlete types. A query searches
+// EVERY group, not just the open one, so an exercise is never out of reach
+// because it sits under a different chip; each word must appear in the name.
+// An empty query returns to the selected group's list.
 function filterExercises() {
-    var query = document.getElementById('exSearch').value.toLowerCase().trim();
+    var query = normalizeExName(document.getElementById('exSearch').value);
     var gr = window._selectedGroup;
-    if (!gr) return;
+    var words = query ? query.split(' ') : [];
 
     document.querySelectorAll('.exercise-item').forEach(function(item) {
-        var nameMatch = item.getAttribute('data-name').toLowerCase().includes(query);
-        var groupMatch = item.getAttribute('data-group') === gr;
-        item.style.display = (groupMatch && (!query || nameMatch)) ? '' : 'none';
+        var show;
+        if (words.length) {
+            var name = normalizeExName(item.getAttribute('data-name'));
+            show = words.every(function(w) { return name.indexOf(w) !== -1; });
+        } else {
+            show = item.getAttribute('data-group') === gr;
+        }
+        item.style.display = show ? '' : 'none';
     });
 }

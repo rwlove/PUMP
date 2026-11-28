@@ -274,6 +274,11 @@
   overflow-y: auto;
   max-height: 420px;
 }
+/* On a phone the list is part of the page scroll: a capped inner scroller hid
+   the last exercises of a long group below its fold with no visible cue. */
+@media (max-width: 991.98px) {
+  .exercise-list-area { max-height: none; overflow: visible; }
+}
 
 /* Exercise list items */
 .exercise-item {
