@@ -579,6 +579,10 @@ CREATE TRIGGER prescribed_items_voltra_whole_lb
 // completely brought to the latest version (e.g. v5) without skipping steps
 // or corrupting data. Each migration runs in its own transaction; if one
 // fails the database is left at the last successfully applied version.
+// migrationLockID is the advisory lock key MigratePostgres holds while it
+// runs ("pump" in ASCII); any fixed value unique to this app will do.
+const migrationLockID int64 = 0x70756d70
+
 func MigratePostgres(pool *pgxpool.Pool) error {
 	// Bound the whole migration run: a Postgres that is briefly unreachable at
 	// pod start (a failover) used to wedge startup forever on context.Background.
@@ -588,7 +592,30 @@ func MigratePostgres(pool *pgxpool.Pool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	_, err := pool.Exec(ctx, `
+	// Serialise migration runs across processes. Two PUMP processes starting
+	// together against the same database (any rollout that overlaps an old
+	// and a new pod, or two local servers) both saw a version pending and
+	// both applied it: the loser failed on a catalog unique index (seen with
+	// v28's CREATE OR REPLACE FUNCTION) and exited. A session-level advisory
+	// lock, held on one pooled connection for the whole run, makes the
+	// second process wait, then find every version already recorded. The run
+	// deadline above bounds the wait.
+	lockConn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire connection for migration lock: %w", err)
+	}
+	defer lockConn.Release()
+	if _, err := lockConn.Exec(ctx, "SELECT pg_advisory_lock($1)", migrationLockID); err != nil {
+		return fmt.Errorf("take migration lock: %w", err)
+	}
+	defer func() {
+		// Its own short context: the run's may already be done or cancelled.
+		uctx, ucancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer ucancel()
+		_, _ = lockConn.Exec(uctx, "SELECT pg_advisory_unlock($1)", migrationLockID)
+	}()
+
+	_, err = pool.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_version (
 			version     INTEGER     NOT NULL PRIMARY KEY,
 			applied_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
