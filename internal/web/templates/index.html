@@ -313,7 +313,11 @@
       var weight = (it.TargetWeight && Number(it.TargetWeight) > 0) ? it.TargetWeight : (ex ? ex.Weight : 0);
       var reps = it.TargetReps > 0 ? it.TargetReps : (ex ? ex.Reps : 0);
       var color = it.Color || (ex ? ex.Color : '#2780e3');
-      addExercise(it.ExerciseName, weight, reps, color, true); // one set per routine item
+      // A routine's own target wins over auto-fill (last time's numbers).
+      addExercise(it.ExerciseName, weight, reps, color, true, undefined, {
+        keepWeight: !!(it.TargetWeight && Number(it.TargetWeight) > 0),
+        keepReps: it.TargetReps > 0,
+      }); // one set per routine item
     });
   }
   // ── Training queue ───────────────────────────────────────────────────────
@@ -364,8 +368,16 @@
       var reps = it.TargetRepsLow > 0 ? it.TargetRepsLow : (ex ? ex.Reps : 0);
       var color = it.Color || (ex ? ex.Color : '#2780e3');
       var sets = it.TargetSets > 0 ? it.TargetSets : 1;
+      // The coach's prescribed load and reps win over auto-fill (last time's
+      // numbers): auto-fill only fills what the plan leaves blank. Before,
+      // auto-fill replaced a progression ("12 lb, bumped from 10") with last
+      // session's 10 lb, so ✓ (or the Voltra LOAD) used the old weight.
+      var keep = {
+        keepWeight: !!(it.TargetWeight && Number(it.TargetWeight) > 0),
+        keepReps: it.TargetRepsLow > 0,
+      };
       for (var i = 0; i < sets; i++) {
-        addExercise(it.ExerciseName, weight, reps, color, true);
+        addExercise(it.ExerciseName, weight, reps, color, true, undefined, keep);
       }
     });
     renderQueueHeader(id);
