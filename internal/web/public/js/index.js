@@ -259,9 +259,11 @@ function addExercise(name, weight, reps, color, fromPicker, note, meta) {
     // Used both for auto-fill (weight/reps) and for showing the previous note.
     var prior = today ? getAutoFillData(name, setNum, today) : null;
 
+    // meta.keepWeight / meta.keepReps: a plan or routine prescribed this value,
+    // so auto-fill must not replace it with last time's.
     if (fromPicker && window._autoFill && prior) {
-        weight = prior.Weight;
-        reps   = prior.Reps;
+        if (!meta.keepWeight) weight = prior.Weight;
+        if (!meta.keepReps)   reps   = prior.Reps;
     }
 
     // Bodyweight handling (Feature 6). An exercise flagged bodyweight logs the
