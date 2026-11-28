@@ -536,6 +536,38 @@ ALTER TABLE weight ADD COLUMN IF NOT EXISTS receive_count INTEGER;
 ALTER TABLE weight ALTER COLUMN receive_count SET DEFAULT 1;
 `,
 	},
+	{
+		Version:     28,
+		Description: "prescribed_items: Voltra exercises take whole-pound target weights",
+		SQL: `
+-- The Voltra trainer loads in whole pounds only. The sidecar rounds a
+-- fractional weight (17.5 -> 18, 16.5 -> 16), so a plan item prescribing 17.5
+-- on a Voltra exercise would be logged at a load that was never lifted. Plans
+-- are written by the coach agent straight into these tables (and through the
+-- plan API), so the rule lives here, where every path meets it: an insert or
+-- update that gives a voltra = true exercise a fractional target_weight is
+-- rejected with check_violation. Existing rows are not re-checked (there were
+-- none in violation when this shipped). Idempotent: CREATE OR REPLACE and
+-- DROP TRIGGER IF EXISTS.
+CREATE OR REPLACE FUNCTION prescribed_items_voltra_whole_lb() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.target_weight IS NOT NULL
+       AND NEW.target_weight <> trunc(NEW.target_weight)
+       AND EXISTS (SELECT 1 FROM exercises WHERE id = NEW.exercise_id AND voltra) THEN
+        RAISE EXCEPTION 'target_weight % for exercise % is not a whole number: Voltra exercises load in whole pounds',
+            NEW.target_weight, NEW.exercise_id
+            USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+END
+$$;
+DROP TRIGGER IF EXISTS prescribed_items_voltra_whole_lb ON prescribed_items;
+CREATE TRIGGER prescribed_items_voltra_whole_lb
+    BEFORE INSERT OR UPDATE OF target_weight, exercise_id ON prescribed_items
+    FOR EACH ROW EXECUTE FUNCTION prescribed_items_voltra_whole_lb();
+`,
+	},
 }
 
 // MigratePostgres creates the schema_version table if needed and applies any

@@ -75,7 +75,10 @@ curl -s -XPOST "$BASE/api/programs/12/sessions" -H "X-Api-Key: $KEY" -H 'Content
 #    item (omit → defaults to 3). TargetWeight / TargetRIR are optional (omit →
 #    provisional load, shown as "load TBD", and the button pre-fills that row
 #    from the exercise's own default). Flags is a comma-separated tag list;
-#    AltExerciseID is a substitution.
+#    AltExerciseID is a substitution. An exercise flagged voltra (the Voltra
+#    trainer) takes a whole-pound TargetWeight only: a fractional one is
+#    rejected with 422 and the database's message, whether written here or
+#    straight into prescribed_items (migration v28).
 curl -s -XPUT "$BASE/api/prescribed-sessions/34/items" -H "X-Api-Key: $KEY" -H 'Content-Type: application/json' -d '[
   {"ExerciseID": 47, "TargetSets": 4, "TargetRepsLow": 10, "TargetRepsHigh": 12, "TargetRIR": 2,
    "TargetWeight": "120", "Rationale": "hold load", "Flags": "grip-offload,gated"},
