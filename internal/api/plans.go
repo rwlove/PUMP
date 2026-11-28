@@ -1,12 +1,14 @@
 package api
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/rwlove/PUMP/internal/models"
 	"github.com/rwlove/PUMP/internal/store"
@@ -169,6 +171,12 @@ func putPrescribedItems(c *gin.Context) {
 		return
 	}
 	if err := planStore.ReplacePrescribedItems(c.Request.Context(), id, items); err != nil {
+		// A rule the database enforces (e.g. a fractional load on a Voltra
+		// exercise, migration v28) is the author's to fix, not a server fault.
+		if isCheckViolation(err) {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": checkViolationMessage(err)})
+			return
+		}
 		slog.Error("putPrescribedItems: ReplacePrescribedItems failed", slog.Int("session_id", id), slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -291,4 +299,20 @@ func postSessionFeedback(c *gin.Context) {
 // the API rejects a bad value with 400 rather than surfacing a DB error.
 func validSessionStatus(s string) bool {
 	return s == "provisional" || s == "committed"
+}
+
+// isCheckViolation reports a Postgres check_violation (SQLSTATE 23514), which
+// the plan tables raise for rules such as whole-pound Voltra loads.
+func isCheckViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23514"
+}
+
+// checkViolationMessage is the database's own explanation of the violated rule.
+func checkViolationMessage(err error) string {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Message != "" {
+		return pgErr.Message
+	}
+	return err.Error()
 }
